@@ -1,20 +1,23 @@
 export type Role = 'ADMIN' | 'MANAGER' | 'DIRECTOR' | 'SUPER_ADMIN' | 'STAFF';
 
-export type StaffPosition =
-  | 'CLINIC'
-  | 'RECEPTION'
-  | 'SMM'
-  | 'WAREHOUSE'
-  | 'MARKETING'
-  | 'MANAGEMENT'
-  | 'OTHER';
+export interface Position {
+  id: string;
+  code: string;
+  nameUz: string;
+  nameRu: string;
+  active?: boolean;
+  sortOrder?: number;
+}
 
 export interface User {
   id: string;
   name: string;
   email: string;
   role: Role;
-  position?: StaffPosition | null;
+  positionId?: string | null;
+  position?: Position | null;
+  positionLabel?: string | null;
+  positionLabelRu?: string | null;
   branchId?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
@@ -38,22 +41,13 @@ export interface ChecklistItemMeta {
   desc: string;
 }
 
+/** @deprecated use useI18n().roleLabel */
 export const ROLE_LABELS: Record<Role, string> = {
   ADMIN: 'Administrator',
   MANAGER: 'Menejer',
   DIRECTOR: 'Direktor',
   SUPER_ADMIN: 'Super Admin',
   STAFF: 'Xodim',
-};
-
-export const POSITION_LABELS: Record<StaffPosition, string> = {
-  CLINIC: 'Klinika admini',
-  RECEPTION: 'Retsepshn',
-  SMM: 'SMM / kontent',
-  WAREHOUSE: 'Ombor',
-  MARKETING: 'Marketing',
-  MANAGEMENT: 'Menejment',
-  OTHER: 'Boshqa',
 };
 
 export function todayISO() {
@@ -99,4 +93,12 @@ export function scoreColor(score: number) {
   if (score >= 80) return 'green';
   if (score >= 50) return 'yellow';
   return 'red';
+}
+
+export function userPositionLabel(
+  u: { position?: Position | null; positionLabel?: string | null; positionLabelRu?: string | null },
+  lang: 'uz' | 'ru' = 'uz',
+) {
+  if (u.position) return lang === 'ru' ? u.position.nameRu : u.position.nameUz;
+  return lang === 'ru' ? u.positionLabelRu : u.positionLabel;
 }

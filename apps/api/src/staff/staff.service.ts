@@ -9,7 +9,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { Role, StaffPosition, TaskStatus } from '@prisma/client';
+import { Role, TaskStatus } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaService } from '../prisma/prisma.service';
@@ -18,16 +18,11 @@ import { TelegramBotService } from '../telegram/telegram-bot.service';
 import { toDateOnly, BUSINESS_TZ } from '../common/kpi.constants';
 import { openaiChat } from '../common/openai';
 import { CalendarService } from '../common/calendar.service';
-
-const POSITION_LABELS: Record<StaffPosition, string> = {
-  CLINIC: 'Klinika admini',
-  RECEPTION: 'Retsepshn',
-  SMM: 'SMM / kontent',
-  WAREHOUSE: 'Ombor',
-  MARKETING: 'Marketing',
-  MANAGEMENT: 'Menejment',
-  OTHER: 'Boshqa',
-};
+import {
+  mapUserWithPosition,
+  positionLabel,
+  POSITION_SELECT,
+} from '../common/position.util';
 
 const TASK_ROLES: Role[] = [Role.STAFF, Role.ADMIN];
 
@@ -73,13 +68,27 @@ export class StaffService implements OnModuleInit {
     }
   }
 
+  async listPositions(activeOnly = true) {
+    return this.prisma.position.findMany({
+      where: activeOnly ? { active: true } : undefined,
+      orderBy: [{ sortOrder: 'asc' }, { nameUz: 'asc' }],
+      select: POSITION_SELECT,
+    });
+  }
+
   positionLabels() {
-    return POSITION_LABELS;
+    return this.listPositions();
+  }
+
+  private async getPosition(id: string) {
+    const p = await this.prisma.position.findUnique({ where: { id } });
+    if (!p || !p.active) throw new BadRequestException('Lavozim topilmadi yoki faol emas');
+    return p;
   }
 
   private async activeStaff() {
     return this.prisma.user.findMany({
-      where: { active: true, role: { in: TASK_ROLES }, position: { not: null } },
+      where: { active: true, role: { in: TASK_ROLES }, positionId: { not: null } },
     });
   }
 
@@ -107,7 +116,8 @@ export class StaffService implements OnModuleInit {
         name: true,
         email: true,
         role: true,
-        position: true,
+        positionId: true,
+        positionRef: { select: POSITION_SELECT },
         phone: true,
         avatarUrl: true,
         bio: true,
@@ -118,14 +128,14 @@ export class StaffService implements OnModuleInit {
       },
     });
     if (!user) throw new NotFoundException();
-    return { ...user, positionLabel: user.position ? POSITION_LABELS[user.position] : null };
+    return mapUserWithPosition(user);
   }
 
   async updateMyProfile(
     userId: string,
     data: { phone?: string; bio?: string; avatarUrl?: string },
   ) {
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
         phone: data.phone,
@@ -137,12 +147,14 @@ export class StaffService implements OnModuleInit {
         name: true,
         email: true,
         role: true,
-        position: true,
+        positionId: true,
+        positionRef: { select: POSITION_SELECT },
         phone: true,
         avatarUrl: true,
         bio: true,
       },
     });
+    return mapUserWithPosition(updated);
   }
 
   /** Bugungi vazifalarni shablondan yaratish (idempotent). Dam olishda — yaratilmaydi. */
@@ -152,7 +164,7 @@ export class StaffService implements OnModuleInit {
     if (!TASK_ROLES.includes(user.role)) {
       return { created: 0, tasks: [] as any[], restDay: false };
     }
-    if (!user.position) {
+    if (!user.positionId) {
       return { created: 0, tasks: [] as any[], needPosition: true, restDay: false };
     }
 
@@ -227,7 +239,7 @@ export class StaffService implements OnModuleInit {
     managerId: string,
     data: {
       userId: string;
-      position: StaffPosition;
+      positionId: string;
       title: string;
       description: string;
       proofRequired?: boolean;
@@ -244,9 +256,11 @@ export class StaffService implements OnModuleInit {
     if (!assignee) throw new NotFoundException('Xodim topilmadi');
     if (!assignee.active) throw new BadRequestException('Xodim faol emas');
 
+    const pos = await this.getPosition(data.positionId);
+
     assignee = await this.prisma.user.update({
       where: { id: data.userId },
-      data: { position: data.position },
+      data: { positionId: data.positionId },
     });
 
     const recurring = data.recurring !== false;
@@ -259,7 +273,7 @@ export class StaffService implements OnModuleInit {
       const tpl = await this.prisma.taskTemplate.create({
         data: {
           userId: data.userId,
-          position: data.position,
+          positionId: data.positionId,
           title,
           description,
           proofRequired,
@@ -317,7 +331,7 @@ export class StaffService implements OnModuleInit {
         entity: 'user',
         entityId: data.userId,
         meta: {
-          position: data.position,
+          positionId: data.positionId,
           title,
           recurring,
         } as any,
@@ -326,7 +340,7 @@ export class StaffService implements OnModuleInit {
 
     await this.telegram.notify(
       'Kunlik vazifa biriktirildi',
-      `${assignee.name} → ${POSITION_LABELS[data.position]}\n«${title}»${recurring ? ' (har ish kuni)' : ' (bugun)'}`,
+      `${assignee.name} → ${pos.nameUz}\n«${title}»${recurring ? ' (har ish kuni)' : ' (bugun)'}`,
       '📋',
     );
 
@@ -334,8 +348,10 @@ export class StaffService implements OnModuleInit {
       user: {
         id: assignee.id,
         name: assignee.name,
-        position: data.position,
-        positionLabel: POSITION_LABELS[data.position],
+        positionId: data.positionId,
+        position: pos,
+        positionLabel: pos.nameUz,
+        positionLabelRu: pos.nameRu,
       },
       task: { title, description, proofRequired, weight, recurring },
       template,
@@ -549,7 +565,7 @@ export class StaffService implements OnModuleInit {
     data: {
       userId: string;
       date: string;
-      position?: StaffPosition;
+      positionId?: string;
       templateIds?: string[];
       title?: string;
       description?: string;
@@ -562,18 +578,20 @@ export class StaffService implements OnModuleInit {
     if (!assignee) throw new NotFoundException('Xodim topilmadi');
     if (!assignee.active) throw new BadRequestException('Xodim faol emas');
 
-    if (data.position && data.position !== assignee.position) {
+    if (data.positionId && data.positionId !== assignee.positionId) {
+      await this.getPosition(data.positionId);
       assignee = await this.prisma.user.update({
         where: { id: data.userId },
-        data: { position: data.position },
+        data: { positionId: data.positionId },
       });
     }
 
-    if (!assignee.position && !data.position) {
+    if (!assignee.positionId && !data.positionId) {
       throw new BadRequestException('Avval lavozim tanlang');
     }
 
-    const position = (data.position || assignee.position)!;
+    const positionId = data.positionId || assignee.positionId!;
+    const posRow = await this.getPosition(positionId);
     const date = toDateOnly(data.date);
     const created: any[] = [];
 
@@ -582,9 +600,9 @@ export class StaffService implements OnModuleInit {
         where: { id: { in: data.templateIds }, active: true },
       });
       for (const t of templates) {
-        if (t.position !== position) {
+        if (t.positionId !== positionId) {
           throw new BadRequestException(
-            `Shablon «${t.title}» ${POSITION_LABELS[t.position]} uchun, tanlangan lavozim: ${POSITION_LABELS[position]}`,
+            `Shablon «${t.title}» boshqa lavozim uchun, tanlangan: ${posRow.nameUz}`,
           );
         }
         try {
@@ -613,7 +631,7 @@ export class StaffService implements OnModuleInit {
         const tpl = await this.prisma.taskTemplate.create({
           data: {
             userId: data.userId,
-            position,
+            positionId,
             title: data.title.trim(),
             description: (data.description || data.title).trim(),
             proofRequired: data.proofRequired ?? true,
@@ -664,7 +682,7 @@ export class StaffService implements OnModuleInit {
           entityId: created[0]?.id,
           meta: {
             assignee: data.userId,
-            position,
+            positionId,
             count: created.length,
             titles: created.map((t) => t.title),
           } as any,
@@ -673,7 +691,7 @@ export class StaffService implements OnModuleInit {
 
       await this.telegram.notify(
         'Vazifa biriktirildi',
-        `${assignee.name} (${POSITION_LABELS[position]}): ${created.map((t) => t.title).join(', ')}`,
+        `${assignee.name} (${posRow.nameUz}): ${created.map((t) => t.title).join(', ')}`,
         '📋',
       );
     }
@@ -682,8 +700,10 @@ export class StaffService implements OnModuleInit {
       user: {
         id: assignee.id,
         name: assignee.name,
-        position,
-        positionLabel: POSITION_LABELS[position],
+        positionId,
+        position: posRow,
+        positionLabel: posRow.nameUz,
+        positionLabelRu: posRow.nameRu,
       },
       created,
       date: date.toISOString().slice(0, 10),
@@ -699,7 +719,7 @@ export class StaffService implements OnModuleInit {
       description: string;
       proofRequired?: boolean;
       weight?: number;
-      position?: StaffPosition;
+      positionId?: string;
       templateIds?: string[];
       recurring?: boolean;
     },
@@ -707,16 +727,18 @@ export class StaffService implements OnModuleInit {
     return this.assignTasks(managerId, data);
   }
 
-  async setStaffPosition(managerId: string, userId: string, position: StaffPosition) {
+  async setStaffPosition(managerId: string, userId: string, positionId: string) {
+    await this.getPosition(positionId);
     const user = await this.prisma.user.update({
       where: { id: userId },
-      data: { position },
+      data: { positionId },
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
-        position: true,
+        positionId: true,
+        positionRef: { select: POSITION_SELECT },
       },
     });
     await this.ensureDailyTasks(userId);
@@ -726,10 +748,10 @@ export class StaffService implements OnModuleInit {
         action: 'set_position',
         entity: 'user',
         entityId: userId,
-        meta: { position } as any,
+        meta: { positionId } as any,
       },
     });
-    return { ...user, positionLabel: POSITION_LABELS[position] };
+    return mapUserWithPosition(user);
   }
 
   async updateTask(
@@ -807,7 +829,7 @@ export class StaffService implements OnModuleInit {
         action: 'delete_template',
         entity: 'task_template',
         entityId: templateId,
-        meta: { title: existing.title, position: existing.position } as any,
+        meta: { title: existing.title, positionId: existing.positionId } as any,
       },
     });
 
@@ -832,14 +854,15 @@ export class StaffService implements OnModuleInit {
       where: {
         active: true,
         role: { in: TASK_ROLES },
-        position: { not: null },
+        positionId: { not: null },
       },
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
-        position: true,
+        positionId: true,
+        positionRef: { select: POSITION_SELECT },
         avatarUrl: true,
       },
       orderBy: { name: 'asc' },
@@ -853,7 +876,14 @@ export class StaffService implements OnModuleInit {
       where: { date, userId: { in: staff.map((s) => s.id) } },
       include: {
         proofs: { select: { id: true, fileName: true, mimeType: true, path: true } },
-        user: { select: { id: true, name: true, position: true } },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            positionId: true,
+            positionRef: { select: POSITION_SELECT },
+          },
+        },
       },
       orderBy: [{ userId: 'asc' }, { createdAt: 'asc' }],
     });
@@ -864,7 +894,7 @@ export class StaffService implements OnModuleInit {
       const done = mine.filter((t) => t.status === TaskStatus.APPROVED || t.status === TaskStatus.SUBMITTED).length;
       const approved = mine.filter((t) => t.status === TaskStatus.APPROVED).length;
       return {
-        user: { ...s, positionLabel: s.position ? POSITION_LABELS[s.position] : null },
+        user: mapUserWithPosition(s),
         tasks: mine,
         stats: {
           total,
@@ -881,12 +911,13 @@ export class StaffService implements OnModuleInit {
     return { date: day.date, restDay: false, members: byUser };
   }
 
-  async listTemplates(filter?: { position?: StaffPosition; userId?: string }) {
+  async listTemplates(filter?: { positionId?: string; userId?: string }) {
     return this.prisma.taskTemplate.findMany({
       where: {
-        ...(filter?.position ? { position: filter.position } : {}),
+        ...(filter?.positionId ? { positionId: filter.positionId } : {}),
         ...(filter?.userId ? { userId: filter.userId } : {}),
       },
+      include: { position: { select: POSITION_SELECT } },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
   }
@@ -894,7 +925,7 @@ export class StaffService implements OnModuleInit {
   async upsertTemplate(
     data: {
       id?: string;
-      position: StaffPosition;
+      positionId: string;
       title: string;
       description: string;
       proofRequired?: boolean;
@@ -903,11 +934,12 @@ export class StaffService implements OnModuleInit {
       sortOrder?: number;
     },
   ) {
+    await this.getPosition(data.positionId);
     if (data.id) {
       return this.prisma.taskTemplate.update({
         where: { id: data.id },
         data: {
-          position: data.position,
+          positionId: data.positionId,
           title: data.title,
           description: data.description,
           proofRequired: data.proofRequired ?? true,
@@ -919,7 +951,7 @@ export class StaffService implements OnModuleInit {
     }
     return this.prisma.taskTemplate.create({
       data: {
-        position: data.position,
+        positionId: data.positionId,
         title: data.title,
         description: data.description,
         proofRequired: data.proofRequired ?? true,
@@ -1027,20 +1059,27 @@ export class StaffService implements OnModuleInit {
 
   async evaluateMonth(year: number, month: number) {
     const staff = await this.prisma.user.findMany({
-      where: { active: true, role: { in: TASK_ROLES }, position: { not: null } },
-      select: { id: true, name: true, position: true, role: true },
+      where: { active: true, role: { in: TASK_ROLES }, positionId: { not: null } },
+      select: {
+        id: true,
+        name: true,
+        positionId: true,
+        positionRef: { select: POSITION_SELECT },
+        role: true,
+      },
     });
 
     const results: any[] = [];
     for (const s of staff) {
       const score = await this.scoreEmployeeMonth(s.id, year, month);
-      let aiSummary = await this.buildEmployeeAiSummary(s.name, s.position, year, month, score);
+      const posLabel = positionLabel(s.positionRef, 'uz') || '—';
+      let aiSummary = await this.buildEmployeeAiSummary(s.name, posLabel, year, month, score);
       await this.prisma.monthlyEmployeeScore.update({
         where: { userId_year_month: { userId: s.id, year, month } },
         data: { aiSummary },
       });
       results.push({
-        user: { ...s, positionLabel: s.position ? POSITION_LABELS[s.position] : null },
+        user: mapUserWithPosition(s),
         ...score,
         aiSummary,
       });
@@ -1068,13 +1107,13 @@ export class StaffService implements OnModuleInit {
 
   private async buildEmployeeAiSummary(
     name: string,
-    position: StaffPosition | null,
+    positionLabelText: string,
     year: number,
     month: number,
     score: { totalScore: number; breakdown: any },
   ) {
     const base = [
-      `${name} (${position ? POSITION_LABELS[position] : '—'}) — ${month}/${year}`,
+      `${name} (${positionLabelText}) — ${month}/${year}`,
       `Umumiy KPI: ${score.totalScore}/100`,
       `Bajarilish: ${score.breakdown.completion}% · Tasdiq: ${score.breakdown.approval}% · Isbot: ${score.breakdown.proof}% · Vaqtida: ${score.breakdown.onTime}%`,
       `Vazifalar: ${score.breakdown.taskCount}, tasdiqlangan: ${score.breakdown.approved}`,
@@ -1130,7 +1169,15 @@ export class StaffService implements OnModuleInit {
       where: { year, month },
       include: {
         user: {
-          select: { id: true, name: true, position: true, role: true, email: true, avatarUrl: true },
+          select: {
+            id: true,
+            name: true,
+            positionId: true,
+            positionRef: { select: POSITION_SELECT },
+            role: true,
+            email: true,
+            avatarUrl: true,
+          },
         },
       },
       orderBy: { totalScore: 'desc' },
@@ -1143,29 +1190,28 @@ export class StaffService implements OnModuleInit {
       month,
       scores: scores.map((s) => ({
         ...s,
-        user: {
-          ...s.user,
-          positionLabel: s.user.position ? POSITION_LABELS[s.user.position] : null,
-        },
+        user: mapUserWithPosition(s.user),
       })),
       leadershipReport: report?.content || null,
     };
   }
 
   async listStaffUsers() {
-    return this.prisma.user.findMany({
+    const rows = await this.prisma.user.findMany({
       where: { active: true, role: { in: [...TASK_ROLES, Role.DIRECTOR] } },
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
-        position: true,
+        positionId: true,
+        positionRef: { select: POSITION_SELECT },
         phone: true,
         avatarUrl: true,
       },
       orderBy: { name: 'asc' },
     });
+    return rows.map((r) => mapUserWithPosition(r));
   }
 
   /** Har kuni 06:00 — ish kuni boʻlsa kunlik vazifalar ochiladi */

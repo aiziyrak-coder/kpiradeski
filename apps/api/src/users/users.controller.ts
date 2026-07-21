@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { Role, StaffPosition } from '@prisma/client';
-import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { Role } from '@prisma/client';
+import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
 import { UsersService } from './users.service';
 import { JwtAuthGuard, Roles, RolesGuard } from '../common/guards';
 import { CurrentUser } from '../common/decorators';
@@ -10,7 +10,7 @@ class CreateUserDto {
   @IsEmail() email: string;
   @IsString() @MinLength(8) password: string;
   @IsEnum(Role) role: Role;
-  @IsOptional() @IsEnum(StaffPosition) position?: StaffPosition;
+  @IsOptional() @IsString() positionId?: string;
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsString() branchId?: string;
 }
@@ -18,7 +18,10 @@ class CreateUserDto {
 class UpdateUserDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsEnum(Role) role?: Role;
-  @IsOptional() @IsEnum(StaffPosition) position?: StaffPosition;
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  positionId?: string | null;
   @IsOptional() @IsBoolean() active?: boolean;
   @IsOptional() @IsString() branchId?: string;
   @IsOptional() @IsString() phone?: string;

@@ -15,16 +15,6 @@ enum Role {
   STAFF
 }
 
-enum StaffPosition {
-  CLINIC
-  RECEPTION
-  SMM
-  WAREHOUSE
-  MARKETING
-  MANAGEMENT
-  OTHER
-}
-
 enum TaskFrequency {
   DAILY
   WEEKLY
@@ -66,13 +56,29 @@ enum AiReportType {
   CALLS
 }
 
+model Position {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  nameUz    String
+  nameRu    String
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  taskTemplates TaskTemplate[]
+
+  @@index([active, sortOrder])
+}
+
 model User {
   id           String         @id @default(cuid())
   name         String
   email        String         @unique
   passwordHash String
   role         Role           @default(ADMIN)
-  position     StaffPosition?
+  positionId   String?
   phone        String?
   avatarUrl    String?
   bio          String?
@@ -84,6 +90,7 @@ model User {
   updatedAt    DateTime       @updatedAt
 
   branch          Branch?               @relation(fields: [branchId], references: [id])
+  positionRef     Position?             @relation(fields: [positionId], references: [id], onDelete: SetNull)
   auditLogs       AuditLog[]
   notifications   Notification[]
   dailyClinic     DailyClinicCheck[]
@@ -452,7 +459,7 @@ model Holiday {
 model TaskTemplate {
   id            String         @id @default(cuid())
   userId        String?
-  position      StaffPosition
+  positionId    String
   title         String
   description   String
   proofRequired Boolean        @default(true)
@@ -463,11 +470,12 @@ model TaskTemplate {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
-  user  User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tasks DailyTask[]
+  user     User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  position Position  @relation(fields: [positionId], references: [id])
+  tasks    DailyTask[]
 
   @@index([userId, active])
-  @@index([position, active])
+  @@index([positionId, active])
 }
 
 model DailyTask {

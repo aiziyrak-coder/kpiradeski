@@ -5,9 +5,10 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { Role, StaffPosition } from '@prisma/client';
+import { Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { mapUserWithPosition, POSITION_SELECT } from '../common/position.util';
 
 const ROLE_RANK: Record<Role, number> = {
   STAFF: 1,
@@ -17,27 +18,31 @@ const ROLE_RANK: Record<Role, number> = {
   SUPER_ADMIN: 5,
 };
 
+const USER_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  positionId: true,
+  positionRef: { select: POSITION_SELECT },
+  phone: true,
+  telegramId: true,
+  active: true,
+  branchId: true,
+  createdAt: true,
+  branch: { select: { id: true, name: true } },
+} as const;
+
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  list() {
-    return this.prisma.user.findMany({
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        position: true,
-        phone: true,
-        telegramId: true,
-        active: true,
-        branchId: true,
-        createdAt: true,
-        branch: { select: { id: true, name: true } },
-      },
+  async list() {
+    const rows = await this.prisma.user.findMany({
+      select: USER_SELECT,
       orderBy: { createdAt: 'desc' },
     });
+    return rows.map((r) => mapUserWithPosition(r));
   }
 
   private assertCanAssignRole(actorRole: Role, targetRole: Role) {
@@ -50,6 +55,13 @@ export class UsersService {
     }
   }
 
+  private async validatePositionId(positionId?: string | null) {
+    if (!positionId) return null;
+    const pos = await this.prisma.position.findUnique({ where: { id: positionId } });
+    if (!pos || !pos.active) throw new BadRequestException('Lavozim topilmadi yoki faol emas');
+    return positionId;
+  }
+
   async create(
     actor: { id: string; role: Role },
     data: {
@@ -58,7 +70,7 @@ export class UsersService {
       password: string;
       role: Role;
       branchId?: string;
-      position?: StaffPosition;
+      positionId?: string;
       phone?: string;
     },
   ) {
@@ -66,6 +78,7 @@ export class UsersService {
       throw new BadRequestException('Parol kamida 8 belgidan iborat boʻlishi kerak');
     }
     this.assertCanAssignRole(actor.role, data.role);
+    const positionId = await this.validatePositionId(data.positionId);
     const exists = await this.prisma.user.findUnique({ where: { email: data.email.toLowerCase() } });
     if (exists) throw new ConflictException('Bu email band');
     const passwordHash = await bcrypt.hash(data.password, 10);
@@ -76,18 +89,10 @@ export class UsersService {
         passwordHash,
         role: data.role,
         branchId: data.branchId,
-        position: data.position,
+        positionId,
         phone: data.phone,
       },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        position: true,
-        active: true,
-        branchId: true,
-      },
+      select: USER_SELECT,
     });
     await this.prisma.auditLog.create({
       data: {
@@ -98,7 +103,7 @@ export class UsersService {
         meta: { email: user.email, role: user.role } as any,
       },
     });
-    return user;
+    return mapUserWithPosition(user);
   }
 
   async update(
@@ -110,7 +115,7 @@ export class UsersService {
       active?: boolean;
       branchId?: string;
       password?: string;
-      position?: StaffPosition | null;
+      positionId?: string | null;
       phone?: string;
     },
   ) {
@@ -119,7 +124,6 @@ export class UsersService {
 
     if (data.role) this.assertCanAssignRole(actor.role, data.role);
 
-    // Oʻzini oʻchirish / rolini tushirishni bloklash (SA oʻzini deaktivatsiya qilmasin)
     if (id === actor.id && data.active === false) {
       throw new BadRequestException('Oʻzingizni oʻchirib boʻlmaydi');
     }
@@ -127,13 +131,17 @@ export class UsersService {
       throw new BadRequestException('Oʻz rolingizni oʻzgartirib boʻlmaydi');
     }
 
-    // Non-SA cannot edit SUPER_ADMIN
     if (actor.role !== Role.SUPER_ADMIN && user.role === Role.SUPER_ADMIN) {
       throw new ForbiddenException('Super Admin hisobini tahrirlash mumkin emas');
     }
 
     if (data.password != null && data.password.length < 8) {
       throw new BadRequestException('Parol kamida 8 belgidan iborat boʻlishi kerak');
+    }
+
+    let positionId: string | null | undefined = undefined;
+    if (data.positionId !== undefined) {
+      positionId = data.positionId === null ? null : await this.validatePositionId(data.positionId);
     }
 
     const passwordHash = data.password ? await bcrypt.hash(data.password, 10) : undefined;
@@ -144,21 +152,11 @@ export class UsersService {
         role: data.role,
         active: data.active,
         branchId: data.branchId,
-        position: data.position === undefined ? undefined : data.position,
+        positionId,
         phone: data.phone,
         ...(passwordHash ? { passwordHash, tokenVersion: { increment: 1 } } : {}),
       },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        position: true,
-        phone: true,
-        active: true,
-        branchId: true,
-        telegramId: true,
-      },
+      select: USER_SELECT,
     });
     await this.prisma.auditLog.create({
       data: {
@@ -169,6 +167,6 @@ export class UsersService {
         meta: { fields: Object.keys(data).filter((k) => (data as any)[k] !== undefined) } as any,
       },
     });
-    return updated;
+    return mapUserWithPosition(updated);
   }
 }

@@ -23,98 +23,102 @@ import {
   UserRound,
   UsersRound,
   MoreHorizontal,
+  Briefcase,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { ROLE_LABELS, homeForRole, type Role } from '@/types';
+import { homeForRole, type Role } from '@/types';
 import { haptic } from '@/lib/telegram';
 import { useTelegram } from '@/components/TelegramProvider';
+import { useI18n } from '@/lib/i18n';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 const NAV: Array<{
   href: string;
-  label: string;
+  labelKey: string;
   icon: React.ComponentType<{ className?: string }>;
   roles?: Role[];
 }> = [
-  { href: '/my', label: 'Mening vazifalarim', icon: UserRound, roles: ['STAFF', 'ADMIN'] },
-  { href: '/today', label: 'Bugungi ish', icon: ClipboardList, roles: ['ADMIN', 'MANAGER'] },
+  { href: '/my', labelKey: 'nav.myTasks', icon: UserRound, roles: ['STAFF', 'ADMIN'] },
+  { href: '/today', labelKey: 'nav.today', icon: ClipboardList, roles: ['ADMIN', 'MANAGER'] },
   {
     href: '/dashboard',
-    label: 'Dashboard',
+    labelKey: 'nav.dashboard',
     icon: LayoutDashboard,
     roles: ['ADMIN', 'MANAGER', 'DIRECTOR', 'SUPER_ADMIN'],
   },
   {
     href: '/team',
-    label: 'Vazifalar',
+    labelKey: 'nav.team',
     icon: UsersRound,
     roles: ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN', 'ADMIN'],
   },
-  { href: '/marketing', label: 'Marketing', icon: Megaphone, roles: ['MANAGER'] },
+  { href: '/marketing', labelKey: 'nav.marketing', icon: Megaphone, roles: ['MANAGER'] },
   {
     href: '/doctors',
-    label: 'Shifokorlar',
+    labelKey: 'nav.doctors',
     icon: Stethoscope,
     roles: ['ADMIN', 'MANAGER', 'DIRECTOR', 'SUPER_ADMIN'],
   },
-  { href: '/warehouse', label: 'Ombor zaxira', icon: Warehouse, roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
-  { href: '/ai', label: 'AI tahlil', icon: Sparkles, roles: ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN'] },
-  { href: '/reports', label: 'Hisobotlar', icon: FileBarChart, roles: ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN'] },
-  { href: '/audit', label: 'Audit', icon: ScrollText, roles: ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN'] },
-  { href: '/settings', label: 'Kalendar / KPI', icon: Settings, roles: ['SUPER_ADMIN'] },
-  { href: '/users', label: 'Foydalanuvchilar', icon: Users, roles: ['SUPER_ADMIN', 'MANAGER', 'ADMIN', 'DIRECTOR'] },
-  { href: '/notifications', label: 'Bildirishnomalar', icon: Bell },
-  { href: '/account', label: 'Profil', icon: KeyRound },
+  { href: '/warehouse', labelKey: 'nav.warehouse', icon: Warehouse, roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/ai', labelKey: 'nav.ai', icon: Sparkles, roles: ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN'] },
+  { href: '/reports', labelKey: 'nav.reports', icon: FileBarChart, roles: ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN'] },
+  { href: '/audit', labelKey: 'nav.audit', icon: ScrollText, roles: ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN'] },
+  { href: '/settings', labelKey: 'nav.settings', icon: Settings, roles: ['SUPER_ADMIN'] },
+  { href: '/positions', labelKey: 'nav.positions', icon: Briefcase, roles: ['SUPER_ADMIN', 'MANAGER'] },
+  { href: '/users', labelKey: 'nav.users', icon: Users, roles: ['SUPER_ADMIN', 'MANAGER', 'ADMIN', 'DIRECTOR'] },
+  { href: '/notifications', labelKey: 'nav.notifications', icon: Bell },
+  { href: '/account', labelKey: 'nav.account', icon: KeyRound },
 ];
 
-function bottomTabsFor(role: Role) {
+function bottomTabsFor(role: Role, t: (k: string) => string) {
   if (role === 'STAFF') {
     return [
-      { href: '/my', label: 'Vazifalar', icon: UserRound },
-      { href: '/notifications', label: 'Bildirish', icon: Bell },
-      { href: '/account', label: 'Profil', icon: KeyRound },
+      { href: '/my', label: t('nav.tabTasks'), icon: UserRound },
+      { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
+      { href: '/account', label: t('nav.account'), icon: KeyRound },
     ];
   }
   if (role === 'ADMIN') {
     return [
-      { href: '/today', label: 'Bugun', icon: ClipboardList },
-      { href: '/my', label: 'Mening', icon: UserRound },
-      { href: '/warehouse', label: 'Ombor', icon: Warehouse },
-      { href: '/notifications', label: 'Bildirish', icon: Bell },
+      { href: '/today', label: t('nav.tabToday'), icon: ClipboardList },
+      { href: '/my', label: t('nav.tabMine'), icon: UserRound },
+      { href: '/warehouse', label: t('nav.warehouse'), icon: Warehouse },
+      { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
     ];
   }
   if (role === 'MANAGER') {
     return [
-      { href: '/team', label: 'Jamoa', icon: UsersRound },
-      { href: '/today', label: 'Bugun', icon: ClipboardList },
-      { href: '/dashboard', label: 'KPI', icon: LayoutDashboard },
-      { href: '/ai', label: 'AI', icon: Sparkles },
-      { href: '/notifications', label: 'Bildirish', icon: Bell },
+      { href: '/team', label: t('nav.tabTeam'), icon: UsersRound },
+      { href: '/today', label: t('nav.tabToday'), icon: ClipboardList },
+      { href: '/dashboard', label: t('nav.tabKpi'), icon: LayoutDashboard },
+      { href: '/ai', label: t('nav.ai'), icon: Sparkles },
+      { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
     ];
   }
   if (role === 'DIRECTOR') {
     return [
-      { href: '/dashboard', label: 'KPI', icon: LayoutDashboard },
-      { href: '/team', label: 'Jamoa', icon: UsersRound },
-      { href: '/reports', label: 'Hisobot', icon: FileBarChart },
-      { href: '/ai', label: 'AI', icon: Sparkles },
-      { href: '/notifications', label: 'Bildirish', icon: Bell },
+      { href: '/dashboard', label: t('nav.tabKpi'), icon: LayoutDashboard },
+      { href: '/team', label: t('nav.tabTeam'), icon: UsersRound },
+      { href: '/reports', label: t('nav.tabReport'), icon: FileBarChart },
+      { href: '/ai', label: t('nav.ai'), icon: Sparkles },
+      { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
     ];
   }
-  // SUPER_ADMIN
   return [
-    { href: '/team', label: 'Vazifalar', icon: UsersRound },
-    { href: '/dashboard', label: 'KPI', icon: LayoutDashboard },
-    { href: '/users', label: 'Users', icon: Users },
-    { href: '/settings', label: 'Sozlama', icon: Settings },
-    { href: '/ai', label: 'AI', icon: Sparkles },
+    { href: '/team', label: t('nav.team'), icon: UsersRound },
+    { href: '/dashboard', label: t('nav.tabKpi'), icon: LayoutDashboard },
+    { href: '/users', label: t('nav.users'), icon: Users },
+    { href: '/settings', label: t('nav.tabSetup'), icon: Settings },
+    { href: '/ai', label: t('nav.ai'), icon: Sparkles },
   ];
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, logout, loading } = useAuth();
   const { isMiniApp } = useTelegram();
+  const { t, roleLabel } = useI18n();
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -145,6 +149,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           '/reports',
           '/audit',
           '/settings',
+          '/positions',
           '/users',
           '/notifications',
           '/account',
@@ -154,14 +159,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     });
   }, [user]);
 
-  const tabs = useMemo(() => (user ? bottomTabsFor(user.role) : []), [user]);
+  const tabs = useMemo(() => (user ? bottomTabsFor(user.role, t) : []), [user, t]);
 
   if (loading || !user) {
     return (
       <div className="min-h-[100dvh] grid place-items-center bg-mesh safe-pad">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 rounded-full border-2 border-teal-600 border-t-transparent animate-spin" />
-          <p className="text-ink-muted text-sm">Yuklanmoqda...</p>
+          <p className="text-ink-muted text-sm">{t('common.loading')}</p>
         </div>
       </div>
     );
@@ -189,7 +194,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           >
             <Icon className="w-5 h-5 shrink-0" />
-            {item.label}
+            {t(item.labelKey)}
             {item.href === '/notifications' && unread > 0 && (
               <span className="ml-auto min-w-5 h-5 px-1 rounded-full bg-status-red text-[10px] text-white grid place-items-center">
                 {unread > 9 ? '9+' : unread}
@@ -223,10 +228,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="px-5 pt-6 pb-4">
           <Link href={homeForRole(user.role)} className="block group">
             <p className="font-display text-3xl text-teal-800 tracking-tight group-hover:text-teal-600 transition">
-              KliniKPI
+              {t('app.title')}
             </p>
-            <p className="text-xs text-ink-muted mt-0.5">Dermatologiya KPI platformasi</p>
+            <p className="text-xs text-ink-muted mt-0.5">{t('app.subtitle')}</p>
           </Link>
+        </div>
+        <div className="px-4 pb-2">
+          <LanguageSwitcher className="w-full justify-center" />
         </div>
         <div className="flex-1 overflow-y-auto px-3 py-2">
           <NavLinks />
@@ -234,7 +242,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="p-4 border-t border-teal-100">
           <div className="rounded-2xl bg-teal-50/80 p-3 mb-3">
             <p className="text-sm font-semibold text-ink truncate">{user.name}</p>
-            <p className="text-xs text-teal-700 mt-0.5">{ROLE_LABELS[user.role]}</p>
+            <p className="text-xs text-teal-700 mt-0.5">{roleLabel(user.role)}</p>
           </div>
           <button
             onClick={() => {
@@ -243,7 +251,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             }}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-muted hover:text-status-red rounded-xl hover:bg-rose-50 transition"
           >
-            <LogOut className="w-4 h-4" /> Chiqish
+            <LogOut className="w-4 h-4" /> {t('common.logout')}
           </button>
         </div>
       </aside>
@@ -258,24 +266,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               setOpen(true);
             }}
             className="touch-target grid place-items-center rounded-xl hover:bg-teal-50 active:bg-teal-100"
-            aria-label="Menyu"
+            aria-label={t('common.menu')}
           >
             <Menu className="w-5 h-5 text-ink" />
           </button>
           <Link href={homeForRole(user.role)} className="font-display text-xl sm:text-2xl text-teal-800">
-            KliniKPI
+            {t('app.title')}
           </Link>
-          <button
-            type="button"
-            onClick={() => {
-              haptic('light');
-              setOpen(true);
-            }}
-            className="touch-target grid place-items-center rounded-xl hover:bg-teal-50 text-ink-muted"
-            aria-label="Koʻproq"
-          >
-            <MoreHorizontal className="w-5 h-5" />
-          </button>
+          <LanguageSwitcher />
         </div>
       </header>
 
@@ -297,7 +295,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className="fixed left-0 top-0 bottom-0 w-[min(300px,88vw)] bg-white z-50 lg:hidden flex flex-col shadow-glow safe-pad"
             >
               <div className="flex items-center justify-between px-4 h-14 border-b border-teal-50 shrink-0">
-                <p className="font-display text-2xl text-teal-800">KliniKPI</p>
+                <p className="font-display text-2xl text-teal-800">{t('app.title')}</p>
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
@@ -311,7 +309,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
               <div className="p-4 border-t safe-bottom shrink-0">
                 <p className="text-sm font-semibold truncate">{user.name}</p>
-                <p className="text-xs text-teal-700 mb-3">{ROLE_LABELS[user.role]}</p>
+                <p className="text-xs text-teal-700 mb-3">{roleLabel(user.role)}</p>
                 <button
                   type="button"
                   onClick={() => {
@@ -320,7 +318,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   }}
                   className="flex items-center gap-2 min-h-11 text-sm text-status-red"
                 >
-                  <LogOut className="w-4 h-4" /> Chiqish
+                  <LogOut className="w-4 h-4" /> {t('common.logout')}
                 </button>
               </div>
             </motion.aside>
@@ -334,7 +332,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           className="relative mt-3 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white/70 border border-teal-100 text-sm text-ink-soft hover:bg-white transition shadow-soft"
         >
           <Bell className="w-4 h-4" />
-          Bildirishnomalar
+          {t('nav.notifications')}
           {unread > 0 && (
             <span className="min-w-5 h-5 px-1 rounded-full bg-teal-700 text-[11px] text-white grid place-items-center">
               {unread}

@@ -6,21 +6,13 @@ import { RoleGate } from '@/components/RoleGate';
 import { Button, Input, SectionHeader, Textarea, Select } from '@/components/ui';
 import { useToast } from '@/components/Toast';
 import { api } from '@/lib/api';
-import { todayISO, POSITION_LABELS, type StaffPosition } from '@/types';
+import { todayISO, type Position } from '@/types';
+import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { ProofLink } from '@/components/ProofLink';
 
-const STATUS_UZ: Record<string, string> = {
-  PENDING: 'Kutilmoqda',
-  SUBMITTED: 'Tekshiruvda',
-  APPROVED: 'Tasdiqlangan',
-  REJECTED: 'Qaytarilgan',
-  DONE: 'Bajarilgan',
-};
-
-const POSITIONS = Object.keys(POSITION_LABELS) as StaffPosition[];
-
 function AutomationBanner() {
+  const { t } = useI18n();
   const [info, setInfo] = useState<any>(null);
   useEffect(() => {
     api('/staff/automation')
@@ -31,7 +23,7 @@ function AutomationBanner() {
   return (
     <div className="rounded-3xl border border-teal-100 bg-teal-50 p-5 mb-6 text-sm shadow-soft">
       <p className="font-semibold text-teal-900 mb-2">
-        Kun avtomatik yangilanadi · {info.dayRollover || '06:00'} · {info.timezone}
+        {t('team.automation')} · {info.dayRollover || '06:00'} · {info.timezone}
       </p>
       <ul className="grid md:grid-cols-2 gap-1 text-ink-soft">
         {(info.schedule || []).map((s: string) => (
@@ -44,11 +36,13 @@ function AutomationBanner() {
 
 export default function TeamPage() {
   const toast = useToast();
+  const { t: tr, positionName } = useI18n();
   const [date, setDate] = useState(todayISO());
   const [board, setBoard] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [userTasks, setUserTasks] = useState<any[]>([]);
-  const [position, setPosition] = useState<StaffPosition | ''>('');
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [positionId, setPositionId] = useState('');
   const [userId, setUserId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -68,9 +62,15 @@ export default function TeamPage() {
   const [busy, setBusy] = useState(false);
 
   const filteredUsers = useMemo(() => {
-    if (!position) return users;
-    return users.filter((u) => u.position === position || !u.position);
-  }, [users, position]);
+    if (!positionId) return users;
+    return users.filter((u) => u.positionId === positionId || !u.positionId);
+  }, [users, positionId]);
+
+  useEffect(() => {
+    api<Position[]>('/positions?active=true')
+      .then(setPositions)
+      .catch(() => {});
+  }, []);
 
   const loadUserTasks = useCallback(async (uid: string) => {
     if (!uid) {
@@ -116,27 +116,27 @@ export default function TeamPage() {
   }, [userId, loadUserTasks]);
 
   useEffect(() => {
-    if (position && userId) {
+    if (positionId && userId) {
       const u = users.find((x) => x.id === userId);
-      if (u && u.position && u.position !== position) {
-        const match = users.find((x) => x.position === position);
+      if (u && u.positionId && u.positionId !== positionId) {
+        const match = users.find((x) => x.positionId === positionId);
         if (match) setUserId(match.id);
       }
     }
-  }, [position, userId, users]);
+  }, [positionId, userId, users]);
 
   async function onAssign(e: FormEvent) {
     e.preventDefault();
     if (!userId) {
-      toast.error('Xodim tanlang');
+      toast.error(tr('team.needEmployee'));
       return;
     }
-    if (!position) {
-      toast.error('Lavozim tanlang');
+    if (!positionId) {
+      toast.error(tr('team.needPosition'));
       return;
     }
     if (!title.trim()) {
-      toast.error('Vazifa nomi kerak');
+      toast.error(tr('team.needTitle'));
       return;
     }
     if (!description.trim()) {
@@ -149,7 +149,7 @@ export default function TeamPage() {
         method: 'POST',
         body: JSON.stringify({
           userId,
-          position,
+          positionId,
           title: title.trim(),
           description: description.trim(),
           proofRequired,
@@ -387,37 +387,37 @@ export default function TeamPage() {
 
           <div className="grid md:grid-cols-2 gap-4">
             <Select
-              label="Lavozim"
-              value={position}
-              onChange={(e) => setPosition(e.target.value as StaffPosition | '')}
+              label={tr('team.position')}
+              value={positionId}
+              onChange={(e) => setPositionId(e.target.value)}
               required
             >
-              <option value="">Lavozimni tanlang...</option>
-              {POSITIONS.map((p) => (
-                <option key={p} value={p}>
-                  {POSITION_LABELS[p]}
+              <option value="">{tr('team.selectPosition')}...</option>
+              {positions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {positionName(p)}
                 </option>
               ))}
             </Select>
 
             <Select
-              label="Xodim"
+              label={tr('team.employee')}
               value={userId}
               onChange={(e) => {
                 const id = e.target.value;
                 setUserId(id);
                 const u = users.find((x) => x.id === id);
-                if (u?.position) setPosition(u.position);
+                if (u?.positionId) setPositionId(u.positionId);
               }}
               required
             >
-              <option value="">Xodimni tanlang...</option>
+              <option value="">{tr('team.selectEmployee')}...</option>
               {filteredUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name}
                   {u.position
-                    ? ` · ${POSITION_LABELS[u.position as StaffPosition] || u.position}`
-                    : ' · lavozimsiz'}
+                    ? ` · ${positionName(u.position)}`
+                    : ` · ${tr('my.noPosition').toLowerCase()}`}
                 </option>
               ))}
             </Select>
@@ -548,7 +548,7 @@ export default function TeamPage() {
                       <div>
                         <p className="font-medium text-sm">{t.title}</p>
                         <p className="text-xs text-ink-muted">
-                          {STATUS_UZ[t.status] || t.status}
+                          {(tr(`team.statuses.${t.status}` as 'team.statuses.PENDING') !== `team.statuses.${t.status}` ? tr(`team.statuses.${t.status}` as 'team.statuses.PENDING') : t.status)}
                           {t.description ? ` · ${t.description.slice(0, 80)}` : ''}
                         </p>
                         {(t.proofs || []).map((p: any) => (

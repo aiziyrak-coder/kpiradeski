@@ -5,7 +5,8 @@ import { AppShell } from '@/components/AppShell';
 import { Button, Input, SectionHeader, Textarea } from '@/components/ui';
 import { useToast } from '@/components/Toast';
 import { api } from '@/lib/api';
-import { formatTashkent, todayISO, POSITION_LABELS, type StaffPosition } from '@/types';
+import { formatTashkent, todayISO, userPositionLabel } from '@/types';
+import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { ProofLink } from '@/components/ProofLink';
 
@@ -18,6 +19,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function MyPage() {
   const toast = useToast();
+  const { t, lang } = useI18n();
   const [date, setDate] = useState(todayISO());
   const [profile, setProfile] = useState<any>(null);
   const [tasks, setTasks] = useState<any[]>([]);
@@ -141,9 +143,7 @@ export default function MyPage() {
           </div>
           <h3 className="font-display text-2xl">{profile?.name}</h3>
           <p className="text-sm text-teal-800 mt-1">
-            {profile?.position
-              ? POSITION_LABELS[profile.position as StaffPosition]
-              : 'Lavozim belgilanmagan'}
+            {userPositionLabel(profile || {}, lang) || t('my.noPosition')}
           </p>
           <p className="text-xs text-ink-muted mt-1">{profile?.email}</p>
           <form onSubmit={saveProfile} className="mt-4 space-y-3">
@@ -161,10 +161,8 @@ export default function MyPage() {
           <p className="text-teal-100 mt-2">
             {done}/{tasks.length} vazifa · {date}
           </p>
-          {!profile?.position && (
-            <p className="mt-4 text-sm text-amber-200">
-              Lavozim belgilanmagan — Super Admin dan CLINIC/RECEPTION/SMM… so‘rang.
-            </p>
+          {!profile?.positionId && (
+            <p className="mt-4 text-sm text-amber-200">{t('my.noPositionHint')}</p>
           )}
         </div>
       </div>

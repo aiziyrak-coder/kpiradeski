@@ -15,6 +15,7 @@ import { TelegramModule } from './telegram/telegram.module';
 import { HealthModule } from './health/health.module';
 import { CalendarModule } from './common/calendar.module';
 import { StaffModule } from './staff/staff.module';
+import { PositionsModule } from './positions/positions.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { StaffModule } from './staff/staff.module';
     ReportsModule,
     AuditModule,
     StaffModule,
+    PositionsModule,
   ],
 })
 export class AppModule {}

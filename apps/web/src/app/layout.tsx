@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 import { Cormorant_Garamond, Outfit } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth';
+import { I18nProvider } from '@/lib/i18n';
 import { TelegramProvider } from '@/components/TelegramProvider';
 import { ToastProvider } from '@/components/Toast';
 import './globals.css';
@@ -49,11 +50,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
       </head>
       <body className="font-sans overscroll-none">
-        <AuthProvider>
-          <TelegramProvider>
-            <ToastProvider>{children}</ToastProvider>
-          </TelegramProvider>
-        </AuthProvider>
+        <I18nProvider>
+          <AuthProvider>
+            <TelegramProvider>
+              <ToastProvider>{children}</ToastProvider>
+            </TelegramProvider>
+          </AuthProvider>
+        </I18nProvider>
       </body>
     </html>
   );

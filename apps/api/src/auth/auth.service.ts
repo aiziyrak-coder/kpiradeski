@@ -3,6 +3,7 @@ import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { mapUserWithPosition, POSITION_SELECT } from '../common/position.util';
 
 @Injectable()
 export class AuthService {
@@ -27,24 +28,22 @@ export class AuthService {
     };
   }
 
-  private publicUser(user: {
-    id: string;
-    name: string;
-    email: string;
-    role: any;
-    position: any;
-    branchId: string | null;
-    telegramId?: string | null;
-  }) {
-    return {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      position: user.position,
-      branchId: user.branchId,
-      telegramId: user.telegramId ?? null,
-    };
+  private async loadPublicUser(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        positionId: true,
+        positionRef: { select: POSITION_SELECT },
+        branchId: true,
+        telegramId: true,
+      },
+    });
+    if (!user) throw new UnauthorizedException();
+    return mapUserWithPosition(user);
   }
 
   async login(email: string, password: string) {
@@ -57,7 +56,7 @@ export class AuthService {
 
     return {
       accessToken: this.jwt.sign(this.tokenPayload(user)),
-      user: this.publicUser(user),
+      user: await this.loadPublicUser(user.id),
     };
   }
 
@@ -74,7 +73,7 @@ export class AuthService {
     }
     return {
       accessToken: this.jwt.sign(this.tokenPayload(user)),
-      user: this.publicUser(user),
+      user: await this.loadPublicUser(user.id),
       telegram: { id: tgUser.id, firstName: tgUser.first_name, username: tgUser.username },
     };
   }
@@ -102,7 +101,7 @@ export class AuthService {
         meta: { telegramId: tid, username: tgUser.username } as any,
       },
     });
-    return this.publicUser(user);
+    return this.loadPublicUser(user.id);
   }
 
   validateTelegramInitData(initData: string): {
@@ -156,7 +155,8 @@ export class AuthService {
         name: true,
         email: true,
         role: true,
-        position: true,
+        positionId: true,
+        positionRef: { select: POSITION_SELECT },
         phone: true,
         avatarUrl: true,
         bio: true,
@@ -167,7 +167,7 @@ export class AuthService {
       },
     });
     if (!user) throw new UnauthorizedException();
-    return user;
+    return mapUserWithPosition(user);
   }
 
   async changePassword(userId: string, currentPassword: string, newPassword: string) {

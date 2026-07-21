@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { StaffPosition, Role } from '@prisma/client';
+import { Role } from '@prisma/client';
 import { IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Response } from 'express';
 import { StaffService } from './staff.service';
@@ -45,7 +45,7 @@ class UpdateTaskDto {
 
 class AssignDailyTaskDto {
   @IsString() userId: string;
-  @IsEnum(StaffPosition) position: StaffPosition;
+  @IsString() positionId: string;
   @IsString() title: string;
   @IsString() description: string;
   @IsOptional() @IsBoolean() proofRequired?: boolean;
@@ -54,12 +54,12 @@ class AssignDailyTaskDto {
 }
 
 class SetPositionDto {
-  @IsEnum(StaffPosition) position: StaffPosition;
+  @IsString() positionId: string;
 }
 
 class TemplateDto {
   @IsOptional() @IsString() id?: string;
-  @IsEnum(StaffPosition) position: StaffPosition;
+  @IsString() positionId: string;
   @IsString() title: string;
   @IsString() description: string;
   @IsOptional() @IsBoolean() proofRequired?: boolean;
@@ -207,13 +207,13 @@ export class StaffController {
     @Param('id') id: string,
     @Body() dto: SetPositionDto,
   ) {
-    return this.staff.setStaffPosition(managerId, id, dto.position);
+    return this.staff.setStaffPosition(managerId, id, dto.positionId);
   }
 
   @Get('templates')
   @Roles(Role.MANAGER, Role.DIRECTOR, Role.SUPER_ADMIN, Role.ADMIN)
-  templates(@Query('position') position?: StaffPosition, @Query('userId') userId?: string) {
-    return this.staff.listTemplates({ position, userId });
+  templates(@Query('positionId') positionId?: string, @Query('userId') userId?: string) {
+    return this.staff.listTemplates({ positionId, userId });
   }
 
   @Post('templates')
