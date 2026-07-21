@@ -62,7 +62,7 @@ export default function ReportsPage() {
 
   return (
     <AppShell>
-      <RoleGate allow={['MANAGER', 'DIRECTOR', 'SUPER_ADMIN']}>
+      <RoleGate allow={['MANAGER', 'SUPER_ADMIN']}>
         <SectionHeader
           eyebrow="Hisobotlar"
           title="PDF / Excel eksport"
@@ -138,15 +138,14 @@ export default function ReportsPage() {
                 <th className="pb-2">Klinika</th>
                 <th className="pb-2">Retsepshn</th>
                 <th className="pb-2">Qoʻngʻiroq</th>
+                <th className="pb-2">Uniforma</th>
                 <th className="pb-2">SMM</th>
-                <th className="pb-2">Ombor</th>
-                <th className="pb-2">Shifokor</th>
               </tr>
             </thead>
             <tbody>
               {(data?.scores || []).length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-ink-muted">
+                  <td colSpan={8} className="py-8 text-center text-ink-muted">
                     Tanlangan davrda maʼlumot yoʻq
                   </td>
                 </tr>
@@ -169,9 +168,8 @@ export default function ReportsPage() {
                     <td className="py-2.5">{b.clinic ?? '—'}</td>
                     <td className="py-2.5">{b.reception ?? '—'}</td>
                     <td className="py-2.5">{b.calls ?? '—'}</td>
+                    <td className="py-2.5">{b.uniform ?? '—'}</td>
                     <td className="py-2.5">{b.smm ?? '—'}</td>
-                    <td className="py-2.5">{b.warehouse ?? '—'}</td>
-                    <td className="py-2.5">{b.doctors ?? '—'}</td>
                   </tr>
                 );
               })}

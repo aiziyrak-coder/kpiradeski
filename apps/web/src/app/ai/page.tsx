@@ -54,7 +54,7 @@ export default function AiPage() {
 
   return (
     <AppShell>
-      <RoleGate allow={['MANAGER', 'DIRECTOR', 'SUPER_ADMIN']}>
+      <RoleGate allow={['MANAGER', 'SUPER_ADMIN']}>
         <SectionHeader
           eyebrow="Sunʼiy intellekt"
           title="Haftalik AI tahlil"

@@ -12,17 +12,15 @@ import { cn } from '@/lib/utils';
 
 function linkForType(type?: string) {
   switch (type) {
-    case 'STOCK':
-      return '/warehouse';
     case 'AI_REPORT':
       return '/ai';
     case 'SCORE':
     case 'ALERT':
+    case 'STOCK':
       return '/dashboard';
-    case 'MYSTERY':
-      return '/doctors';
     case 'REMINDER':
-      return '/team';
+    case 'MYSTERY':
+      return '/today';
     default:
       return null;
   }
@@ -32,7 +30,7 @@ export default function NotificationsPage() {
   const toast = useToast();
   const { user } = useAuth();
   const [items, setItems] = useState<any[]>([]);
-  const canTest = user && ['SUPER_ADMIN', 'MANAGER', 'DIRECTOR'].includes(user.role);
+  const canTest = user && ['SUPER_ADMIN', 'MANAGER'].includes(user.role);
   const unread = items.filter((n) => !n.read).length;
 
   async function load() {
@@ -98,7 +96,7 @@ export default function NotificationsPage() {
       <div className="mb-5 rounded-2xl border border-teal-100 bg-white/80 p-4 text-sm text-ink-soft">
         <p className="font-semibold text-teal-800 mb-2">Tezkor buyruqlar</p>
         <div className="flex flex-wrap gap-2">
-          {['/bugun', '/holat', '/ombor', '/hafta', '/yordam'].map((c) => (
+          {['/bugun', '/holat', '/hafta', '/yordam'].map((c) => (
             <code key={c} className="text-xs bg-teal-50 px-2 py-1 rounded-lg">
               {c}
             </code>

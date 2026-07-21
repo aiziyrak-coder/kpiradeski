@@ -169,38 +169,12 @@ export class NotificationsService {
 
   @Cron('0 9 * * *', { timeZone: TZ })
   async expiryAlert() {
-    const until = new Date();
-    until.setUTCDate(until.getUTCDate() + 30);
-    const products = await this.prisma.warehouseProduct.findMany({
-      where: { expiryDate: { not: null, lte: until } },
-      orderBy: { expiryDate: 'asc' },
-    });
-    if (!products.length) return;
-    const names = products
-      .slice(0, 10)
-      .map((p) => `• ${p.name} (${p.expiryDate?.toISOString().slice(0, 10)})`)
-      .join('\n');
-    await this.createForRoles(
-      ['ADMIN', 'MANAGER', 'SUPER_ADMIN'],
-      'Yaroqlilik muddati yaqinlashmoqda',
-      `${products.length} mahsulot:\n${names}`,
-      'STOCK',
-      { emoji: '⏳' },
-    );
+    return; // Ombor olib tashlandi
   }
 
   @Cron('30 8 * * *', { timeZone: TZ })
   async lowStockDaily() {
-    const products = await this.prisma.warehouseProduct.findMany();
-    const low = products.filter((p) => p.currentStock <= p.minStock);
-    if (!low.length) return;
-    await this.createForRoles(
-      ['ADMIN', 'MANAGER', 'DIRECTOR', 'SUPER_ADMIN'],
-      'Kunlik past zaxira',
-      low.map((p) => `• ${p.name}: ${p.currentStock}/${p.minStock}`).join('\n'),
-      'STOCK',
-      { emoji: '📦' },
-    );
+    return; // Ombor olib tashlandi
   }
 
   /** Har dushanba ertalab haftalik qisqa xulosa */

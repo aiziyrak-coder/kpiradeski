@@ -54,7 +54,7 @@ export default function AuditPage() {
 
   return (
     <AppShell>
-      <RoleGate allow={['MANAGER', 'DIRECTOR', 'SUPER_ADMIN']}>
+      <RoleGate allow={['MANAGER', 'SUPER_ADMIN']}>
         <SectionHeader
           eyebrow="Xavfsizlik"
           title="Audit jurnal"

@@ -28,13 +28,11 @@ const BLOCK_NAMES: Record<string, string> = {
   calls: "Qo'ng'iroqlar",
   reviews: 'Sharhlar',
   uniform: 'Uniforma',
-  warehouse: 'Ombor',
   smm: 'SMM / SEO',
   marketing: 'Marketing',
-  doctors: 'Shifokorlar',
 };
 
-const REQUIRED = ['clinic', 'reception', 'calls', 'uniform', 'warehouse'] as const;
+const REQUIRED = ['clinic', 'reception', 'calls', 'uniform'] as const;
 
 @Injectable()
 export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
@@ -209,9 +207,6 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         case '/holat':
           await this.send(await this.completionText(), replyTo);
           break;
-        case '/ombor':
-          await this.send(await this.stockText(), replyTo);
-          break;
         case '/hafta':
           await this.send(await this.weekText(), replyTo);
           break;
@@ -237,18 +232,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       '• <b>06:00</b> — ish kuni: kunlik vazifalar ochiladi\n' +
       '• Dam olish (Shanba/Yakshanba + bayram) — vazifa yoʻq, hisoblanmaydi\n' +
       '• 12:00 / 17:00 / 18:00 — eslatmalar (faqat ish kuni)\n' +
-      '• <b>19:00</b> — AI kunlik nazorat (xodimlar boʻyicha)\n' +
-      '• 08:30 — past zaxira · 09:00 — muddat / chek-list\n' +
-      '• Oy 1-kun — oylik xodim KPI + AI\n\n' +
+      '• <b>19:00</b> — AI kunlik nazorat\n\n' +
       '<b>Buyruqlar:</b>\n' +
       '/kun — bugun ish kuni yoki dam olish\n' +
-      '/vazifalar — kunlik vazifalar holati\n' +
-      '/xodim — bajarilmagan vazifalar\n' +
-      '/ai — AI nazoratni hozir ishga tushirish\n' +
-      '/dam — dam olish kalendari\n' +
-      '/bugun — KPI ball\n' +
+      '/bugun — KPI ball (menejer)\n' +
       '/holat — majburiy bloklar\n' +
-      '/ombor — past zaxira\n' +
       '/hafta — 7 kunlik o\'rtacha\n' +
       '/test — ulanish'
     );
@@ -379,18 +367,16 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       return `🌴 Dam olish (${day.date}) — majburiy bloklar talab qilinmaydi.`;
     }
     const date = toDateOnly(day.date);
-    const [clinic, reception, uniform, warehouse, calls] = await Promise.all([
+    const [clinic, reception, uniform, calls] = await Promise.all([
       this.prisma.dailyClinicCheck.findUnique({ where: { date } }),
       this.prisma.receptionCheck.findUnique({ where: { date } }),
       this.prisma.uniformCheck.findUnique({ where: { date } }),
-      this.prisma.warehouseCheck.findUnique({ where: { date } }),
       this.prisma.callEntry.findMany({ where: { date } }),
     ]);
     const filled: Record<string, boolean> = {
       clinic: !!clinic,
       reception: !!reception,
       uniform: !!uniform,
-      warehouse: !!warehouse,
       calls: calls.length > 0,
     };
     const missing = REQUIRED.filter((k) => !filled[k]);

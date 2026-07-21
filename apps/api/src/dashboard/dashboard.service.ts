@@ -48,33 +48,12 @@ export class DashboardService {
       take: 2,
     });
 
-    const doctors = await this.prisma.doctor.findMany({
-      where: { active: true },
-      include: {
-        stories: { where: { date: { gte: from30, lte: date } } },
-        referrals: { orderBy: { weekStart: 'desc' }, take: 4 },
-      },
-    });
-
-    const doctorRanking = doctors
-      .map((d) => ({
-        id: d.id,
-        name: d.name,
-        storiesPosted: d.stories.filter((s) => s.posted).length,
-        storiesTotal: d.stories.length,
-        referrals: d.referrals.reduce((s, r) => s + r.patientsCount, 0),
-      }))
-      .sort((a, b) => b.storiesPosted + b.referrals - (a.storiesPosted + a.referrals));
-
     const avg30 =
       history.length > 0
         ? Math.round((history.reduce((s, h) => s + h.totalScore, 0) / history.length) * 10) / 10
         : 0;
 
-    const blocks = (today?.blockScores as Record<string, any>) || {};
     const completion = (today?.completion as any) || null;
-    const lowStock = await this.prisma.warehouseProduct.findMany();
-    const lowStockItems = lowStock.filter((p) => p.currentStock <= p.minStock);
 
     return {
       date: date.toISOString().slice(0, 10),
@@ -89,16 +68,8 @@ export class DashboardService {
       funnel,
       social,
       latestAi,
-      doctorRanking,
       completion,
-      alerts: {
-        lowStock: lowStockItems.map((p) => ({
-          id: p.id,
-          name: p.name,
-          currentStock: p.currentStock,
-          minStock: p.minStock,
-        })),
-      },
+      alerts: {},
     };
   }
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { ChecklistForm } from '@/components/ChecklistForm';
 import { RoleGate } from '@/components/RoleGate';
@@ -16,7 +15,6 @@ const LABELS: Record<string, string> = {
   reception: 'Retsepshn',
   calls: 'Qoʻngʻiroqlar',
   uniform: 'Uniforma',
-  warehouse: 'Ombor',
 };
 
 export default function TodayPage() {
@@ -24,7 +22,7 @@ export default function TodayPage() {
   const [date, setDate] = useState(todayISO());
   const [meta, setMeta] = useState<any>(null);
   const [day, setDay] = useState<any>(null);
-  const [tab, setTab] = useState<'clinic' | 'reception' | 'uniform' | 'warehouse' | 'calls' | 'reviews'>('clinic');
+  const [tab, setTab] = useState<'clinic' | 'reception' | 'uniform' | 'calls' | 'reviews'>('clinic');
   const [saving, setSaving] = useState(false);
   const [callForms, setCallForms] = useState<Record<string, any>>({
     NEW: { callsCount: 0, bookedCount: 0 },
@@ -129,18 +127,17 @@ export default function TodayPage() {
     { key: 'clinic' as const, label: '1. Klinika' },
     { key: 'reception' as const, label: '2. Retsepshn' },
     { key: 'uniform' as const, label: '3. Uniforma' },
-    { key: 'warehouse' as const, label: '4. Ombor' },
-    { key: 'calls' as const, label: '5. Qoʻngʻiroq' },
-    { key: 'reviews' as const, label: '6. Sharh' },
+    { key: 'calls' as const, label: '4. Qoʻngʻiroq' },
+    { key: 'reviews' as const, label: '5. Sharh' },
   ];
 
   return (
     <AppShell>
-      <RoleGate allow={['ADMIN', 'MANAGER']}>
+      <RoleGate allow={['ADMIN', 'MANAGER', 'SUPER_ADMIN']}>
         <SectionHeader
           eyebrow="Kunlik ish"
           title="Bugungi KPI"
-          description="Bitta sahifa — barcha majburiy kunlik kiritish. 5 daqiqada yakunlang."
+          description="Menejer ishining kunlik bahosi — klinika, retsepshn, uniforma, qoʻngʻiroq va sharhlar."
           action={
             <input
               type="date"
@@ -248,21 +245,6 @@ export default function TodayPage() {
                 saving={saving}
                 onSave={(items) => saveChecklist('uniform', items)}
               />
-            )}
-            {tab === 'warehouse' && (
-              <div className="space-y-3">
-                <ChecklistForm
-                  title="Ombor chek-list"
-                  items={meta.warehouse as ChecklistItemMeta[]}
-                  initial={day?.warehouse?.items}
-                  percentage={day?.warehouse?.percentage}
-                  saving={saving}
-                  onSave={(items) => saveChecklist('warehouse', items)}
-                />
-                <Link href="/warehouse" className="text-sm text-teal-700 underline">
-                  Zaxira miqdorini tahrirlash →
-                </Link>
-              </div>
             )}
             {tab === 'calls' && (
               <div className="grid lg:grid-cols-3 gap-4">

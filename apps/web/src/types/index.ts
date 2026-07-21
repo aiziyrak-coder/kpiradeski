@@ -69,11 +69,7 @@ export function weekStartISO(from = todayISO()) {
 }
 
 export function homeForRole(role: Role): string {
-  if (role === 'DIRECTOR') return '/dashboard';
-  if (role === 'SUPER_ADMIN') return '/team';
-  if (role === 'STAFF') return '/my';
-  if (role === 'ADMIN' || role === 'MANAGER') return '/today';
-  return '/dashboard';
+  return '/today';
 }
 
 export function formatTashkent(iso: string | Date) {

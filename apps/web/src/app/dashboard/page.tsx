@@ -27,19 +27,17 @@ const BLOCK_LABELS: Record<string, string> = {
   calls: "Qo'ng'iroqlar",
   reviews: 'Sharhlar',
   uniform: 'Uniforma',
-  warehouse: 'Ombor',
   smm: 'SMM / SEO',
   marketing: 'Marketing',
-  doctors: 'Shifokorlar',
 };
 
 const BLOCK_LINKS: Record<string, string> = {
-  warehouse: '/warehouse',
-  doctors: '/doctors',
   marketing: '/marketing',
   calls: '/today',
   clinic: '/today',
   reception: '/today',
+  uniform: '/today',
+  reviews: '/today',
   smm: '/marketing',
 };
 
@@ -79,11 +77,11 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <RoleGate allow={['ADMIN', 'MANAGER', 'DIRECTOR', 'SUPER_ADMIN']}>
+      <RoleGate allow={['ADMIN', 'MANAGER', 'SUPER_ADMIN']}>
         <SectionHeader
           eyebrow="Boshqaruv paneli"
           title="Kunlik holat"
-          description="Ball, ogohlantirishlar va tezkor havolalar — bitta ekranda."
+          description="Menejer KPI balli, ogohlantirishlar va tezkor havolalar."
           action={
             <input
               type="date"
@@ -101,20 +99,14 @@ export default function DashboardPage() {
             <p className="font-display text-2xl text-ink">Hali KPI maʼlumoti yoʻq</p>
             <p className="text-sm text-ink-muted">Kunlik chek-listlar toʻldirilganda shu yerda ball chiqadi.</p>
             <div className="flex flex-wrap justify-center gap-2 pt-2">
-              <Link href="/team" className="text-sm text-teal-700 font-semibold underline">
-                Vazifalar
-              </Link>
-              <Link href="/warehouse" className="text-sm text-teal-700 font-semibold underline">
-                Ombor
-              </Link>
-              <Link href="/doctors" className="text-sm text-teal-700 font-semibold underline">
-                Shifokorlar
+              <Link href="/today" className="text-sm text-teal-700 font-semibold underline">
+                Bugungi KPI
               </Link>
             </div>
           </div>
         ) : (
           <div className="space-y-5">
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="rounded-2xl border border-teal-100 bg-white/90 p-4">
                 <p className="text-xs uppercase tracking-wider text-teal-700 font-semibold">Umumiy ball</p>
                 <p className="font-display text-4xl mt-1 tabular-nums">{(score?.totalScore ?? 0).toFixed(0)}%</p>
@@ -125,27 +117,12 @@ export default function DashboardPage() {
                 <p className="font-display text-4xl mt-1">{data?.avg30 ?? 0}%</p>
               </div>
               {completion && (
-                <Link href="/team" className="rounded-2xl border border-teal-100 bg-white/90 p-4 hover:border-teal-300 transition">
+                <Link href="/today" className="rounded-2xl border border-teal-100 bg-white/90 p-4 hover:border-teal-300 transition">
                   <p className="text-xs uppercase tracking-wider text-teal-700 font-semibold">Toʻldirilish</p>
                   <p className="font-display text-4xl mt-1">
                     {completion.requiredFilled}/{completion.requiredTotal}
                   </p>
-                  <p className="text-xs text-ink-muted">{completion.requiredPct}% · Vazifalar</p>
-                </Link>
-              )}
-              {data?.alerts?.lowStock?.length > 0 ? (
-                <Link href="/warehouse" className="rounded-2xl border border-rose-200 bg-rose-50/70 p-4 hover:border-rose-300 transition">
-                  <p className="text-xs uppercase tracking-wider text-status-red font-semibold">Past zaxira</p>
-                  <p className="font-display text-4xl mt-1">{data.alerts.lowStock.length}</p>
-                  <p className="text-xs text-ink-muted truncate">
-                    {data.alerts.lowStock.map((p: any) => p.name).join(', ')}
-                  </p>
-                </Link>
-              ) : (
-                <Link href="/warehouse" className="rounded-2xl border border-teal-100 bg-white/90 p-4 hover:border-teal-300 transition">
-                  <p className="text-xs uppercase tracking-wider text-teal-700 font-semibold">Ombor</p>
-                  <p className="font-display text-2xl mt-2 text-teal-800">Zaxira OK</p>
-                  <p className="text-xs text-ink-muted">Omborga oʻtish</p>
+                  <p className="text-xs text-ink-muted">{completion.requiredPct}% · Bugungi KPI</p>
                 </Link>
               )}
             </div>
@@ -302,43 +279,6 @@ export default function DashboardPage() {
                   ))}
                 </div>
               </div>
-            </div>
-
-            <div className="rounded-[28px] border border-teal-100 bg-white/80 p-5 shadow-soft">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm font-semibold text-ink">Shifokorlar reytingi</p>
-                <Link href="/doctors" className="text-xs text-teal-700 font-semibold underline">
-                  Boshqarish
-                </Link>
-              </div>
-              {(data?.doctorRanking || []).length === 0 ? (
-                <p className="text-sm text-ink-muted">Shifokorlar hali yoʻq</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-ink-muted border-b border-teal-50">
-                        <th className="pb-2 font-medium">#</th>
-                        <th className="pb-2 font-medium">Shifokor</th>
-                        <th className="pb-2 font-medium">Stories</th>
-                        <th className="pb-2 font-medium">Yoʻnaltirish</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(data?.doctorRanking || []).map((d: any, i: number) => (
-                        <tr key={d.id} className="border-b border-teal-50/80">
-                          <td className="py-2.5 text-ink-muted">{i + 1}</td>
-                          <td className="py-2.5 font-medium">{d.name}</td>
-                          <td className="py-2.5">
-                            {d.storiesPosted}/{d.storiesTotal}
-                          </td>
-                          <td className="py-2.5">{d.referrals}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </div>
           </div>
         )}

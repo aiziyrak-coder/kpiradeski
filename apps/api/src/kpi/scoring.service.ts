@@ -5,17 +5,16 @@ import {
   CLINIC_ITEMS,
   RECEPTION_ITEMS,
   UNIFORM_ITEMS,
-  WAREHOUSE_ITEMS,
   colorStatus,
   pct,
   startOfWeek,
   toDateOnly,
 } from '../common/kpi.constants';
 
-/** Majburiy kunlik bloklar — to'ldirilmasa 0% hisoblanadi */
-const REQUIRED_DAILY = ['clinic', 'reception', 'calls', 'uniform', 'warehouse'] as const;
+/** Majburiy kunlik bloklar — menejer ishi (ombor/shifokor yoʻq) */
+const REQUIRED_DAILY = ['clinic', 'reception', 'calls', 'uniform'] as const;
 /** Ixtiyoriy — yo'q bo'lsa o'rtachaga kirmaydi */
-const OPTIONAL = ['reviews', 'smm', 'marketing', 'doctors'] as const;
+const OPTIONAL = ['reviews', 'smm', 'marketing'] as const;
 
 @Injectable()
 export class ScoringService {
@@ -296,4 +295,4 @@ export class ScoringService {
   }
 }
 
-export { CLINIC_ITEMS, RECEPTION_ITEMS, UNIFORM_ITEMS, WAREHOUSE_ITEMS };
+export { CLINIC_ITEMS, RECEPTION_ITEMS, UNIFORM_ITEMS };

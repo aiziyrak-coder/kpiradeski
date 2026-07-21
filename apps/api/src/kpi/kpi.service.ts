@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Inject, forwardRef } from '@nestjs/common';
 import { CallType, ReviewQuality, ReviewSource } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { ScoringService, CLINIC_ITEMS, RECEPTION_ITEMS, UNIFORM_ITEMS, WAREHOUSE_ITEMS } from './scoring.service';
+import { ScoringService, CLINIC_ITEMS, RECEPTION_ITEMS, UNIFORM_ITEMS } from './scoring.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StaffService } from '../staff/staff.service';
 import { pct, startOfWeek, toDateOnly } from '../common/kpi.constants';
@@ -30,7 +30,6 @@ export class KpiService {
       clinic: CLINIC_ITEMS,
       reception: RECEPTION_ITEMS,
       uniform: UNIFORM_ITEMS,
-      warehouse: WAREHOUSE_ITEMS,
       callTypes: [
         { key: 'NEW', label: 'Yangi bemorlar', target: 100 },
         { key: 'REPEAT', label: 'Takroriy bemorlar', target: null },
@@ -131,34 +130,8 @@ export class KpiService {
     return row;
   }
 
-  async saveWarehouse(userId: string, dateStr: string, items: Record<string, boolean>, minStockFlag?: boolean) {
-    const date = toDateOnly(dateStr);
-    const percentage = this.scoring.checklistPct(items, WAREHOUSE_ITEMS);
-    const products = await this.prisma.warehouseProduct.findMany();
-    const autoLow = products.some((p) => p.currentStock <= p.minStock);
-    const flag = minStockFlag ?? autoLow;
-    const prev = await this.prisma.warehouseCheck.findUnique({ where: { date } });
-    const row = await this.prisma.warehouseCheck.upsert({
-      where: { date },
-      create: { date, items, percentage, minStockFlag: flag, adminId: userId },
-      update: { items, percentage, minStockFlag: flag, adminId: userId },
-    });
-    await this.audit(userId, 'upsert', 'warehouse', row.id, { minStockFlag: flag });
-    await this.scoring.recalculateDailyScore(date);
-    await this.syncStaffTask(userId, 'warehouse', dateStr);
-
-    // Faqat false→true o'tishda ogohlantirish (spam yo'q)
-    if (flag && !prev?.minStockFlag) {
-      const lowCount = products.filter((p) => p.currentStock <= p.minStock).length;
-      await this.notifications.createForRoles(
-        ['DIRECTOR', 'SUPER_ADMIN', 'MANAGER', 'ADMIN'],
-        'Ombor ogohlantirishi',
-        `${dateStr} — zaxira minimal chegaradan past (${lowCount} mahsulot).\nBatafsil: /ombor`,
-        'STOCK',
-        { emoji: '📦' },
-      );
-    }
-    return row;
+  async saveWarehouse(_userId: string, _dateStr: string, _items: Record<string, boolean>, _minStockFlag?: boolean) {
+    throw new BadRequestException('Ombor moduli olib tashlangan');
   }
 
   async saveCall(

@@ -8,47 +8,41 @@ import { useToast } from '@/components/Toast';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
 import { api } from '@/lib/api';
-import { type Role, type Position } from '@/types';
+import { type Role } from '@/types';
+
+/** Faqat Admin va Manager (SUPER_ADMIN bootstrap uchun) */
+const APP_ROLES: Role[] = ['ADMIN', 'MANAGER', 'SUPER_ADMIN'];
 
 export default function UsersPage() {
   const toast = useToast();
   const { user: me } = useAuth();
-  const { t, roleLabel, positionName } = useI18n();
+  const { t, roleLabel } = useI18n();
   const isSA = me?.role === 'SUPER_ADMIN';
   const [users, setUsers] = useState<any[]>([]);
-  const [positions, setPositions] = useState<Position[]>([]);
   const [q, setQ] = useState('');
   const [form, setForm] = useState({
     name: '',
     email: '',
     password: '',
-    role: 'STAFF' as Role,
-    positionId: '',
+    role: 'MANAGER' as Role,
     phone: '',
   });
   const [editId, setEditId] = useState<string | null>(null);
   const [edit, setEdit] = useState({
     name: '',
-    role: 'STAFF' as Role,
-    positionId: '',
+    role: 'MANAGER' as Role,
     phone: '',
     password: '',
   });
 
-  const roleOptions = (['STAFF', 'ADMIN', 'MANAGER', 'DIRECTOR', 'SUPER_ADMIN'] as Role[]).filter((r) => {
+  const roleOptions = APP_ROLES.filter((r) => {
     if (isSA) return true;
     return r !== 'SUPER_ADMIN';
   });
 
   async function load() {
     try {
-      const [u, p] = await Promise.all([
-        api<any[]>('/users'),
-        api<Position[]>('/positions?active=true'),
-      ]);
-      setUsers(u);
-      setPositions(p);
-      if (!form.positionId && p[0]) setForm((f) => ({ ...f, positionId: p[0].id }));
+      setUsers(await api<any[]>('/users'));
     } catch (e: any) {
       toast.error(t('users.loadFailed'), e.message);
     }
@@ -82,18 +76,10 @@ export default function UsersPage() {
           email: form.email,
           password: form.password,
           role: form.role,
-          positionId: form.positionId || undefined,
           phone: form.phone || undefined,
         }),
       });
-      setForm({
-        name: '',
-        email: '',
-        password: '',
-        role: 'STAFF',
-        positionId: positions[0]?.id || '',
-        phone: '',
-      });
+      setForm({ name: '', email: '', password: '', role: 'MANAGER', phone: '' });
       toast.success(t('users.created'));
       await load();
     } catch (err: any) {
@@ -106,7 +92,6 @@ export default function UsersPage() {
     setEdit({
       name: u.name,
       role: u.role,
-      positionId: u.positionId || '',
       phone: u.phone || '',
       password: '',
     });
@@ -119,26 +104,12 @@ export default function UsersPage() {
         body: JSON.stringify({
           name: edit.name,
           role: edit.role,
-          positionId: edit.positionId || null,
           phone: edit.phone || undefined,
           ...(edit.password ? { password: edit.password } : {}),
         }),
       });
       toast.success(edit.password ? t('users.updatedPassword') : t('users.updated'));
       setEditId(null);
-      await load();
-    } catch (e: any) {
-      toast.error(e.message);
-    }
-  }
-
-  async function setPosition(u: any, positionId: string) {
-    try {
-      await api(`/users/${u.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ positionId: positionId || null }),
-      });
-      toast.success(t('users.positionUpdated'));
       await load();
     } catch (e: any) {
       toast.error(e.message);
@@ -160,11 +131,11 @@ export default function UsersPage() {
 
   return (
     <AppShell>
-      <RoleGate allow={['SUPER_ADMIN', 'MANAGER', 'ADMIN', 'DIRECTOR']}>
+      <RoleGate allow={['SUPER_ADMIN', 'MANAGER']}>
         <SectionHeader
           eyebrow={t('users.eyebrow')}
           title={t('users.title')}
-          description={t('users.description')}
+          description="Admin va Manager hisoblari — menejer ishi KPI orqali baholanadi."
         />
 
         <div className="mb-4">
@@ -224,18 +195,6 @@ export default function UsersPage() {
                 </option>
               ))}
             </Select>
-            <Select
-              label={t('users.position')}
-              value={form.positionId}
-              onChange={(e) => setForm({ ...form, positionId: e.target.value })}
-            >
-              <option value="">{t('common.none')}</option>
-              {positions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {positionName(p)}
-                </option>
-              ))}
-            </Select>
             <Button type="submit" className="w-full min-h-12">
               {t('users.create')}
             </Button>
@@ -264,18 +223,6 @@ export default function UsersPage() {
                       {roleOptions.map((r) => (
                         <option key={r} value={r}>
                           {roleLabel(r)}
-                        </option>
-                      ))}
-                    </Select>
-                    <Select
-                      label={t('users.position')}
-                      value={edit.positionId}
-                      onChange={(e) => setEdit({ ...edit, positionId: e.target.value })}
-                    >
-                      <option value="">{t('common.none')}</option>
-                      {positions.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {positionName(p)}
                         </option>
                       ))}
                     </Select>
@@ -309,9 +256,6 @@ export default function UsersPage() {
                         <p className="font-semibold text-ink">{u.name}</p>
                         <p className="text-xs text-ink-muted">{u.email}</p>
                         {u.phone && <p className="text-xs text-ink-muted">{u.phone}</p>}
-                        {u.telegramId && (
-                          <p className="text-[11px] text-teal-700 mt-0.5">TG · {u.telegramId}</p>
-                        )}
                       </div>
                       <span
                         className={
@@ -324,18 +268,6 @@ export default function UsersPage() {
                       </span>
                     </div>
                     <p className="text-sm text-teal-800">{roleLabel(u.role)}</p>
-                    <select
-                      className="w-full h-10 px-2 rounded-xl border border-teal-100 text-sm"
-                      value={u.positionId || ''}
-                      onChange={(e) => setPosition(u, e.target.value)}
-                    >
-                      <option value="">{t('users.positionEmpty')}</option>
-                      {positions.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {positionName(p)}
-                        </option>
-                      ))}
-                    </select>
                     <div className="flex flex-wrap gap-2">
                       <Button size="sm" variant="secondary" onClick={() => startEdit(u)}>
                         {t('common.edit')}

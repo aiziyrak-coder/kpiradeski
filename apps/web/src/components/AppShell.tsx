@@ -8,22 +8,15 @@ import {
   LayoutDashboard,
   ClipboardList,
   Megaphone,
-  Stethoscope,
   FileBarChart,
-  Settings,
   Bell,
   Menu,
   X,
   LogOut,
   Users,
-  Warehouse,
   Sparkles,
   ScrollText,
   KeyRound,
-  UserRound,
-  UsersRound,
-  MoreHorizontal,
-  Briefcase,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -34,84 +27,45 @@ import { useTelegram } from '@/components/TelegramProvider';
 import { useI18n } from '@/lib/i18n';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
+/** Faqat Admin va Manager (SUPER_ADMIN = menejer huquqi). Ombor/lavozim/kalendar/shifokor yoʻq. */
 const NAV: Array<{
   href: string;
   labelKey: string;
   icon: React.ComponentType<{ className?: string }>;
   roles?: Role[];
 }> = [
-  { href: '/my', labelKey: 'nav.myTasks', icon: UserRound, roles: ['STAFF', 'ADMIN'] },
-  { href: '/today', labelKey: 'nav.today', icon: ClipboardList, roles: ['ADMIN', 'MANAGER'] },
+  { href: '/today', labelKey: 'nav.today', icon: ClipboardList, roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
   {
     href: '/dashboard',
     labelKey: 'nav.dashboard',
     icon: LayoutDashboard,
-    roles: ['ADMIN', 'MANAGER', 'DIRECTOR', 'SUPER_ADMIN'],
+    roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'],
   },
-  {
-    href: '/team',
-    labelKey: 'nav.team',
-    icon: UsersRound,
-    roles: ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN', 'ADMIN'],
-  },
-  { href: '/marketing', labelKey: 'nav.marketing', icon: Megaphone, roles: ['MANAGER'] },
-  {
-    href: '/doctors',
-    labelKey: 'nav.doctors',
-    icon: Stethoscope,
-    roles: ['ADMIN', 'MANAGER', 'DIRECTOR', 'SUPER_ADMIN'],
-  },
-  { href: '/warehouse', labelKey: 'nav.warehouse', icon: Warehouse, roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
-  { href: '/ai', labelKey: 'nav.ai', icon: Sparkles, roles: ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN'] },
-  { href: '/reports', labelKey: 'nav.reports', icon: FileBarChart, roles: ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN'] },
-  { href: '/audit', labelKey: 'nav.audit', icon: ScrollText, roles: ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN'] },
-  { href: '/settings', labelKey: 'nav.settings', icon: Settings, roles: ['SUPER_ADMIN'] },
-  { href: '/positions', labelKey: 'nav.positions', icon: Briefcase, roles: ['SUPER_ADMIN', 'MANAGER'] },
-  { href: '/users', labelKey: 'nav.users', icon: Users, roles: ['SUPER_ADMIN', 'MANAGER', 'ADMIN', 'DIRECTOR'] },
+  { href: '/marketing', labelKey: 'nav.marketing', icon: Megaphone, roles: ['MANAGER', 'SUPER_ADMIN'] },
+  { href: '/ai', labelKey: 'nav.ai', icon: Sparkles, roles: ['MANAGER', 'SUPER_ADMIN'] },
+  { href: '/reports', labelKey: 'nav.reports', icon: FileBarChart, roles: ['MANAGER', 'SUPER_ADMIN'] },
+  { href: '/audit', labelKey: 'nav.audit', icon: ScrollText, roles: ['MANAGER', 'SUPER_ADMIN'] },
+  { href: '/users', labelKey: 'nav.users', icon: Users, roles: ['MANAGER', 'SUPER_ADMIN'] },
   { href: '/notifications', labelKey: 'nav.notifications', icon: Bell },
   { href: '/account', labelKey: 'nav.account', icon: KeyRound },
 ];
 
 function bottomTabsFor(role: Role, t: (k: string) => string) {
-  if (role === 'STAFF') {
+  if (role === 'ADMIN') {
     return [
-      { href: '/my', label: t('nav.tabTasks'), icon: UserRound },
+      { href: '/today', label: t('nav.tabToday'), icon: ClipboardList },
+      { href: '/dashboard', label: t('nav.tabKpi'), icon: LayoutDashboard },
       { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
       { href: '/account', label: t('nav.account'), icon: KeyRound },
     ];
   }
-  if (role === 'ADMIN') {
-    return [
-      { href: '/today', label: t('nav.tabToday'), icon: ClipboardList },
-      { href: '/my', label: t('nav.tabMine'), icon: UserRound },
-      { href: '/warehouse', label: t('nav.warehouse'), icon: Warehouse },
-      { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
-    ];
-  }
-  if (role === 'MANAGER') {
-    return [
-      { href: '/team', label: t('nav.tabTeam'), icon: UsersRound },
-      { href: '/today', label: t('nav.tabToday'), icon: ClipboardList },
-      { href: '/dashboard', label: t('nav.tabKpi'), icon: LayoutDashboard },
-      { href: '/ai', label: t('nav.ai'), icon: Sparkles },
-      { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
-    ];
-  }
-  if (role === 'DIRECTOR') {
-    return [
-      { href: '/dashboard', label: t('nav.tabKpi'), icon: LayoutDashboard },
-      { href: '/team', label: t('nav.tabTeam'), icon: UsersRound },
-      { href: '/reports', label: t('nav.tabReport'), icon: FileBarChart },
-      { href: '/ai', label: t('nav.ai'), icon: Sparkles },
-      { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
-    ];
-  }
+  // MANAGER / SUPER_ADMIN
   return [
-    { href: '/team', label: t('nav.team'), icon: UsersRound },
+    { href: '/today', label: t('nav.tabToday'), icon: ClipboardList },
     { href: '/dashboard', label: t('nav.tabKpi'), icon: LayoutDashboard },
-    { href: '/users', label: t('nav.users'), icon: Users },
-    { href: '/settings', label: t('nav.tabSetup'), icon: Settings },
     { href: '/ai', label: t('nav.ai'), icon: Sparkles },
+    { href: '/users', label: t('nav.users'), icon: Users },
+    { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
   ];
 }
 
@@ -139,22 +93,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!user) return [];
     return NAV.filter((n) => {
       if (!n.roles) return true;
-      if (user.role === 'SUPER_ADMIN') {
-        return [
-          '/dashboard',
-          '/team',
-          '/doctors',
-          '/warehouse',
-          '/ai',
-          '/reports',
-          '/audit',
-          '/settings',
-          '/positions',
-          '/users',
-          '/notifications',
-          '/account',
-        ].includes(n.href);
-      }
       return n.roles.includes(user.role);
     });
   }, [user]);
@@ -214,16 +152,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
     >
       {!isMiniApp && (
-      <div
-        className="fixed inset-0 pointer-events-none opacity-[0.035]"
-        style={{
-          backgroundImage:
-            'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23083A34\' fill-opacity=\'1\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
-        }}
-      />
+        <div
+          className="fixed inset-0 pointer-events-none opacity-[0.035]"
+          style={{
+            backgroundImage:
+              'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23083A34\' fill-opacity=\'1\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
+          }}
+        />
       )}
 
-      {/* Desktop sidebar */}
       <aside className="hidden lg:flex fixed left-0 top-0 bottom-0 w-[260px] flex-col border-r border-teal-900/10 bg-white/70 backdrop-blur-xl z-30">
         <div className="px-5 pt-6 pb-4">
           <Link href={homeForRole(user.role)} className="block group">
@@ -256,7 +193,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      {/* Mobile / Mini App top bar */}
       <header className="lg:hidden sticky top-0 z-40 border-b border-teal-100/80 bg-white/90 backdrop-blur-xl safe-top">
         <div className="flex items-center justify-between px-3 h-12 sm:h-14">
           <button
@@ -359,7 +295,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </main>
 
-      {/* Mobile bottom tab bar */}
       <nav
         className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-teal-100/90 bg-white/95 backdrop-blur-xl safe-bottom"
         aria-label="Asosiy navigatsiya"

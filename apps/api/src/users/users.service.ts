@@ -78,6 +78,9 @@ export class UsersService {
       throw new BadRequestException('Parol kamida 8 belgidan iborat boʻlishi kerak');
     }
     this.assertCanAssignRole(actor.role, data.role);
+    if (!([Role.ADMIN, Role.MANAGER, Role.SUPER_ADMIN] as Role[]).includes(data.role)) {
+      throw new BadRequestException('Faqat Admin yoki Manager roli mumkin');
+    }
     const positionId = await this.validatePositionId(data.positionId);
     const exists = await this.prisma.user.findUnique({ where: { email: data.email.toLowerCase() } });
     if (exists) throw new ConflictException('Bu email band');
