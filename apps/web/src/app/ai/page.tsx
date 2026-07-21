@@ -37,45 +37,42 @@ export default function AiPage() {
 
   async function generate(type: 'CALLS' | 'SERVICES') {
     if (!canGenerate) {
-      toast.error('Faqat menejer / super-admin generatsiya qiladi');
+      toast.error('Xato');
       return;
     }
     setBusy(type);
     try {
       await api(`/kpi/ai-reports/${type}?weekStart=${weekStart}`, { method: 'POST' });
-      toast.success('AI hisobot tayyor', status?.configured ? 'OpenAI' : 'Shablon');
+      toast.success('OK');
       await load();
     } catch (e: any) {
-      toast.error('Generatsiya xatosi', e.message);
+      toast.error('Xato', e.message);
     } finally {
       setBusy(null);
     }
   }
 
+  const actions = canGenerate ? (
+    <div className="flex flex-wrap gap-2 items-center">
+      <input
+        type="date"
+        value={weekStart}
+        onChange={(e) => setWeekStart(e.target.value)}
+        className="h-11 px-3 rounded-xl border border-teal-200 bg-white text-sm"
+      />
+      <Button variant="secondary" disabled={!!busy} onClick={() => generate('CALLS')}>
+        {busy === 'CALLS' ? '...' : 'Qoʻngʻiroqlar'}
+      </Button>
+      <Button disabled={!!busy} onClick={() => generate('SERVICES')}>
+        {busy === 'SERVICES' ? '...' : 'Xizmatlar'}
+      </Button>
+    </div>
+  ) : undefined;
+
   return (
     <AppShell>
       <RoleGate allow={['MANAGER', 'SUPER_ADMIN']}>
-        <SectionHeader
-          title="Haftalik AI tahlil"
-          action={
-            canGenerate ? (
-              <div className="flex flex-wrap gap-2 items-center">
-                <input
-                  type="date"
-                  value={weekStart}
-                  onChange={(e) => setWeekStart(e.target.value)}
-                  className="h-11 px-3 rounded-xl border border-teal-200 bg-white text-sm"
-                />
-                <Button variant="secondary" disabled={!!busy} onClick={() => generate('CALLS')}>
-                  {busy === 'CALLS' ? '...' : 'Qoʻngʻiroqlar'}
-                </Button>
-                <Button disabled={!!busy} onClick={() => generate('SERVICES')}>
-                  {busy === 'SERVICES' ? '...' : 'Xizmatlar'}
-                </Button>
-              </div>
-            ) : null}
-          }
-        />
+        <SectionHeader title="AI" action={actions} />
 
         {status?.configured === false && (
           <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-950">
@@ -96,9 +93,9 @@ export default function AiPage() {
             >
               <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                 <p className="text-xs uppercase tracking-[0.16em] text-teal-700 font-semibold">
-                  {r.type === 'CALLS' ? 'Qoʻngʻiroqlar tahlili' : 'Xizmatlar tahlili'}
+                  {r.type === 'CALLS' ? 'Qoʻngʻiroqlar' : 'Xizmatlar'}
                 </p>
-                <p className="text-sm text-ink-muted">Hafta: {String(r.weekStart).slice(0, 10)}</p>
+                <p className="text-sm text-ink-muted">{String(r.weekStart).slice(0, 10)}</p>
               </div>
               <div className="text-sm text-ink-soft whitespace-pre-wrap leading-relaxed">{r.content}</div>
             </article>
