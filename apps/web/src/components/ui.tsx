@@ -130,15 +130,15 @@ export function SectionHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
+    <div className="section-header flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6 rounded-2xl sm:rounded-none bg-white sm:bg-transparent border border-teal-100 sm:border-0 p-4 sm:p-0 shadow-soft sm:shadow-none">
       <div>
         {eyebrow && (
           <p className="text-xs uppercase tracking-[0.18em] text-teal-600 font-semibold mb-1">
             {eyebrow}
           </p>
         )}
-        <h1 className="font-display text-3xl md:text-4xl text-ink tracking-tight">{title}</h1>
-        {description && <p className="mt-1.5 text-ink-muted max-w-2xl">{description}</p>}
+        <h1 className="font-display text-2xl sm:text-3xl md:text-4xl text-ink tracking-tight">{title}</h1>
+        {description && <p className="mt-1.5 text-ink-muted max-w-2xl text-sm sm:text-base">{description}</p>}
       </div>
       {action}
     </div>

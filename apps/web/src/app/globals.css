@@ -5,14 +5,81 @@
 :root {
   color-scheme: light;
   --tg-bg: #f7faf9;
-  --tg-text: #0f1f1c;
-  --tg-hint: #6b7c78;
+  --tg-text: #12201E;
+  --tg-hint: #6B7F7A;
   --tg-button: #0f766e;
+  --tg-secondary-bg: #ffffff;
   --tg-viewport-stable-height: 100dvh;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
+}
+
+html.tg-mini-app {
+  color-scheme: light !important;
+}
+
+.tg-mini-app body,
+html.tg-mini-app body {
+  background: var(--tg-bg) !important;
+  color: var(--tg-text);
+  min-height: var(--tg-viewport-stable-height, 100dvh);
+}
+
+/* Telegram Mini App — doim yorugʻ fon, qattiq kontrast */
+.tg-app-shell {
+  background: #f7faf9 !important;
+  color: #12201E;
+}
+
+.tg-app-shell .bg-white\/80,
+.tg-app-shell .bg-white\/90,
+.tg-app-shell .bg-white\/95 {
+  background-color: #ffffff !important;
+}
+
+.tg-app-shell .bg-teal-50\/60,
+.tg-app-shell .bg-teal-50\/50,
+.tg-app-shell .bg-teal-50\/80 {
+  background-color: #eef7f5 !important;
+}
+
+.tg-app-shell .text-ink,
+.tg-app-shell h1,
+.tg-app-shell h2,
+.tg-app-shell h3 {
+  color: #12201E;
+}
+
+.tg-app-shell .text-ink-muted {
+  color: #6B7F7A;
+}
+
+.tg-app-shell .text-ink-soft {
+  color: #3A4F4B;
+}
+
+.tg-app-shell .text-teal-950,
+.tg-app-shell .text-teal-900 {
+  color: #062E29;
+}
+
+.tg-app-shell .text-teal-800 {
+  color: #083A34;
+}
+
+.tg-app-shell .text-teal-700 {
+  color: #0A4A42;
+}
+
+.tg-app-shell .text-teal-600 {
+  color: #0F5F54;
+}
+
+.tg-app-shell .border-teal-100,
+.tg-app-shell .border-teal-50 {
+  border-color: #D5EBE6;
 }
 
 html {
@@ -29,12 +96,6 @@ body {
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
-}
-
-.tg-mini-app body,
-html.tg-mini-app body {
-  background: var(--tg-bg);
-  min-height: var(--tg-viewport-stable-height, 100dvh);
 }
 
 ::selection {

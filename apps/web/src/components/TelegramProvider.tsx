@@ -28,6 +28,16 @@ const TelegramContext = createContext<TgCtx>({
 const TEAL_BG = '#f7faf9';
 const TEAL_HEADER = '#0f766e';
 
+/** Telegram qorongʻi mavzusida ham yorugʻ, o‘qiladigan UI */
+function forceLightTheme() {
+  document.documentElement.style.setProperty('--tg-bg', TEAL_BG);
+  document.documentElement.style.setProperty('--tg-text', '#12201E');
+  document.documentElement.style.setProperty('--tg-hint', '#6B7F7A');
+  document.documentElement.style.setProperty('--tg-button', TEAL_HEADER);
+  document.documentElement.style.setProperty('--tg-secondary-bg', '#ffffff');
+  document.documentElement.style.colorScheme = 'light';
+}
+
 export function TelegramProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [webApp, setWebApp] = useState<TelegramWebApp | null>(null);
@@ -57,27 +67,22 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
         wa.setBackgroundColor?.(TEAL_BG);
         wa.disableVerticalSwipes?.();
         document.documentElement.classList.add('tg-mini-app');
+        forceLightTheme();
         document.documentElement.style.setProperty(
           '--tg-viewport-stable-height',
           `${wa.viewportStableHeight || wa.viewportHeight || window.innerHeight}px`,
         );
-        const applyTheme = () => {
-          const tp = wa.themeParams || {};
-          if (tp.bg_color) document.documentElement.style.setProperty('--tg-bg', tp.bg_color);
-          if (tp.text_color) document.documentElement.style.setProperty('--tg-text', tp.text_color);
-          if (tp.hint_color) document.documentElement.style.setProperty('--tg-hint', tp.hint_color);
-          if (tp.button_color)
-            document.documentElement.style.setProperty('--tg-button', tp.button_color);
+        const applyViewport = () => {
+          forceLightTheme();
           document.documentElement.style.setProperty(
             '--tg-viewport-stable-height',
             `${wa.viewportStableHeight || wa.viewportHeight}px`,
           );
         };
-        applyTheme();
         // @ts-expect-error optional event
-        wa.onEvent?.('viewportChanged', applyTheme);
-        // @ts-expect-error optional event
-        wa.onEvent?.('themeChanged', applyTheme);
+        wa.onEvent?.('viewportChanged', applyViewport);
+        // @ts-expect-error optional event — mavzuni eʼtiborsiz qoldiramiz (doim yorugʻ)
+        wa.onEvent?.('themeChanged', forceLightTheme);
       } catch {
         // ignore
       }

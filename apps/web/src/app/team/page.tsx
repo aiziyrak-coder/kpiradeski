@@ -29,7 +29,7 @@ function AutomationBanner() {
   }, []);
   if (!info) return null;
   return (
-    <div className="rounded-3xl border border-teal-100 bg-teal-50/60 p-5 mb-6 text-sm">
+    <div className="rounded-3xl border border-teal-100 bg-teal-50 p-5 mb-6 text-sm shadow-soft">
       <p className="font-semibold text-teal-900 mb-2">
         Kun avtomatik yangilanadi · {info.dayRollover || '06:00'} · {info.timezone}
       </p>
