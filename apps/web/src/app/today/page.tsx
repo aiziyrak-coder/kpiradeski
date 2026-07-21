@@ -3,34 +3,59 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { RoleGate } from '@/components/RoleGate';
-import { Button, Input, SectionHeader, Textarea, ScoreBadge } from '@/components/ui';
 import { useToast } from '@/components/Toast';
 import { useI18n } from '@/lib/i18n';
 import { api, getToken } from '@/lib/api';
 import { todayISO } from '@/types';
 import { cn } from '@/lib/utils';
+import { Building2, ChevronLeft, Upload, Check, RotateCcw } from 'lucide-react';
+
+type Freq = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
 type CatalogNode = {
   key: string;
   title: string;
-  description?: string | null;
   inputType: string;
-  weight: number;
+  frequency: Freq;
   proofRequired: boolean;
   children?: CatalogNode[];
 };
 
+type Task = {
+  key: string;
+  titleUz: string;
+  titleRu: string;
+  inputType: string;
+  proofRequired: boolean;
+  hasChildren: boolean;
+  done: boolean;
+  score: number | null;
+  aiStatus: string | null;
+  aiNote: string | null;
+  aiFeedback: string | null;
+  aiAction: string | null;
+  aiPenalty: number;
+  entry: any;
+};
+
+const FREQ_TABS: { id: Freq; uz: string; ru: string }[] = [
+  { id: 'DAILY', uz: 'Kunlik', ru: 'Ежедневно' },
+  { id: 'WEEKLY', uz: 'Haftalik', ru: 'Еженедельно' },
+  { id: 'MONTHLY', uz: 'Oylik', ru: 'Ежемесячно' },
+];
+
 export default function TodayPage() {
   const toast = useToast();
-  const { lang, t } = useI18n();
-  const [date, setDate] = useState(todayISO());
+  const { lang } = useI18n();
   const [branches, setBranches] = useState<any[]>([]);
   const [branchId, setBranchId] = useState('');
+  const [freq, setFreq] = useState<Freq>('DAILY');
+  const [date] = useState(todayISO());
   const [catalog, setCatalog] = useState<CatalogNode[]>([]);
   const [day, setDay] = useState<any>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [path, setPath] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
 
   const loadBranches = useCallback(async () => {
     const list = await api<any[]>('/branches/mine');
@@ -39,44 +64,56 @@ export default function TodayPage() {
   }, [branchId]);
 
   const loadCatalog = useCallback(async () => {
-    const tree = await api<CatalogNode[]>(`/manager-kpi/catalog?lang=${lang}`);
+    const tree = await api<CatalogNode[]>(
+      `/manager-kpi/catalog?lang=${lang}&frequency=${freq}`,
+    );
     setCatalog(tree);
-  }, [lang]);
+  }, [lang, freq]);
 
   const loadDay = useCallback(async () => {
     if (!branchId) return;
-    const d = await api(`/manager-kpi/day?branchId=${branchId}&date=${date}`);
+    const d = await api(
+      `/manager-kpi/day?branchId=${branchId}&date=${date}&frequency=${freq}`,
+    );
     setDay(d);
-  }, [branchId, date]);
+  }, [branchId, date, freq]);
 
   useEffect(() => {
     loadBranches().catch((e) => toast.error(e.message));
-    loadCatalog().catch((e) => toast.error(e.message));
   }, []);
 
   useEffect(() => {
     loadCatalog().catch(() => {});
-  }, [lang]);
+    setActiveKey(null);
+    setPath([]);
+  }, [freq, lang]);
 
   useEffect(() => {
     loadDay().catch((e) => toast.error(e.message));
-  }, [branchId, date]);
+  }, [branchId, freq, date]);
 
-  const activeNode = useMemo(() => {
-    if (!activeKey) return null;
-    const find = (nodes: CatalogNode[], key: string): CatalogNode | null => {
+  const titleOf = (t: { titleUz: string; titleRu: string } | CatalogNode) =>
+    'title' in t && t.title
+      ? t.title
+      : lang === 'ru'
+        ? (t as any).titleRu
+        : (t as any).titleUz;
+
+  const findNode = useCallback(
+    (nodes: CatalogNode[], key: string): CatalogNode | null => {
       for (const n of nodes) {
         if (n.key === key) return n;
         if (n.children?.length) {
-          const f = find(n.children, key);
+          const f = findNode(n.children, key);
           if (f) return f;
         }
       }
       return null;
-    };
-    return find(catalog, activeKey);
-  }, [catalog, activeKey]);
+    },
+    [],
+  );
 
+  const activeNode = activeKey ? findNode(catalog, activeKey) : null;
   const displayNodes = useMemo(() => {
     if (!activeKey) return catalog;
     if (!activeNode) return catalog;
@@ -84,42 +121,28 @@ export default function TodayPage() {
     return [activeNode];
   }, [activeKey, activeNode, catalog]);
 
-  function openColumn(key: string) {
-    setActiveKey(key);
-    setPath([key]);
-  }
-
-  function drillInto(key: string) {
-    setActiveKey(key);
-    setPath((p) => [...p, key]);
-  }
-
-  function goBack() {
-    setPath((p) => {
-      const next = p.slice(0, -1);
-      setActiveKey(next[next.length - 1] || null);
-      return next;
-    });
-  }
+  const tasks: Task[] = day?.tasks || day?.columns || [];
+  const taskMap = Object.fromEntries(tasks.map((t: Task) => [t.key, t]));
 
   async function saveValue(nodeKey: string, value: any, done?: boolean) {
-    setSaving(true);
+    if (!branchId) return;
+    setBusy(true);
     try {
       await api('/manager-kpi/entry', {
         method: 'POST',
         body: JSON.stringify({ branchId, date, nodeKey, value, done }),
       });
-      toast.success(t('common.saved'));
       await loadDay();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
 
   async function uploadProof(nodeKey: string, file: File) {
-    setSaving(true);
+    if (!branchId) return;
+    setBusy(true);
     try {
       const fd = new FormData();
       fd.append('file', file);
@@ -132,307 +155,459 @@ export default function TodayPage() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: fd,
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.message || 'Yuklanmadi');
-      toast.success(
-        json.aiStatus === 'APPROVED'
-          ? 'Dalil AI tasdiqladi'
-          : json.aiStatus === 'REJECTED'
-            ? 'AI rad etdi'
-            : 'Dalil yuklandi',
-        json.aiNote,
-      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Yuklash xatosi');
+      if (data.aiStatus === 'REJECTED') {
+        toast.error(data.aiNote || data.aiFeedback || 'AI rad etdi');
+      } else {
+        toast.success(data.aiNote || 'AI tasdiqladi');
+      }
       await loadDay();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
 
-  const entryOf = (key: string) => day?.entries?.[key];
+  const branch = branches.find((b) => b.id === branchId);
+  const showBranchPicker = !branchId || branches.length > 1;
 
   return (
-    <AppShell>
-      <RoleGate allow={['MANAGER', 'ADMIN', 'SUPER_ADMIN']}>
-        <SectionHeader
-          eyebrow="Manager KPI"
-          title="Kunlik vazifalar"
-          description="Tayyor vazifalar — filial boʻyicha. Dalil yuklang, AI avtomatik tekshiradi."
-          action={
-            <div className="flex flex-wrap gap-2 items-center">
-              <select
-                className="h-11 px-3 rounded-xl border border-teal-200 bg-white text-sm"
-                value={branchId}
-                onChange={(e) => setBranchId(e.target.value)}
-              >
+    <RoleGate allow={['MANAGER', 'ADMIN', 'SUPER_ADMIN']}>
+      <AppShell>
+        <div className="max-w-3xl mx-auto space-y-5 pb-24">
+          {/* Filiallar */}
+          {(!branchId || (showBranchPicker && !activeKey)) && (
+            <section className="space-y-3">
+              <h1 className="font-display text-2xl text-ink tracking-tight">Filiallar</h1>
+              <div className="grid gap-2">
                 {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => {
+                      setBranchId(b.id);
+                      setActiveKey(null);
+                      setPath([]);
+                    }}
+                    className={cn(
+                      'flex items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition',
+                      branchId === b.id
+                        ? 'border-teal-600 bg-teal-50/80'
+                        : 'border-black/8 bg-white hover:border-teal-300',
+                    )}
+                  >
+                    <span className="grid place-items-center w-10 h-10 rounded-xl bg-teal-900 text-white">
+                      <Building2 className="w-5 h-5" />
+                    </span>
+                    <span className="font-medium text-ink">{b.name}</span>
+                  </button>
                 ))}
-              </select>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="h-11 px-3 rounded-xl border border-teal-200 bg-white text-sm"
-              />
-            </div>
-          }
-        />
-
-        {!branchId ? (
-          <p className="text-ink-muted p-8 text-center border border-dashed border-teal-200 rounded-3xl">
-            Sizga filial biriktirilmagan. Admin dan soʻrang.
-          </p>
-        ) : (
-          <>
-            <div className="mb-5 grid sm:grid-cols-3 gap-3">
-              <div className="rounded-2xl bg-gradient-to-br from-teal-800 to-teal-900 text-white p-4">
-                <p className="text-teal-100/80 text-xs uppercase tracking-wider">Yakuniy baho</p>
-                <p className="font-display text-4xl mt-1">
-                  {day?.totalScore != null ? `${Number(day.totalScore).toFixed(0)}%` : '—'}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-teal-100 bg-white/80 p-4">
-                <p className="text-xs text-ink-muted uppercase tracking-wider">Toʻldirilish</p>
-                <p className="font-display text-4xl mt-1 text-teal-800">
-                  {day?.completion
-                    ? `${day.completion.requiredFilled}/${day.completion.requiredTotal}`
-                    : '—'}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-teal-100 bg-white/80 p-4 flex items-center">
-                {day?.totalScore != null ? (
-                  <ScoreBadge score={day.totalScore} color={day.colorStatus} />
-                ) : (
-                  <p className="text-ink-muted text-sm">Hali ball yoʻq</p>
+                {!branches.length && (
+                  <p className="text-sm text-ink-muted">Filial biriktirilmagan</p>
                 )}
               </div>
-            </div>
+            </section>
+          )}
 
-            {!activeKey ? (
-              <div className="overflow-x-auto rounded-3xl border border-teal-100 bg-white/90 shadow-soft">
-                <table className="w-full text-sm min-w-[1100px]">
-                  <thead>
-                    <tr className="text-left border-b border-teal-50 bg-teal-50/50">
-                      {(day?.columns || catalog).map((c: any) => (
-                        <th key={c.key} className="p-3 font-semibold text-teal-900 whitespace-nowrap">
-                          {c.title || c.titleUz}
-                        </th>
-                      ))}
-                      <th className="p-3 font-semibold text-teal-900">Yakuniy</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      {(day?.columns || catalog).map((c: any) => {
-                        const e = entryOf(c.key);
-                        return (
-                          <td key={c.key} className="p-2 align-top border-b border-teal-50">
-                            <button
-                              type="button"
-                              onClick={() => openColumn(c.key)}
-                              className={cn(
-                                'w-full min-h-14 rounded-xl border px-2 py-2 text-left transition',
-                                e?.done
-                                  ? 'border-emerald-200 bg-emerald-50'
-                                  : 'border-teal-100 hover:border-teal-300 bg-white',
-                              )}
-                            >
-                              <span className="block text-xs text-ink-muted truncate">
-                                {c.inputType}
-                              </span>
-                              <span className="font-semibold tabular-nums">
-                                {e?.score != null ? `${e.score}%` : e?.done ? '✓' : '—'}
-                              </span>
-                            </button>
-                          </td>
-                        );
-                      })}
-                      <td className="p-3 font-display text-2xl text-teal-800">
-                        {day?.totalScore != null ? `${Number(day.totalScore).toFixed(0)}%` : '—'}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <Button variant="secondary" onClick={goBack}>
-                    ← Orqaga
-                  </Button>
-                  <h3 className="font-display text-2xl">{activeNode?.title}</h3>
+          {branchId && (
+            <>
+              {/* Header */}
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  {activeKey ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = path.slice(0, -1);
+                        setPath(next);
+                        setActiveKey(next[next.length - 1] || null);
+                      }}
+                      className="inline-flex items-center gap-1 text-sm text-teal-800 mb-1"
+                    >
+                      <ChevronLeft className="w-4 h-4" /> Orqaga
+                    </button>
+                  ) : null}
+                  <h1 className="font-display text-2xl text-ink tracking-tight">
+                    {activeNode ? titleOf(activeNode) : branch?.name || 'Ishlar'}
+                  </h1>
+                  {!activeKey && (
+                    <p className="text-sm tabular-nums text-ink-muted mt-0.5">
+                      {day?.totalScore != null ? `${day.totalScore}%` : '—'}
+                      {day?.completion
+                        ? ` · ${day.completion.requiredFilled}/${day.completion.requiredTotal}`
+                        : ''}
+                    </p>
+                  )}
                 </div>
+                {branches.length > 1 && !activeKey && (
+                  <select
+                    className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm"
+                    value={branchId}
+                    onChange={(e) => setBranchId(e.target.value)}
+                  >
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
 
-                <div className="space-y-3">
-                  {displayNodes.map((node) => (
-                    <NodeCard
-                      key={node.key}
-                      node={node}
-                      entry={entryOf(node.key)}
-                      saving={saving}
-                      onDrill={() => drillInto(node.key)}
-                      onSave={(value, done) => saveValue(node.key, value, done)}
-                      onProof={(file) => uploadProof(node.key, file)}
-                    />
+              {/* Frequency */}
+              {!activeKey && (
+                <div className="flex gap-1 p-1 rounded-2xl bg-black/[0.04]">
+                  {FREQ_TABS.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setFreq(t.id)}
+                      className={cn(
+                        'flex-1 rounded-xl py-2 text-sm font-medium transition',
+                        freq === t.id
+                          ? 'bg-white text-teal-900 shadow-sm'
+                          : 'text-ink-muted',
+                      )}
+                    >
+                      {lang === 'ru' ? t.ru : t.uz}
+                    </button>
                   ))}
                 </div>
-              </div>
-            )}
-          </>
-        )}
-      </RoleGate>
-    </AppShell>
+              )}
+
+              {/* Root task list */}
+              {!activeKey && (
+                <ul className="space-y-2">
+                  {tasks.map((task) => {
+                    const title = lang === 'ru' ? task.titleRu : task.titleUz;
+                    const rejected = task.aiStatus === 'REJECTED';
+                    const approved = task.aiStatus === 'APPROVED';
+                    return (
+                      <li
+                        key={task.key}
+                        className="rounded-2xl border border-black/8 bg-white overflow-hidden"
+                      >
+                        <button
+                          type="button"
+                          className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
+                          onClick={() => {
+                            if (task.hasChildren || task.inputType === 'GROUP') {
+                              setActiveKey(task.key);
+                              setPath([task.key]);
+                            }
+                          }}
+                        >
+                          <StatusDot
+                            done={task.done}
+                            approved={approved}
+                            rejected={rejected}
+                          />
+                          <span className="flex-1 font-medium text-ink">{title}</span>
+                          {task.aiPenalty > 0 && (
+                            <span className="text-xs text-rose-700">−{task.aiPenalty}</span>
+                          )}
+                          {task.score != null && (
+                            <span className="text-sm tabular-nums text-teal-800">
+                              {task.score}%
+                            </span>
+                          )}
+                        </button>
+
+                        {!task.hasChildren && task.inputType !== 'GROUP' && (
+                          <TaskActions
+                            task={task}
+                            busy={busy}
+                            onSave={(v, d) => saveValue(task.key, v, d)}
+                            onUpload={(f) => uploadProof(task.key, f)}
+                          />
+                        )}
+
+                        {(task.aiFeedback || task.aiNote) && (
+                          <p
+                            className={cn(
+                              'px-4 pb-3 text-xs',
+                              rejected ? 'text-rose-700' : 'text-ink-muted',
+                            )}
+                          >
+                            {task.aiFeedback || task.aiNote}
+                            {task.aiAction === 'RESUBMIT' ? ' · Qayta yuklang' : ''}
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                  {!tasks.length && (
+                    <li className="text-sm text-ink-muted px-1">Vazifa yoʻq</li>
+                  )}
+                </ul>
+              )}
+
+              {/* Nested drill */}
+              {activeKey && (
+                <ul className="space-y-2">
+                  {displayNodes.map((node) => {
+                    const entry = day?.entries?.[node.key];
+                    const proof = entry?.proofs?.[0];
+                    const hasKids = !!node.children?.length;
+                    return (
+                      <li
+                        key={node.key}
+                        className="rounded-2xl border border-black/8 bg-white overflow-hidden"
+                      >
+                        <div className="flex items-center gap-3 px-4 py-3.5">
+                          <StatusDot
+                            done={!!entry?.done}
+                            approved={proof?.aiStatus === 'APPROVED'}
+                            rejected={proof?.aiStatus === 'REJECTED'}
+                          />
+                          <button
+                            type="button"
+                            className="flex-1 text-left font-medium text-ink"
+                            onClick={() => {
+                              if (hasKids) {
+                                setActiveKey(node.key);
+                                setPath((p) => [...p, node.key]);
+                              }
+                            }}
+                          >
+                            {titleOf(node)}
+                          </button>
+                          {entry?.score != null && (
+                            <span className="text-sm tabular-nums text-teal-800">
+                              {entry.score}%
+                            </span>
+                          )}
+                        </div>
+                        {!hasKids && (
+                          <LeafEditor
+                            node={node}
+                            entry={entry}
+                            busy={busy}
+                            onSave={(v, d) => saveValue(node.key, v, d)}
+                            onUpload={(f) => uploadProof(node.key, f)}
+                          />
+                        )}
+                        {(proof?.aiFeedback || proof?.aiNote) && (
+                          <p
+                            className={cn(
+                              'px-4 pb-3 text-xs',
+                              proof?.aiStatus === 'REJECTED'
+                                ? 'text-rose-700'
+                                : 'text-ink-muted',
+                            )}
+                          >
+                            {proof.aiFeedback || proof.aiNote}
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      </AppShell>
+    </RoleGate>
   );
 }
 
-function NodeCard({
+function StatusDot({
+  done,
+  approved,
+  rejected,
+}: {
+  done: boolean;
+  approved: boolean;
+  rejected: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        'w-2.5 h-2.5 rounded-full shrink-0',
+        rejected && 'bg-rose-500',
+        !rejected && approved && 'bg-emerald-500',
+        !rejected && !approved && done && 'bg-amber-400',
+        !rejected && !approved && !done && 'bg-black/15',
+      )}
+    />
+  );
+}
+
+function TaskActions({
+  task,
+  busy,
+  onSave,
+  onUpload,
+}: {
+  task: Task;
+  busy: boolean;
+  onSave: (v: any, d?: boolean) => void;
+  onUpload: (f: File) => void;
+}) {
+  return (
+    <div className="px-4 pb-3 flex flex-wrap items-center gap-2 border-t border-black/5 pt-3">
+      {task.inputType === 'CHECKBOX' && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onSave(true, true)}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-teal-900 text-white text-sm px-3 py-2"
+        >
+          <Check className="w-4 h-4" /> Bajardim
+        </button>
+      )}
+      {(task.proofRequired || task.aiStatus === 'REJECTED') && (
+        <label className="inline-flex items-center gap-1.5 rounded-xl border border-teal-700/30 text-teal-900 text-sm px-3 py-2 cursor-pointer">
+          {task.aiStatus === 'REJECTED' ? (
+            <RotateCcw className="w-4 h-4" />
+          ) : (
+            <Upload className="w-4 h-4" />
+          )}
+          {task.aiStatus === 'REJECTED' ? 'Qayta yuklash' : 'Dalil'}
+          <input
+            type="file"
+            accept="image/*,.pdf"
+            className="hidden"
+            disabled={busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onUpload(f);
+              e.target.value = '';
+            }}
+          />
+        </label>
+      )}
+    </div>
+  );
+}
+
+function LeafEditor({
   node,
   entry,
-  saving,
-  onDrill,
+  busy,
   onSave,
-  onProof,
+  onUpload,
 }: {
   node: CatalogNode;
   entry: any;
-  saving: boolean;
-  onDrill: () => void;
-  onSave: (value: any, done?: boolean) => void;
-  onProof: (file: File) => void;
+  busy: boolean;
+  onSave: (v: any, d?: boolean) => void;
+  onUpload: (f: File) => void;
 }) {
   const [calls, setCalls] = useState(Number(entry?.value?.calls ?? 0));
   const [booked, setBooked] = useState(Number(entry?.value?.booked ?? 0));
-  const [count, setCount] = useState(Number(entry?.value?.count ?? entry?.value ?? 0));
+  const [count, setCount] = useState(Number(entry?.value?.count ?? 0));
   const [note, setNote] = useState(String(entry?.value?.note ?? ''));
-  const [checked, setChecked] = useState(!!(entry?.value === true || entry?.value?.checked || entry?.done));
+  const checked = !!(entry?.value === true || entry?.value?.checked || entry?.done);
+  const rejected = entry?.proofs?.[0]?.aiStatus === 'REJECTED';
 
   useEffect(() => {
     setCalls(Number(entry?.value?.calls ?? 0));
     setBooked(Number(entry?.value?.booked ?? 0));
-    setCount(Number(entry?.value?.count ?? (typeof entry?.value === 'number' ? entry.value : 0)));
+    setCount(Number(entry?.value?.count ?? 0));
     setNote(String(entry?.value?.note ?? ''));
-    setChecked(!!(entry?.value === true || entry?.value?.checked || entry?.done));
   }, [entry]);
 
-  const hasChildren = (node.children?.length || 0) > 0;
-
   return (
-    <div className="rounded-2xl border border-teal-100 bg-white/90 p-4 shadow-soft space-y-3">
-      <div className="flex flex-wrap justify-between gap-2">
-        <div>
-          <p className="font-semibold">{node.title}</p>
-          {node.description && <p className="text-xs text-ink-muted mt-0.5">{node.description}</p>}
-        </div>
-        <div className="flex items-center gap-2">
-          {entry?.score != null && <span className="text-sm tabular-nums text-teal-800">{entry.score}%</span>}
-          {entry?.proofs?.[0] && (
-            <span
-              className={cn(
-                'text-[10px] px-2 py-0.5 rounded-full font-semibold',
-                entry.proofs[0].aiStatus === 'APPROVED' && 'bg-emerald-100 text-emerald-800',
-                entry.proofs[0].aiStatus === 'REJECTED' && 'bg-rose-100 text-rose-800',
-                entry.proofs[0].aiStatus === 'PENDING' && 'bg-amber-100 text-amber-900',
-              )}
-            >
-              AI: {entry.proofs[0].aiStatus}
-            </span>
+    <div className="px-4 pb-3 space-y-2 border-t border-black/5 pt-3">
+      {node.inputType === 'CHECKBOX' && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onSave(!checked, !checked)}
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-xl text-sm px-3 py-2',
+            checked ? 'bg-emerald-600 text-white' : 'bg-teal-900 text-white',
           )}
-        </div>
-      </div>
-
-      {hasChildren && (
-        <Button variant="secondary" onClick={onDrill} className="w-full">
-          Ichki vazifalar ({node.children!.length}) →
-        </Button>
+        >
+          <Check className="w-4 h-4" /> {checked ? 'Bajarildi' : 'Bajardim'}
+        </button>
       )}
-
-      {!hasChildren && node.inputType === 'CHECKBOX' && (
-        <label className="flex items-center gap-3 min-h-12">
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={(e) => {
-              setChecked(e.target.checked);
-              onSave(e.target.checked, e.target.checked);
-            }}
-            className="w-5 h-5"
-          />
-          <span>Bajarildi</span>
-        </label>
-      )}
-
-      {!hasChildren && node.inputType === 'RATIO' && (
-        <div className="grid sm:grid-cols-3 gap-2">
-          <Input label="Qoʻngʻiroqlar" type="number" min={0} value={calls} onChange={(e) => setCalls(Number(e.target.value))} />
-          <Input label="Yozilganlar" type="number" min={0} value={booked} onChange={(e) => setBooked(Number(e.target.value))} />
-          <Button
-            disabled={saving}
-            className="self-end min-h-11"
+      {node.inputType === 'RATIO' && (
+        <div className="flex flex-wrap gap-2 items-end">
+          <label className="text-xs text-ink-muted">
+            Qoʻngʻiroq
+            <input
+              type="number"
+              className="mt-1 block w-24 rounded-lg border border-black/10 px-2 py-1.5 text-sm"
+              value={calls}
+              onChange={(e) => setCalls(Number(e.target.value))}
+            />
+          </label>
+          <label className="text-xs text-ink-muted">
+            Yozilgan
+            <input
+              type="number"
+              className="mt-1 block w-24 rounded-lg border border-black/10 px-2 py-1.5 text-sm"
+              value={booked}
+              onChange={(e) => setBooked(Number(e.target.value))}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={busy}
+            className="rounded-xl bg-teal-900 text-white text-sm px-3 py-2"
             onClick={() => onSave({ calls, booked }, calls > 0)}
           >
             Saqlash
-          </Button>
+          </button>
         </div>
       )}
-
-      {!hasChildren && node.inputType === 'NUMBER' && (
+      {node.inputType === 'NUMBER' && (
         <div className="flex gap-2 items-end">
-          <Input
-            label="Soni"
+          <input
             type="number"
-            min={0}
+            className="w-28 rounded-lg border border-black/10 px-2 py-1.5 text-sm"
             value={count}
             onChange={(e) => setCount(Number(e.target.value))}
-            className="flex-1"
           />
-          <Button disabled={saving} onClick={() => onSave({ count }, count > 0)}>
-            Saqlash
-          </Button>
-        </div>
-      )}
-
-      {!hasChildren && node.inputType === 'NOTE_CHECK' && (
-        <div className="space-y-2">
-          <Textarea label="Izoh" value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={checked}
-              onChange={(e) => setChecked(e.target.checked)}
-            />
-            Bajarildi
-          </label>
-          <Button
-            disabled={saving}
-            onClick={() => onSave({ note, checked }, checked || !!note)}
+          <button
+            type="button"
+            disabled={busy}
+            className="rounded-xl bg-teal-900 text-white text-sm px-3 py-2"
+            onClick={() => onSave({ count }, count > 0)}
           >
             Saqlash
-          </Button>
+          </button>
         </div>
       )}
-
-      {node.proofRequired && !hasChildren && (
-        <div>
-          <label className="block text-xs font-medium text-ink-muted mb-1">Dalil (foto)</label>
+      {node.inputType === 'NOTE_CHECK' && (
+        <div className="space-y-2">
+          <input
+            className="w-full rounded-lg border border-black/10 px-3 py-2 text-sm"
+            placeholder="Izoh"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <button
+            type="button"
+            disabled={busy}
+            className="rounded-xl bg-teal-900 text-white text-sm px-3 py-2"
+            onClick={() => onSave({ note, checked: true }, true)}
+          >
+            Bajardim
+          </button>
+        </div>
+      )}
+      {(node.proofRequired || rejected) && (
+        <label className="inline-flex items-center gap-1.5 rounded-xl border border-teal-700/30 text-teal-900 text-sm px-3 py-2 cursor-pointer">
+          {rejected ? <RotateCcw className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
+          {rejected ? 'Qayta yuklash' : 'Dalil'}
           <input
             type="file"
-            accept="image/*,application/pdf"
-            disabled={saving}
+            accept="image/*,.pdf"
+            className="hidden"
+            disabled={busy}
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) onProof(f);
+              if (f) onUpload(f);
               e.target.value = '';
             }}
-            className="block w-full text-sm"
           />
-          {entry?.proofs?.[0]?.aiNote && (
-            <p className="text-xs text-ink-muted mt-1">{entry.proofs[0].aiNote}</p>
-          )}
-        </div>
+        </label>
       )}
     </div>
   );

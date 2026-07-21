@@ -1,0 +1,10 @@
+-- AlterEnum
+CREATE TYPE "KpiFrequency" AS ENUM ('DAILY', 'WEEKLY', 'MONTHLY');
+CREATE TYPE "AiAction" AS ENUM ('NONE', 'RESUBMIT', 'WARN', 'PENALTY');
+
+ALTER TABLE "KpiCatalogNode" ADD COLUMN IF NOT EXISTS "frequency" "KpiFrequency" NOT NULL DEFAULT 'DAILY';
+CREATE INDEX IF NOT EXISTS "KpiCatalogNode_frequency_active_idx" ON "KpiCatalogNode"("frequency", "active");
+
+ALTER TABLE "KpiProof" ADD COLUMN IF NOT EXISTS "aiFeedback" TEXT;
+ALTER TABLE "KpiProof" ADD COLUMN IF NOT EXISTS "aiAction" "AiAction" NOT NULL DEFAULT 'NONE';
+ALTER TABLE "KpiProof" ADD COLUMN IF NOT EXISTS "aiPenalty" DOUBLE PRECISION NOT NULL DEFAULT 0;

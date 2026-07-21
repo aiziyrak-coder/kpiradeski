@@ -22,12 +22,12 @@ const sans = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: 'KliniKPI — Dermatologiya KPI platformasi',
-  description: 'Klinika administratsiyasi va menejmenti uchun avtomatlashtirilgan KPI-monitoring',
+  title: 'Radeski KPI manager system',
+  description: 'Filial ishlari, dalil yuklash va AI nazorat',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'KliniKPI',
+    title: 'Radeski KPI',
   },
   formatDetection: {
     telephone: false,

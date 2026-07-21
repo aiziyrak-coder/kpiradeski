@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { Role } from '@prisma/client';
+import { KpiFrequency, Role } from '@prisma/client';
 import { Allow, IsBoolean, IsOptional, IsString } from 'class-validator';
 import { Response } from 'express';
 import { ManagerKpiService } from './manager-kpi.service';
@@ -24,7 +24,6 @@ class EntryDto {
   @IsString() branchId: string;
   @IsOptional() @IsString() date?: string;
   @IsString() nodeKey: string;
-  /** checkbox boolean, ratio/number/note objects */
   @IsOptional() @Allow() value?: any;
   @IsOptional() @IsBoolean() done?: boolean;
 }
@@ -36,8 +35,11 @@ export class ManagerKpiController {
   constructor(private kpi: ManagerKpiService) {}
 
   @Get('catalog')
-  catalog(@Query('lang') lang?: string) {
-    return this.kpi.catalog(lang === 'ru' ? 'ru' : 'uz');
+  catalog(@Query('lang') lang?: string, @Query('frequency') frequency?: string) {
+    const freq = ['DAILY', 'WEEKLY', 'MONTHLY'].includes(String(frequency).toUpperCase())
+      ? (String(frequency).toUpperCase() as KpiFrequency)
+      : undefined;
+    return this.kpi.catalog(lang === 'ru' ? 'ru' : 'uz', freq);
   }
 
   @Get('day')
@@ -45,9 +47,15 @@ export class ManagerKpiController {
     @CurrentUser() user: { id: string; role: Role },
     @Query('branchId') branchId: string,
     @Query('date') date?: string,
+    @Query('frequency') frequency?: string,
   ) {
     if (!branchId) throw new BadRequestException('branchId kerak');
-    return this.kpi.getDay(user, branchId, date);
+    const freq = ['DAILY', 'WEEKLY', 'MONTHLY'].includes(
+      String(frequency || 'DAILY').toUpperCase(),
+    )
+      ? (String(frequency || 'DAILY').toUpperCase() as KpiFrequency)
+      : KpiFrequency.DAILY;
+    return this.kpi.getDay(user, branchId, date, freq);
   }
 
   @Post('entry')

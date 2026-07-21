@@ -70,6 +70,19 @@ enum AiProofStatus {
   REJECTED
 }
 
+enum KpiFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum AiAction {
+  NONE
+  RESUBMIT
+  WARN
+  PENALTY
+}
+
 model Position {
   id        String   @id @default(cuid())
   code      String   @unique
@@ -167,6 +180,7 @@ model KpiCatalogNode {
   descriptionUz String?
   descriptionRu String?
   inputType   KpiInputType
+  frequency   KpiFrequency @default(DAILY)
   weight      Float        @default(0)
   sortOrder   Int          @default(0)
   proofRequired Boolean    @default(false)
@@ -176,6 +190,7 @@ model KpiCatalogNode {
 
   @@index([parentKey, sortOrder])
   @@index([active, sortOrder])
+  @@index([frequency, active])
 }
 
 model KpiDayEntry {
@@ -200,16 +215,19 @@ model KpiDayEntry {
 }
 
 model KpiProof {
-  id        String        @id @default(cuid())
-  entryId   String
-  userId    String
-  fileName  String
-  mimeType  String
-  path      String
-  size      Int
-  aiStatus  AiProofStatus @default(PENDING)
-  aiNote    String?
-  createdAt DateTime      @default(now())
+  id         String        @id @default(cuid())
+  entryId    String
+  userId     String
+  fileName   String
+  mimeType   String
+  path       String
+  size       Int
+  aiStatus   AiProofStatus @default(PENDING)
+  aiNote     String?
+  aiFeedback String?
+  aiAction   AiAction      @default(NONE)
+  aiPenalty  Float         @default(0)
+  createdAt  DateTime      @default(now())
 
   entry KpiDayEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
   user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)

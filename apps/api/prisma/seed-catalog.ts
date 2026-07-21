@@ -1,8 +1,9 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, KpiFrequency } from '@prisma/client';
 import { KPI_CATALOG_SEED } from './kpi-catalog.seed';
 
 export async function seedKpiCatalog(client: PrismaClient) {
   for (const n of KPI_CATALOG_SEED) {
+    const frequency = (n.frequency as KpiFrequency) || KpiFrequency.DAILY;
     await client.kpiCatalogNode.upsert({
       where: { key: n.key },
       create: {
@@ -13,6 +14,7 @@ export async function seedKpiCatalog(client: PrismaClient) {
         descriptionUz: n.descriptionUz,
         descriptionRu: n.descriptionRu,
         inputType: n.inputType,
+        frequency,
         weight: n.weight ?? 0,
         sortOrder: n.sortOrder,
         proofRequired: n.proofRequired ?? false,
@@ -24,6 +26,7 @@ export async function seedKpiCatalog(client: PrismaClient) {
         descriptionUz: n.descriptionUz,
         descriptionRu: n.descriptionRu,
         inputType: n.inputType,
+        frequency,
         weight: n.weight ?? 0,
         sortOrder: n.sortOrder,
         proofRequired: n.proofRequired ?? false,

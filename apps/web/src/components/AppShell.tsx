@@ -7,14 +7,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
   ClipboardList,
-  Megaphone,
   FileBarChart,
   Bell,
   Menu,
   X,
   LogOut,
   Users,
-  Sparkles,
   ScrollText,
   KeyRound,
   Building2,
@@ -34,18 +32,16 @@ const NAV: Array<{
   icon: React.ComponentType<{ className?: string }>;
   roles?: Role[];
 }> = [
-  { href: '/today', labelKey: 'nav.today', icon: ClipboardList, roles: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
+  { href: '/today', labelKey: 'nav.today', icon: ClipboardList, roles: ['MANAGER'] },
   {
     href: '/dashboard',
     labelKey: 'nav.dashboard',
     icon: LayoutDashboard,
-    roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'],
+    roles: ['ADMIN', 'SUPER_ADMIN'],
   },
   { href: '/branches', labelKey: 'nav.branches', icon: Building2, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { href: '/users', labelKey: 'nav.users', icon: Users, roles: ['ADMIN', 'SUPER_ADMIN'] },
-  { href: '/marketing', labelKey: 'nav.marketing', icon: Megaphone, roles: ['MANAGER', 'SUPER_ADMIN'] },
-  { href: '/ai', labelKey: 'nav.ai', icon: Sparkles, roles: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
-  { href: '/reports', labelKey: 'nav.reports', icon: FileBarChart, roles: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
+  { href: '/reports', labelKey: 'nav.reports', icon: FileBarChart, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { href: '/audit', labelKey: 'nav.audit', icon: ScrollText, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { href: '/notifications', labelKey: 'nav.notifications', icon: Bell },
   { href: '/account', labelKey: 'nav.account', icon: KeyRound },
@@ -62,7 +58,6 @@ function bottomTabsFor(role: Role, t: (k: string) => string) {
   }
   return [
     { href: '/today', label: t('nav.tabToday'), icon: ClipboardList },
-    { href: '/dashboard', label: t('nav.tabKpi'), icon: LayoutDashboard },
     { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
     { href: '/account', label: t('nav.account'), icon: KeyRound },
   ];
@@ -166,7 +161,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <p className="font-display text-3xl text-teal-800 tracking-tight group-hover:text-teal-600 transition">
               {t('app.title')}
             </p>
-            <p className="text-xs text-ink-muted mt-0.5">{t('app.subtitle')}</p>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-ink-muted -mt-0.5">
+              {t('app.subtitle')}
+            </p>
           </Link>
         </div>
         <div className="px-4 pb-2">

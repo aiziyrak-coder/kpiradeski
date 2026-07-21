@@ -1,11 +1,17 @@
 import {
-  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
-import { AiProofStatus, KpiInputType, Role } from '@prisma/client';
+import {
+  AiAction,
+  AiProofStatus,
+  KpiFrequency,
+  KpiInputType,
+  NotificationType,
+  Role,
+} from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaService } from '../prisma/prisma.service';
@@ -22,11 +28,25 @@ type CatalogNode = {
   descriptionUz: string | null;
   descriptionRu: string | null;
   inputType: KpiInputType;
+  frequency: KpiFrequency;
   weight: number;
   sortOrder: number;
   proofRequired: boolean;
   children?: CatalogNode[];
 };
+
+function periodDate(freq: KpiFrequency, dateStr?: string): Date {
+  const d = toDateOnly(dateStr);
+  if (freq === KpiFrequency.WEEKLY) {
+    const day = d.getUTCDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + diff));
+  }
+  if (freq === KpiFrequency.MONTHLY) {
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+  }
+  return d;
+}
 
 @Injectable()
 export class ManagerKpiService implements OnModuleInit {
@@ -41,11 +61,8 @@ export class ManagerKpiService implements OnModuleInit {
   async onModuleInit() {
     fs.mkdirSync(this.uploadRoot, { recursive: true });
     try {
-      const count = await this.prisma.kpiCatalogNode.count();
-      if (count === 0) {
-        await seedKpiCatalog(this.prisma as any);
-        this.logger.log('KPI katalog seedlandi');
-      }
+      await seedKpiCatalog(this.prisma as any);
+      this.logger.log('KPI katalog sync');
       let branch = await this.prisma.branch.findFirst();
       if (!branch) {
         branch = await this.prisma.branch.create({
@@ -67,13 +84,14 @@ export class ManagerKpiService implements OnModuleInit {
     }
   }
 
-  async catalog(lang: 'uz' | 'ru' = 'uz') {
-    const rows = await this.prisma.kpiCatalogNode.findMany({
+  async catalog(lang: 'uz' | 'ru' = 'uz', frequency?: KpiFrequency) {
+    const all = await this.prisma.kpiCatalogNode.findMany({
       where: { active: true },
       orderBy: [{ sortOrder: 'asc' }, { key: 'asc' }],
     });
+
     const map = new Map<string, CatalogNode>();
-    for (const r of rows) {
+    for (const r of all) {
       map.set(r.key, {
         key: r.key,
         parentKey: r.parentKey,
@@ -82,6 +100,7 @@ export class ManagerKpiService implements OnModuleInit {
         descriptionUz: r.descriptionUz,
         descriptionRu: r.descriptionRu,
         inputType: r.inputType,
+        frequency: r.frequency,
         weight: r.weight,
         sortOrder: r.sortOrder,
         proofRequired: r.proofRequired,
@@ -96,11 +115,26 @@ export class ManagerKpiService implements OnModuleInit {
         roots.push(node);
       }
     }
+
+    const filterFreq = (nodes: CatalogNode[]): CatalogNode[] => {
+      if (!frequency) return nodes;
+      return nodes
+        .map((n) => {
+          const kids = filterFreq(n.children || []);
+          if (n.frequency === frequency || kids.length) {
+            return { ...n, children: kids };
+          }
+          return null;
+        })
+        .filter(Boolean) as CatalogNode[];
+    };
+
+    const filtered = filterFreq(roots);
     const sortRec = (nodes: CatalogNode[]) => {
       nodes.sort((a, b) => a.sortOrder - b.sortOrder);
       nodes.forEach((n) => n.children && sortRec(n.children));
     };
-    sortRec(roots);
+    sortRec(filtered);
 
     const localize = (n: CatalogNode): any => ({
       key: n.key,
@@ -110,64 +144,82 @@ export class ManagerKpiService implements OnModuleInit {
       titleRu: n.titleRu,
       description: lang === 'ru' ? n.descriptionRu : n.descriptionUz,
       inputType: n.inputType,
+      frequency: n.frequency,
       weight: n.weight,
       sortOrder: n.sortOrder,
       proofRequired: n.proofRequired,
       children: (n.children || []).map(localize),
     });
 
-    return roots.map(localize);
+    return filtered.map(localize);
   }
 
   async getDay(
     user: { id: string; role: Role },
     branchId: string,
     dateStr?: string,
+    frequency: KpiFrequency = KpiFrequency.DAILY,
   ) {
     await this.branches.assertCanAccessBranch(user.id, user.role, branchId);
-    const date = toDateOnly(dateStr);
-    const catalog = await this.prisma.kpiCatalogNode.findMany({
+    const date = periodDate(frequency, dateStr);
+    const allNodes = await this.prisma.kpiCatalogNode.findMany({
       where: { active: true },
       orderBy: { sortOrder: 'asc' },
     });
+    const roots = allNodes.filter((c) => !c.parentKey && c.frequency === frequency);
+
     const entries = await this.prisma.kpiDayEntry.findMany({
       where: { branchId, date },
       include: {
         proofs: {
           orderBy: { createdAt: 'desc' },
-          take: 5,
+          take: 3,
           select: {
             id: true,
             fileName: true,
             mimeType: true,
             aiStatus: true,
             aiNote: true,
+            aiFeedback: true,
+            aiAction: true,
+            aiPenalty: true,
             createdAt: true,
           },
         },
       },
     });
     const byKey = Object.fromEntries(entries.map((e) => [e.nodeKey, e]));
-    const score = await this.recalculate(branchId, date);
-    const roots = catalog.filter((c) => !c.parentKey);
+    const score = await this.recalculate(branchId, date, frequency);
+
+    const tasks = roots.map((r) => {
+      const entry = byKey[r.key];
+      const proof = entry?.proofs?.[0];
+      return {
+        key: r.key,
+        titleUz: r.titleUz,
+        titleRu: r.titleRu,
+        inputType: r.inputType,
+        frequency: r.frequency,
+        weight: r.weight,
+        proofRequired: r.proofRequired,
+        hasChildren: allNodes.some((n) => n.parentKey === r.key),
+        entry: entry || null,
+        score: entry?.score ?? null,
+        done: entry?.done ?? false,
+        aiStatus: proof?.aiStatus ?? null,
+        aiNote: proof?.aiNote ?? null,
+        aiFeedback: proof?.aiFeedback ?? null,
+        aiAction: proof?.aiAction ?? null,
+        aiPenalty: proof?.aiPenalty ?? 0,
+      };
+    });
 
     return {
       date: date.toISOString().slice(0, 10),
       branchId,
-      columns: roots.map((r) => {
-        const entry = byKey[r.key];
-        return {
-          key: r.key,
-          titleUz: r.titleUz,
-          titleRu: r.titleRu,
-          inputType: r.inputType,
-          weight: r.weight,
-          proofRequired: r.proofRequired,
-          entry: entry || null,
-          score: entry?.score ?? null,
-          done: entry?.done ?? false,
-        };
-      }),
+      frequency,
+      columns: tasks,
+      tasks,
       entries: byKey,
       totalScore: score.totalScore,
       colorStatus: score.colorStatus,
@@ -190,9 +242,9 @@ export class ManagerKpiService implements OnModuleInit {
     const node = await this.prisma.kpiCatalogNode.findUnique({
       where: { key: data.nodeKey },
     });
-    if (!node || !node.active) throw new NotFoundException('KPI punkt topilmadi');
+    if (!node || !node.active) throw new NotFoundException('Vazifa topilmadi');
 
-    const date = toDateOnly(data.date);
+    const date = periodDate(node.frequency, data.date);
     const value = data.value ?? null;
     const done = data.done ?? this.inferDone(node.inputType, value);
     const leafScore = this.scoreLeaf(node.inputType, value, done);
@@ -223,12 +275,11 @@ export class ManagerKpiService implements OnModuleInit {
       include: { proofs: { take: 3, orderBy: { createdAt: 'desc' } } },
     });
 
-    // GROUP tugunlar: bolalar holatidan hisob
     if (node.inputType === KpiInputType.GROUP || node.parentKey) {
       await this.rollupParents(data.branchId, date, data.nodeKey, user.id);
     }
 
-    const dayScore = await this.recalculate(data.branchId, date);
+    const dayScore = await this.recalculate(data.branchId, date, node.frequency);
     return { entry, dayScore };
   }
 
@@ -295,7 +346,8 @@ export class ManagerKpiService implements OnModuleInit {
       const avg = scores.length
         ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
         : 0;
-      const done = children.length > 0 && childEntries.filter((e) => e.done).length === children.length;
+      const done =
+        children.length > 0 && childEntries.filter((e) => e.done).length === children.length;
 
       await this.prisma.kpiDayEntry.upsert({
         where: {
@@ -316,9 +368,13 @@ export class ManagerKpiService implements OnModuleInit {
     }
   }
 
-  async recalculate(branchId: string, date: Date) {
+  async recalculate(branchId: string, date: Date, frequency?: KpiFrequency) {
     const roots = await this.prisma.kpiCatalogNode.findMany({
-      where: { active: true, parentKey: null },
+      where: {
+        active: true,
+        parentKey: null,
+        ...(frequency ? { frequency } : {}),
+      },
       orderBy: { sortOrder: 'asc' },
     });
     const entries = await this.prisma.kpiDayEntry.findMany({
@@ -337,20 +393,23 @@ export class ManagerKpiService implements OnModuleInit {
       if (w <= 0) continue;
       const entry = entries.find((e) => e.nodeKey === root.key);
       let score = entry?.score ?? 0;
+      const proof = entry?.proofs?.[0];
 
+      if (proof?.aiPenalty) {
+        score = Math.max(0, score - proof.aiPenalty);
+      }
       if (root.proofRequired) {
-        const proof = entry?.proofs?.[0];
         if (!proof || proof.aiStatus === AiProofStatus.REJECTED) {
-          score = Math.min(score, 40);
+          score = Math.min(score, 30);
         } else if (proof.aiStatus === AiProofStatus.PENDING) {
-          score = Math.min(score, 70);
+          score = Math.min(score, 60);
         }
       }
 
       blockScores[root.key] = score;
       weighted += score * w;
       totalWeight += w;
-      if (entry?.done) requiredFilled++;
+      if (entry?.done && proof?.aiStatus !== AiProofStatus.REJECTED) requiredFilled++;
       else incomplete.push(root.key);
     }
 
@@ -358,11 +417,12 @@ export class ManagerKpiService implements OnModuleInit {
       ? Math.round((weighted / totalWeight) * 10) / 10
       : 0;
     const status = colorStatus(totalScore);
+    const weightedRoots = roots.filter((r) => (r.weight || 0) > 0);
     const completion = {
       requiredFilled,
-      requiredTotal: roots.filter((r) => (r.weight || 0) > 0).length,
-      requiredPct: roots.length
-        ? Math.round((requiredFilled / roots.filter((r) => (r.weight || 0) > 0).length) * 1000) / 10
+      requiredTotal: weightedRoots.length,
+      requiredPct: weightedRoots.length
+        ? Math.round((requiredFilled / weightedRoots.length) * 1000) / 10
         : 0,
       incomplete,
     };
@@ -419,9 +479,9 @@ export class ManagerKpiService implements OnModuleInit {
     const node = await this.prisma.kpiCatalogNode.findUnique({
       where: { key: data.nodeKey },
     });
-    if (!node) throw new NotFoundException('KPI punkt topilmadi');
+    if (!node) throw new NotFoundException('Vazifa topilmadi');
 
-    const date = toDateOnly(data.date);
+    const date = periodDate(node.frequency, data.date);
     const entry = await this.prisma.kpiDayEntry.upsert({
       where: {
         branchId_date_nodeKey: {
@@ -448,21 +508,33 @@ export class ManagerKpiService implements OnModuleInit {
 
     let aiStatus: AiProofStatus = AiProofStatus.PENDING;
     let aiNote: string | null = null;
+    let aiFeedback: string | null = null;
+    let aiAction: AiAction = AiAction.NONE;
+    let aiPenalty = 0;
+    let aiScore = 0;
 
     const vision = await openaiVisionProof({
       title: node.titleUz,
       description: node.descriptionUz,
       mimeType: data.file.mimetype,
       base64: data.file.buffer.toString('base64'),
+      frequency: node.frequency,
     });
 
     if (vision) {
       aiStatus = vision.approved ? AiProofStatus.APPROVED : AiProofStatus.REJECTED;
       aiNote = vision.note;
+      aiFeedback = vision.feedback;
+      aiAction = vision.action as AiAction;
+      aiPenalty = vision.penalty;
+      aiScore = vision.score;
     } else {
-      // API yoʻq — vaqtincha APPROVED (ishlashda qolishi uchun)
       aiStatus = AiProofStatus.APPROVED;
-      aiNote = 'AI mavjud emas — avtomatik qabul';
+      aiNote = 'AI vaqtincha mavjud emas — avto qabul';
+      aiFeedback = 'Dalil qabul qilindi';
+      aiAction = AiAction.NONE;
+      aiPenalty = 0;
+      aiScore = 90;
     }
 
     const proof = await this.prisma.kpiProof.create({
@@ -475,18 +547,39 @@ export class ManagerKpiService implements OnModuleInit {
         size: data.file.size,
         aiStatus,
         aiNote,
+        aiFeedback,
+        aiAction,
+        aiPenalty,
       },
     });
 
-    if (aiStatus === AiProofStatus.APPROVED && !entry.done) {
+    if (aiStatus === AiProofStatus.APPROVED) {
       await this.prisma.kpiDayEntry.update({
         where: { id: entry.id },
-        data: { done: true, score: entry.score ?? 100 },
+        data: { done: true, score: aiScore || entry.score || 100 },
       });
       await this.rollupParents(data.branchId, date, data.nodeKey, user.id);
+    } else {
+      await this.prisma.kpiDayEntry.update({
+        where: { id: entry.id },
+        data: {
+          done: false,
+          score: Math.max(0, (aiScore || 0) - aiPenalty),
+        },
+      });
+      await this.prisma.notification.create({
+        data: {
+          userId: user.id,
+          title: `AI: ${node.titleUz}`,
+          message: `${aiNote || 'Rad'}${aiFeedback ? ' — ' + aiFeedback : ''}${
+            aiPenalty ? ` · Jarima −${aiPenalty}` : ''
+          }${aiAction === AiAction.RESUBMIT ? ' · Qayta yuklang' : ''}`,
+          type: NotificationType.ALERT,
+        },
+      });
     }
 
-    await this.recalculate(data.branchId, date);
+    await this.recalculate(data.branchId, date, node.frequency);
     return proof;
   }
 

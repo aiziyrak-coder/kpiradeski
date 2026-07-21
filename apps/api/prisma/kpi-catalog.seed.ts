@@ -11,6 +11,7 @@ type CatalogSeed = {
   weight?: number;
   sortOrder: number;
   proofRequired?: boolean;
+  frequency?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
 };
 
 /** Tayyor manager KPI daraxti — yaratilmaydi, faqat seed */
@@ -24,6 +25,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     weight: 15,
     sortOrder: 1,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'reception',
@@ -33,6 +35,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     weight: 10,
     sortOrder: 2,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'calls_new',
@@ -44,6 +47,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     weight: 12,
     sortOrder: 3,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'calls_repeat',
@@ -53,6 +57,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     weight: 8,
     sortOrder: 4,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'calls_missed',
@@ -62,6 +67,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     weight: 8,
     sortOrder: 5,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'reviews',
@@ -71,6 +77,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     weight: 8,
     sortOrder: 6,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'uniform',
@@ -80,6 +87,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     weight: 5,
     sortOrder: 7,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'warehouse',
@@ -89,6 +97,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     weight: 5,
     sortOrder: 8,
     proofRequired: true,
+    frequency: 'WEEKLY',
   },
   {
     key: 'seo',
@@ -98,6 +107,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     weight: 6,
     sortOrder: 9,
     proofRequired: true,
+    frequency: 'WEEKLY',
   },
   {
     key: 'instagram',
@@ -107,6 +117,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     weight: 6,
     sortOrder: 10,
     proofRequired: true,
+    frequency: 'WEEKLY',
   },
   {
     key: 'telegram_youtube',
@@ -116,6 +127,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     weight: 5,
     sortOrder: 11,
     proofRequired: true,
+    frequency: 'WEEKLY',
   },
   {
     key: 'ads_tv',
@@ -125,6 +137,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     weight: 4,
     sortOrder: 12,
     proofRequired: true,
+    frequency: 'MONTHLY',
   },
   {
     key: 'flyers',
@@ -134,6 +147,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     weight: 3,
     sortOrder: 13,
     proofRequired: true,
+    frequency: 'MONTHLY',
   },
   {
     key: 'doctor_patients',
@@ -143,6 +157,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     weight: 5,
     sortOrder: 14,
     proofRequired: false,
+    frequency: 'DAILY',
   },
 
   // —— Klinika: 1-daraja (rasm 2) ——
@@ -156,6 +171,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     inputType: 'GROUP',
     sortOrder: 1,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'clinic.supplies',
@@ -257,6 +273,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     inputType: 'GROUP',
     sortOrder: 1,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'clinic.cleanliness.walls',
@@ -268,6 +285,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     inputType: 'CHECKBOX',
     sortOrder: 2,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'clinic.cleanliness.bathrooms',
@@ -279,6 +297,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     inputType: 'CHECKBOX',
     sortOrder: 3,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'clinic.cleanliness.windows',
@@ -290,6 +309,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     inputType: 'CHECKBOX',
     sortOrder: 4,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'clinic.cleanliness.hall',
@@ -301,6 +321,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     inputType: 'CHECKBOX',
     sortOrder: 5,
     proofRequired: true,
+    frequency: 'DAILY',
   },
 
   // —— Pollar (rasm 4) ——
@@ -314,6 +335,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     inputType: 'CHECKBOX',
     sortOrder: 1,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'clinic.cleanliness.floors.trash',
@@ -325,6 +347,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     inputType: 'CHECKBOX',
     sortOrder: 2,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'clinic.cleanliness.floors.dry',
@@ -336,6 +359,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     inputType: 'CHECKBOX',
     sortOrder: 3,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'clinic.cleanliness.floors.smell',
@@ -360,6 +384,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     inputType: 'CHECKBOX',
     sortOrder: 1,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'reception.candy',
@@ -407,6 +432,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     inputType: 'CHECKBOX',
     sortOrder: 1,
     proofRequired: true,
+    frequency: 'DAILY',
   },
   {
     key: 'uniform.condition',

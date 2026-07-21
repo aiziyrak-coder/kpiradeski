@@ -106,20 +106,18 @@ export default function LoginPage() {
           className="hidden lg:flex flex-col justify-between p-12 text-white"
         >
           <div>
-            <p className="font-display text-5xl xl:text-6xl tracking-tight">KliniKPI</p>
-            <p className="mt-3 text-teal-100/80 text-lg max-w-md leading-relaxed">
-              Dermatologiya klinikasi maʼmuriyati va menejmenti uchun yagona KPI-monitoring platformasi
+            <p className="font-display text-4xl xl:text-5xl tracking-tight leading-tight">
+              Radeski KPI
+              <span className="block text-2xl xl:text-3xl text-teal-100/90 font-normal mt-1">
+                manager system
+              </span>
+            </p>
+            <p className="mt-4 text-teal-100/75 text-base max-w-sm leading-relaxed">
+              Filial · Vazifa · Dalil · AI
             </p>
           </div>
           <div className="space-y-6 max-w-md">
-            <div className="rounded-3xl border border-white/15 bg-white/5 backdrop-blur-md p-6">
-              <p className="text-sm uppercase tracking-[0.2em] text-teal-200/80 mb-2">Real vaqt</p>
-              <p className="font-display text-3xl">Kunlik ball · Dashboard · AI tahlil</p>
-              <p className="mt-2 text-teal-100/70 text-sm">
-                Chek-listlar, qoʻngʻiroqlar voronkasi, SMM monitoring va rahbariyat hisobotlari.
-              </p>
-            </div>
-            <p className="text-teal-200/60 text-sm">Radeski Dermatologiya · 2026</p>
+            <p className="text-teal-200/60 text-sm">Radeski Dermatologiya</p>
           </div>
         </motion.div>
 
@@ -131,10 +129,10 @@ export default function LoginPage() {
             className="w-full max-w-md rounded-[24px] sm:rounded-[28px] bg-white/95 shadow-glow border border-white/40 p-5 sm:p-8"
           >
             <div className="mb-5 sm:mb-6">
-              <p className="font-display text-3xl sm:text-4xl text-teal-800">KliniKPI</p>
-              <p className="text-sm text-ink-muted mt-1">
-                {isMiniApp ? 'Telegram Mini App' : 'KPI monitoring platformasi'}
+              <p className="font-display text-3xl sm:text-4xl text-teal-800 leading-tight">
+                Radeski KPI
               </p>
+              <p className="text-sm text-ink-muted mt-1">manager system</p>
             </div>
 
             {isMiniApp && (tgBusy || tgHint) && (
@@ -143,11 +141,9 @@ export default function LoginPage() {
               </div>
             )}
 
-            <h1 className="font-display text-2xl sm:text-3xl text-ink">Tizimga kirish</h1>
+            <h1 className="font-display text-2xl sm:text-3xl text-ink">Kirish</h1>
             <p className="text-ink-muted text-sm mt-1 mb-5">
-              {isMiniApp
-                ? 'Birinchi marta — email/parol. Keyin Telegram avtomatik ochiladi.'
-                : 'Rolingizga mos hisob bilan kiring'}
+              {isMiniApp ? 'Email / parol' : 'Hisobingiz bilan kiring'}
             </p>
 
             <form onSubmit={onSubmit} className="space-y-3.5">
