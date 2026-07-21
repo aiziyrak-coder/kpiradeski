@@ -3,7 +3,7 @@
 
 services:
   db:
-    ports: []  # DB faqat ichki tarmoqda
+    ports: !reset []
     restart: always
 
   api:

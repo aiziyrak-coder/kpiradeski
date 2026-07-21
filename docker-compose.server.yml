@@ -4,13 +4,13 @@
 services:
   db:
     container_name: klinikpi-db
-    ports: []
+    ports: !reset []
 
   api:
     container_name: klinikpi-api
-    ports: []  # faqat ichki tarmoq (web proxy orqali)
+    ports: !reset []
 
   web:
     container_name: klinikpi-web
-    ports:
-      - "127.0.0.1:13000:3000"  # nginx → faqat localhost
+    ports: !override
+      - "127.0.0.1:13000:3000"
