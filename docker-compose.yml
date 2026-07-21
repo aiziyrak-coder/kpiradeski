@@ -68,6 +68,7 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ""
         NEXT_PUBLIC_DEMO: ${NEXT_PUBLIC_DEMO:-false}
+        API_PROXY_TARGET: http://api:4000
     container_name: klinikpi-web
     restart: unless-stopped
     depends_on:
