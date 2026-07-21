@@ -324,15 +324,9 @@ export default function TodayPage() {
                           />
                         )}
 
-                        {(task.aiFeedback || task.aiNote) && (
-                          <p
-                            className={cn(
-                              'px-4 pb-3 text-xs',
-                              rejected ? 'text-rose-700' : 'text-ink-muted',
-                            )}
-                          >
-                            {task.aiFeedback || task.aiNote}
-                            {task.aiAction === 'RESUBMIT' ? ' · Qayta yuklang' : ''}
+                        {(task.aiNote || task.aiFeedback) && task.aiStatus === 'REJECTED' && (
+                          <p className="px-4 pb-3 text-xs text-rose-700">
+                            {task.aiNote || task.aiFeedback}
                           </p>
                         )}
                       </li>
@@ -389,16 +383,9 @@ export default function TodayPage() {
                             onUpload={(f) => uploadProof(node.key, f)}
                           />
                         )}
-                        {(proof?.aiFeedback || proof?.aiNote) && (
-                          <p
-                            className={cn(
-                              'px-4 pb-3 text-xs',
-                              proof?.aiStatus === 'REJECTED'
-                                ? 'text-rose-700'
-                                : 'text-ink-muted',
-                            )}
-                          >
-                            {proof.aiFeedback || proof.aiNote}
+                        {proof?.aiStatus === 'REJECTED' && (proof?.aiNote || proof?.aiFeedback) && (
+                          <p className="px-4 pb-3 text-xs text-rose-700">
+                            {proof.aiNote || proof.aiFeedback}
                           </p>
                         )}
                       </li>
@@ -578,7 +565,6 @@ function LeafEditor({
         <div className="space-y-2">
           <input
             className="w-full rounded-lg border border-black/10 px-3 py-2 text-sm"
-            placeholder="Izoh"
             value={note}
             onChange={(e) => setNote(e.target.value)}
           />

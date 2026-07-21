@@ -50,8 +50,8 @@ async function main() {
   const wipe = process.env.SEED_WIPE === 'true';
   const forceCatalog = process.env.SEED_CATALOG === 'true';
 
-  if (wipe && process.env.NODE_ENV === 'production') {
-    throw new Error('SEED_WIPE=true productionda taqiqlangan');
+  if (wipe && process.env.NODE_ENV === 'production' && process.env.SEED_FORCE !== '1') {
+    throw new Error('SEED_WIPE=true productionda SEED_FORCE=1 talab qiladi');
   }
 
   if (wipe) await wipeAllData();

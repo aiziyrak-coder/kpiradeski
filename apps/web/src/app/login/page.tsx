@@ -23,38 +23,24 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [tgBusy, setTgBusy] = useState(false);
-  const [tgHint, setTgHint] = useState('');
   const showDemo = process.env.NEXT_PUBLIC_DEMO === 'true';
 
   useEffect(() => {
     if (!loading && user) router.replace(homeForRole(user.role));
   }, [loading, user, router]);
 
-  // Mini App: avtomatik Telegram kirish (akkaunt bogʻlangan boʻlsa)
   useEffect(() => {
     if (!ready || loading || user || !isMiniApp || !webApp?.initData) return;
     let cancelled = false;
     (async () => {
       setTgBusy(true);
-      setTgHint('Telegram orqali kirilmoqda...');
       try {
         const u = await loginTelegram(webApp.initData);
         if (cancelled) return;
         haptic('success');
         router.replace(homeForRole(u.role));
-      } catch (err: any) {
-        if (cancelled) return;
-        const msg = String(err?.message || '');
-        if (msg.includes('TELEGRAM_NOT_LINKED') || msg.includes('Unauthorized')) {
-          setTgHint(
-            tgUser?.first_name
-              ? `Salom, ${tgUser.first_name}! Avval email/parol bilan kiring — keyin Telegram bogʻlanadi.`
-              : 'Avval email/parol bilan kiring. Keyin Profil → Telegram bogʻlash.',
-          );
-        } else {
-          setTgHint('');
-          setError(msg || 'Telegram kirish amalga oshmadi');
-        }
+      } catch {
+        // email/parol kerak
       } finally {
         if (!cancelled) setTgBusy(false);
       }
@@ -74,14 +60,14 @@ export default function LoginPage() {
         try {
           await linkTelegram(webApp.initData);
         } catch {
-          // bogʻlash keyinroq Profil orqali
+          /* ignore */
         }
       }
       haptic('success');
       router.push(homeForRole(u.role));
     } catch (err: any) {
       haptic('error');
-      setError(err.message || 'Kirish amalga oshmadi');
+      setError(err.message || 'Xato');
     } finally {
       setBusy(false);
     }
@@ -103,22 +89,14 @@ export default function LoginPage() {
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.7 }}
-          className="hidden lg:flex flex-col justify-between p-12 text-white"
+          className="hidden lg:flex flex-col justify-center p-12 text-white"
         >
-          <div>
-            <p className="font-display text-4xl xl:text-5xl tracking-tight leading-tight">
-              Radeski KPI
-              <span className="block text-2xl xl:text-3xl text-teal-100/90 font-normal mt-1">
-                manager system
-              </span>
-            </p>
-            <p className="mt-4 text-teal-100/75 text-base max-w-sm leading-relaxed">
-              Filial · Vazifa · Dalil · AI
-            </p>
-          </div>
-          <div className="space-y-6 max-w-md">
-            <p className="text-teal-200/60 text-sm">Radeski Dermatologiya</p>
-          </div>
+          <p className="font-display text-4xl xl:text-5xl tracking-tight leading-tight">
+            Radeski KPI
+            <span className="block text-2xl xl:text-3xl text-teal-100/90 font-normal mt-1">
+              manager system
+            </span>
+          </p>
         </motion.div>
 
         <div className="flex items-center justify-center p-4 sm:p-10">
@@ -128,23 +106,12 @@ export default function LoginPage() {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="w-full max-w-md rounded-[24px] sm:rounded-[28px] bg-white/95 shadow-glow border border-white/40 p-5 sm:p-8"
           >
-            <div className="mb-5 sm:mb-6">
+            <div className="mb-6">
               <p className="font-display text-3xl sm:text-4xl text-teal-800 leading-tight">
                 Radeski KPI
               </p>
               <p className="text-sm text-ink-muted mt-1">manager system</p>
             </div>
-
-            {isMiniApp && (tgBusy || tgHint) && (
-              <div className="mb-4 rounded-xl border border-teal-100 bg-teal-50/80 px-3 py-2.5 text-sm text-teal-900">
-                {tgBusy ? 'Telegram orqali kirilmoqda...' : tgHint}
-              </div>
-            )}
-
-            <h1 className="font-display text-2xl sm:text-3xl text-ink">Kirish</h1>
-            <p className="text-ink-muted text-sm mt-1 mb-5">
-              {isMiniApp ? 'Email / parol' : 'Hisobingiz bilan kiring'}
-            </p>
 
             <form onSubmit={onSubmit} className="space-y-3.5">
               <Input
@@ -172,31 +139,26 @@ export default function LoginPage() {
                 </p>
               )}
               <Button type="submit" className="w-full min-h-12" size="lg" disabled={busy || tgBusy}>
-                {busy ? 'Tekshirilmoqda...' : 'Kirish'}
+                {busy ? '...' : 'Kirish'}
               </Button>
             </form>
 
             {showDemo && !isMiniApp && (
-              <div className="mt-7 pt-5 border-t border-teal-50">
-                <p className="text-xs uppercase tracking-wider text-ink-muted mb-3">
-                  Demo hisoblar · parol: klinikpi123
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {DEMOS.map((d) => (
-                    <button
-                      key={d.email}
-                      type="button"
-                      onClick={() => {
-                        setEmail(d.email);
-                        setPassword('klinikpi123');
-                      }}
-                      className="text-left px-3 py-2.5 rounded-xl border border-teal-100 hover:border-teal-300 hover:bg-teal-50/50 transition"
-                    >
-                      <span className="block text-xs font-semibold text-teal-800">{d.role}</span>
-                      <span className="block text-[11px] text-ink-muted truncate">{d.email}</span>
-                    </button>
-                  ))}
-                </div>
+              <div className="mt-7 pt-5 border-t border-teal-50 grid grid-cols-2 gap-2">
+                {DEMOS.map((d) => (
+                  <button
+                    key={d.email}
+                    type="button"
+                    onClick={() => {
+                      setEmail(d.email);
+                      setPassword('klinikpi123');
+                    }}
+                    className="text-left px-3 py-2.5 rounded-xl border border-teal-100 hover:border-teal-300 hover:bg-teal-50/50 transition"
+                  >
+                    <span className="block text-xs font-semibold text-teal-800">{d.role}</span>
+                    <span className="block text-[11px] text-ink-muted truncate">{d.email}</span>
+                  </button>
+                ))}
               </div>
             )}
           </motion.div>

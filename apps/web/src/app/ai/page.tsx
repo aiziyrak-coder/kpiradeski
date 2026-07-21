@@ -56,9 +56,7 @@ export default function AiPage() {
     <AppShell>
       <RoleGate allow={['MANAGER', 'SUPER_ADMIN']}>
         <SectionHeader
-          eyebrow="Sunʼiy intellekt"
           title="Haftalik AI tahlil"
-          description="Haftani tanlang → hisobot yarating. Natija Telegramga ham ketadi."
           action={
             canGenerate ? (
               <div className="flex flex-wrap gap-2 items-center">
@@ -75,30 +73,20 @@ export default function AiPage() {
                   {busy === 'SERVICES' ? '...' : 'Xizmatlar'}
                 </Button>
               </div>
-            ) : (
-              <p className="text-sm text-ink-muted">Faqat koʻrish huquqi</p>
-            )
+            ) : null}
           }
         />
 
-        {status && (
-          <div
-            className={`mb-5 rounded-2xl border p-4 text-sm ${
-              status.configured
-                ? 'border-teal-200 bg-teal-50/70 text-teal-900'
-                : 'border-amber-200 bg-amber-50/70 text-amber-950'
-            }`}
-          >
-            <p className="font-semibold">{status.configured ? 'OpenAI ulangan' : 'Shablon rejim'}</p>
-            <p className="mt-1 opacity-90">{status.hint}</p>
-            {status.configured && <p className="text-xs mt-1 opacity-70">Model: {status.model}</p>}
+        {status?.configured === false && (
+          <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-950">
+            OpenAI yoʻq
           </div>
         )}
 
         <div className="space-y-4">
           {reports.length === 0 && (
             <div className="rounded-3xl border border-dashed border-teal-200 p-10 text-center text-ink-muted">
-              Hali hisobot yoʻq. Yuqoridagi tugmalar bilan yarating.
+              —
             </div>
           )}
           {reports.map((r) => (

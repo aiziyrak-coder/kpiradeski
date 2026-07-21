@@ -93,9 +93,7 @@ export default function BranchesPage() {
     <AppShell>
       <RoleGate allow={['ADMIN', 'SUPER_ADMIN']}>
         <SectionHeader
-          eyebrow="Admin"
           title="Filiallar"
-          description="Filial ochish va manager biriktirish. Har filialda kunlik KPI alohida."
         />
 
         <div className="grid lg:grid-cols-2 gap-5 mb-8">

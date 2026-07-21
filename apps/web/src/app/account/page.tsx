@@ -64,9 +64,7 @@ export default function AccountPage() {
   return (
     <AppShell>
       <SectionHeader
-        eyebrow="Profil"
         title="Hisob sozlamalari"
-        description="Shaxsiy maʼlumot, parol va Telegram"
       />
 
       <div className="space-y-4 max-w-md">
@@ -90,19 +88,14 @@ export default function AccountPage() {
                 {tgUser?.username ? ` · @${tgUser.username}` : ''}
               </p>
             ) : (
-              <>
-                <p className="text-sm text-ink-muted">
-                  Bir marta bogʻlang — keyingi ochilishlarda email/parolsiz kirasiz.
-                </p>
-                <Button
-                  type="button"
-                  onClick={onLinkTelegram}
-                  disabled={tgBusy || !isMiniApp}
-                  className="w-full min-h-12"
-                >
-                  {tgBusy ? 'Bogʻlanmoqda...' : isMiniApp ? 'Telegramni bogʻlash' : 'Mini Appdan oching'}
-                </Button>
-              </>
+              <Button
+                type="button"
+                onClick={onLinkTelegram}
+                disabled={tgBusy || !isMiniApp}
+                className="w-full min-h-12"
+              >
+                {tgBusy ? '...' : 'Telegram'}
+              </Button>
             )}
           </div>
         )}

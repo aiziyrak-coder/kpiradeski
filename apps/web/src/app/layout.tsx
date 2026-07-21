@@ -23,7 +23,7 @@ const sans = Outfit({
 
 export const metadata: Metadata = {
   title: 'Radeski KPI manager system',
-  description: 'Filial ishlari, dalil yuklash va AI nazorat',
+  description: 'Radeski KPI manager system',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',

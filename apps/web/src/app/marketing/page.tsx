@@ -179,9 +179,7 @@ export default function MarketingPage() {
     <AppShell>
       <RoleGate allow={['MANAGER', 'SUPER_ADMIN']}>
       <SectionHeader
-        eyebrow="Marketing"
         title="SMM, SEO va reklama"
-        description="Instagram / Telegram / YouTube, sayt SEO, TV/radio va blogerlar."
         action={
           <input
             type="date"

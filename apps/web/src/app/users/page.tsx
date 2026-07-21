@@ -133,9 +133,7 @@ export default function UsersPage() {
     <AppShell>
       <RoleGate allow={['SUPER_ADMIN', 'ADMIN']}>
         <SectionHeader
-          eyebrow={t('users.eyebrow')}
           title={t('users.title')}
-          description="Admin va Manager yaratish. Manager filialga /branches orqali biriktiriladi."
         />
 
         <div className="mb-4">

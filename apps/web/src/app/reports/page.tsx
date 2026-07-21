@@ -64,9 +64,7 @@ export default function ReportsPage() {
     <AppShell>
       <RoleGate allow={['MANAGER', 'SUPER_ADMIN']}>
         <SectionHeader
-          eyebrow="Hisobotlar"
           title="PDF / Excel eksport"
-          description="Davrni tanlang — 3 bosishda hisobot. Direktor paneli uchun tayyor."
           action={
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" disabled={busy} onClick={() => exportFile('pdf')}>

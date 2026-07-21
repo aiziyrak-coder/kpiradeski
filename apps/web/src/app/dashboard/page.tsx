@@ -79,9 +79,7 @@ export default function DashboardPage() {
     <AppShell>
       <RoleGate allow={['ADMIN', 'MANAGER', 'SUPER_ADMIN']}>
         <SectionHeader
-          eyebrow="Boshqaruv paneli"
           title="Kunlik holat"
-          description="Menejer KPI balli, ogohlantirishlar va tezkor havolalar."
           action={
             <input
               type="date"
@@ -93,16 +91,10 @@ export default function DashboardPage() {
         />
 
         {loading ? (
-          <div className="h-64 grid place-items-center text-ink-muted">Maʼlumot yuklanmoqda...</div>
+          <div className="h-64 grid place-items-center text-ink-muted">...</div>
         ) : !score && !data?.history?.length ? (
-          <div className="rounded-3xl border border-dashed border-teal-200 p-10 text-center space-y-3">
-            <p className="font-display text-2xl text-ink">Hali KPI maʼlumoti yoʻq</p>
-            <p className="text-sm text-ink-muted">Kunlik chek-listlar toʻldirilganda shu yerda ball chiqadi.</p>
-            <div className="flex flex-wrap justify-center gap-2 pt-2">
-              <Link href="/today" className="text-sm text-teal-700 font-semibold underline">
-                Bugungi KPI
-              </Link>
-            </div>
+          <div className="rounded-3xl border border-dashed border-teal-200 p-10 text-center">
+            <p className="font-display text-2xl text-ink">—</p>
           </div>
         ) : (
           <div className="space-y-5">
@@ -122,7 +114,7 @@ export default function DashboardPage() {
                   <p className="font-display text-4xl mt-1">
                     {completion.requiredFilled}/{completion.requiredTotal}
                   </p>
-                  <p className="text-xs text-ink-muted">{completion.requiredPct}% · Bugungi KPI</p>
+                  <p className="text-xs text-ink-muted">{completion.requiredPct}%</p>
                 </Link>
               )}
             </div>
@@ -267,7 +259,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="space-y-3 max-h-56 overflow-y-auto">
                   {(data?.latestAi || []).length === 0 && (
-                    <p className="text-sm text-ink-muted">Hali AI hisobot yoʻq — /ai dan yarating</p>
+                    <p className="text-sm text-ink-muted">—</p>
                   )}
                   {(data?.latestAi || []).map((r: any) => (
                     <div key={r.id} className="rounded-2xl bg-teal-50/60 p-3.5 border border-teal-100">

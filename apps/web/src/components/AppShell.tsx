@@ -161,9 +161,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <p className="font-display text-3xl text-teal-800 tracking-tight group-hover:text-teal-600 transition">
               {t('app.title')}
             </p>
-            <p className="text-[11px] uppercase tracking-[0.14em] text-ink-muted -mt-0.5">
-              {t('app.subtitle')}
-            </p>
           </Link>
         </div>
         <div className="px-4 pb-2">

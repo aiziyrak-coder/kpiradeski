@@ -76,9 +76,7 @@ export default function NotificationsPage() {
   return (
     <AppShell>
       <SectionHeader
-        eyebrow="Eslatmalar"
         title="Bildirishnomalar"
-        description={`${unread} o‘qilmagan · in-app + Telegram`}
         action={
           <div className="flex flex-wrap gap-2">
             {canTest && (

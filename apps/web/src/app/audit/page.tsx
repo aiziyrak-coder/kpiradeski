@@ -56,9 +56,7 @@ export default function AuditPage() {
     <AppShell>
       <RoleGate allow={['MANAGER', 'SUPER_ADMIN']}>
         <SectionHeader
-          eyebrow="Xavfsizlik"
           title="Audit jurnal"
-          description="Kim nima qilgani — o‘chirib bo‘lmaydigan tarix. Qidiruv va sana filtri."
         />
 
         <div className="rounded-2xl border border-teal-100 bg-white/90 p-4 mb-4 grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
