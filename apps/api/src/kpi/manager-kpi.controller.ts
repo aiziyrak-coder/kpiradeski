@@ -14,7 +14,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Role } from '@prisma/client';
-import { IsBoolean, IsObject, IsOptional, IsString } from 'class-validator';
+import { Allow, IsBoolean, IsOptional, IsString } from 'class-validator';
 import { Response } from 'express';
 import { ManagerKpiService } from './manager-kpi.service';
 import { JwtAuthGuard, Roles, RolesGuard } from '../common/guards';
@@ -24,7 +24,8 @@ class EntryDto {
   @IsString() branchId: string;
   @IsOptional() @IsString() date?: string;
   @IsString() nodeKey: string;
-  @IsOptional() @IsObject() value?: any;
+  /** checkbox boolean, ratio/number/note objects */
+  @IsOptional() @Allow() value?: any;
   @IsOptional() @IsBoolean() done?: boolean;
 }
 
