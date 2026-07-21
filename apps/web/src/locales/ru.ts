@@ -40,7 +40,7 @@ export const ru = {
     marketing: 'Маркетинг',
     doctors: 'Врачи',
     warehouse: 'Склад',
-    ai: 'AI анализ',
+    ai: 'AI',
     reports: 'Отчёты',
     audit: 'Аудит',
     settings: 'Календарь / KPI',

@@ -214,12 +214,37 @@ export class ManagerKpiService implements OnModuleInit {
       };
     });
 
+    const buildTree = (parentKey: string | null): any[] => {
+      const list = parentKey
+        ? allNodes.filter((n) => n.parentKey === parentKey)
+        : roots;
+      return list.map((n) => {
+        const entry = byKey[n.key];
+        const proof = entry?.proofs?.[0];
+        return {
+          key: n.key,
+          parentKey: n.parentKey,
+          titleUz: n.titleUz,
+          titleRu: n.titleRu,
+          inputType: n.inputType,
+          proofRequired: n.proofRequired,
+          done: entry?.done ?? false,
+          score: entry?.score ?? null,
+          value: entry?.value ?? null,
+          aiStatus: proof?.aiStatus ?? null,
+          aiNote: proof?.aiNote ?? null,
+          children: buildTree(n.key),
+        };
+      });
+    };
+
     return {
       date: date.toISOString().slice(0, 10),
       branchId,
       frequency,
       columns: tasks,
       tasks,
+      tree: buildTree(null),
       entries: byKey,
       totalScore: score.totalScore,
       colorStatus: score.colorStatus,

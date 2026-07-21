@@ -16,6 +16,7 @@ import {
   ScrollText,
   KeyRound,
   Building2,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -32,7 +33,8 @@ const NAV: Array<{
   icon: React.ComponentType<{ className?: string }>;
   roles?: Role[];
 }> = [
-  { href: '/today', labelKey: 'nav.today', icon: ClipboardList, roles: ['MANAGER'] },
+  { href: '/today', labelKey: 'nav.today', icon: ClipboardList, roles: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
+  { href: '/ai', labelKey: 'nav.ai', icon: Sparkles, roles: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
   {
     href: '/dashboard',
     labelKey: 'nav.dashboard',
@@ -51,13 +53,14 @@ function bottomTabsFor(role: Role, t: (k: string) => string) {
   if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
     return [
       { href: '/dashboard', label: t('nav.tabKpi'), icon: LayoutDashboard },
-      { href: '/branches', label: t('nav.branches'), icon: Building2 },
+      { href: '/today', label: t('nav.tabToday'), icon: ClipboardList },
+      { href: '/ai', label: t('nav.ai'), icon: Sparkles },
       { href: '/users', label: t('nav.users'), icon: Users },
-      { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
     ];
   }
   return [
     { href: '/today', label: t('nav.tabToday'), icon: ClipboardList },
+    { href: '/ai', label: t('nav.ai'), icon: Sparkles },
     { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
     { href: '/account', label: t('nav.account'), icon: KeyRound },
   ];

@@ -8,7 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { AiReportType, CallType, ReviewQuality, ReviewSource, Role } from '@prisma/client';
+import { CallType, ReviewQuality, ReviewSource, Role } from '@prisma/client';
 import {
   IsArray,
   IsBoolean,
@@ -269,31 +269,36 @@ export class KpiController {
   }
 
   @Post('ai-reports/:type')
-  @Roles(Role.MANAGER, Role.SUPER_ADMIN)
-  aiReport(@Param('type') type: string, @Query('weekStart') weekStart?: string) {
-    if (!Object.values(AiReportType).includes(type as AiReportType)) {
-      throw new BadRequestException("type SERVICES yoki CALLS bo'lishi kerak");
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN)
+  aiReport(
+    @Param('type') type: string,
+    @Query('weekStart') weekStart?: string,
+    @Query('period') period?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    const t = String(type).toUpperCase();
+    if (!['SERVICES', 'CALLS', 'KPI'].includes(t)) {
+      throw new BadRequestException('type: KPI | CALLS | SERVICES');
     }
-    return this.kpi.generateAiReport(type as 'SERVICES' | 'CALLS', weekStart);
+    return this.kpi.generateAiReport(t as any, { period, from, to, weekStart, branchId });
   }
 
   @Get('ai-reports')
-  @Roles(Role.MANAGER, Role.DIRECTOR, Role.SUPER_ADMIN)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.DIRECTOR, Role.SUPER_ADMIN)
   listAi() {
     return this.kpi.listAiReports();
   }
 
   @Get('ai-status')
-  @Roles(Role.MANAGER, Role.DIRECTOR, Role.SUPER_ADMIN)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.DIRECTOR, Role.SUPER_ADMIN)
   aiStatus() {
     const configured = Boolean(process.env.OPENAI_API_KEY?.trim());
     return {
       configured,
       model: process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini',
       mode: configured ? 'openai' : 'template',
-      hint: configured
-        ? 'OpenAI ulangan — hisobotlar GPT orqali yaratiladi'
-        : 'OPENAI_API_KEY yoʻq — shablon matn ishlatiladi',
     };
   }
 }

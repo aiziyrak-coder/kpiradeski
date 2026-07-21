@@ -40,7 +40,7 @@ export const uz = {
     marketing: 'Marketing',
     doctors: 'Shifokorlar',
     warehouse: 'Ombor zaxira',
-    ai: 'AI tahlil',
+    ai: 'AI',
     reports: 'Hisobotlar',
     audit: 'Audit',
     settings: 'Kalendar / KPI',

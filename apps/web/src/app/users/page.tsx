@@ -116,13 +116,11 @@ export default function UsersPage() {
     }
   }
 
-  async function toggleActive(u: any) {
+  async function removeUser(u: any) {
+    if (!confirm(`${u.name} ni oʻchirish?`)) return;
     try {
-      await api(`/users/${u.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ active: !u.active }),
-      });
-      toast.success(u.active ? t('users.deactivated') : t('users.activated'));
+      await api(`/users/${u.id}`, { method: 'DELETE' });
+      toast.success(t('common.deleted'));
       await load();
     } catch (e: any) {
       toast.error(e.message);
@@ -273,10 +271,10 @@ export default function UsersPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => toggleActive(u)}
+                        onClick={() => removeUser(u)}
                         disabled={u.id === me?.id}
                       >
-                        {u.active ? t('common.delete') : t('common.activate')}
+                        {t('common.delete')}
                       </Button>
                     </div>
                   </>

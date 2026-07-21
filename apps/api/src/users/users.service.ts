@@ -101,7 +101,7 @@ export class UsersService {
       data: {
         userId: actor.id,
         action: 'user_create',
-        entity: 'user',
+        entity: 'User',
         entityId: user.id,
         meta: { email: user.email, role: user.role } as any,
       },
@@ -165,11 +165,77 @@ export class UsersService {
       data: {
         userId: actor.id,
         action: data.password ? 'user_password_reset' : 'user_update',
-        entity: 'user',
+        entity: 'User',
         entityId: id,
         meta: { fields: Object.keys(data).filter((k) => (data as any)[k] !== undefined) } as any,
       },
     });
     return mapUserWithPosition(updated);
+  }
+
+  async remove(actor: { id: string; role: Role }, id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException();
+    if (id === actor.id) throw new BadRequestException('Oʻzingizni oʻchirib boʻlmaydi');
+    if (actor.role !== Role.SUPER_ADMIN && user.role === Role.SUPER_ADMIN) {
+      throw new ForbiddenException('Super Adminni oʻchirib boʻlmaydi');
+    }
+    if (user.role === Role.SUPER_ADMIN) {
+      const count = await this.prisma.user.count({
+        where: { role: Role.SUPER_ADMIN },
+      });
+      if (count <= 1) throw new BadRequestException('Oxirgi Super Adminni oʻchirib boʻlmaydi');
+    }
+
+    const tasks = await this.prisma.dailyTask.findMany({
+      where: { OR: [{ userId: id }, { reviewedById: id }] },
+      select: { id: true },
+    });
+    const taskIds = tasks.map((t) => t.id);
+
+    await this.prisma.$transaction(async (tx) => {
+      if (taskIds.length) {
+        await tx.taskProof.deleteMany({ where: { taskId: { in: taskIds } } });
+      }
+      await tx.dailyTask.deleteMany({
+        where: { OR: [{ userId: id }, { reviewedById: id }] },
+      });
+      await tx.notification.deleteMany({ where: { userId: id } });
+      await tx.kpiProof.deleteMany({ where: { userId: id } });
+      await tx.kpiDayEntry.updateMany({ where: { userId: id }, data: { userId: null } });
+      await tx.branchManager.deleteMany({ where: { userId: id } });
+      await tx.monthlyEmployeeScore.deleteMany({ where: { userId: id } });
+      await tx.taskTemplate.deleteMany({ where: { userId: id } });
+      await tx.auditLog.updateMany({ where: { userId: id }, data: { userId: null } });
+
+      const reassign = { where: { adminId: id }, data: { adminId: actor.id } };
+      await tx.dailyClinicCheck.updateMany(reassign);
+      await tx.receptionCheck.updateMany(reassign);
+      await tx.uniformCheck.updateMany(reassign);
+      await tx.warehouseCheck.updateMany(reassign);
+      await tx.callEntry.updateMany(reassign);
+      await tx.review.updateMany(reassign);
+      await tx.seoCheck.updateMany(reassign);
+      await tx.adsCheck.updateMany(reassign);
+      await tx.flyerEntry.updateMany(reassign);
+      await tx.bloggerEntry.updateMany(reassign);
+      await tx.doctorStory.updateMany(reassign);
+      await tx.doctorReferral.updateMany(reassign);
+      await tx.mysteryPatientTest.updateMany(reassign);
+
+      await tx.user.delete({ where: { id } });
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: actor.id,
+        action: 'user_delete',
+        entity: 'User',
+        entityId: id,
+        meta: { email: user.email, role: user.role } as any,
+      },
+    });
+
+    return { ok: true, id };
   }
 }

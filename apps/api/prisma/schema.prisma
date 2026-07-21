@@ -494,14 +494,17 @@ model MysteryPatientTest {
 }
 
 model AiWeeklyReport {
-  id        String      @id @default(cuid())
-  weekStart DateTime    @db.Date
-  type      AiReportType
-  content   String
-  createdAt DateTime    @default(now())
+  id         String       @id @default(cuid())
+  weekStart  DateTime     @db.Date
+  periodEnd  DateTime?    @db.Date
+  period     String       @default("WEEK")
+  type       AiReportType
+  content    String
+  createdAt  DateTime     @default(now())
 
-  @@unique([weekStart, type])
+  @@unique([weekStart, type, period])
   @@index([weekStart])
+  @@index([period, weekStart])
 }
 
 model KpiWeight {

@@ -357,20 +357,54 @@ export class KpiService {
     });
   }
 
-  async generateAiReport(type: 'SERVICES' | 'CALLS', weekStart?: string) {
-    const date = toDateOnly(weekStart || new Date());
-    // Align to Monday
-    const day = date.getUTCDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    date.setUTCDate(date.getUTCDate() + diff);
+  async generateAiReport(
+    type: 'SERVICES' | 'CALLS' | 'KPI',
+    opts?: {
+      period?: string;
+      from?: string;
+      to?: string;
+      weekStart?: string;
+      branchId?: string;
+    },
+  ) {
+    const period = String(opts?.period || 'WEEK').toUpperCase();
+    const { start, end } = resolveAiPeriod(period, opts?.from || opts?.weekStart, opts?.to);
+    const startIso = start.toISOString().slice(0, 10);
+    const endIso = end.toISOString().slice(0, 10);
+    const periodLabel =
+      period === 'DAY'
+        ? 'Kunlik'
+        : period === 'WEEK'
+          ? 'Haftalik'
+          : period === 'MONTH'
+            ? 'Oylik'
+            : period === 'YEAR'
+              ? 'Yillik'
+              : 'Davr';
 
-    const end = new Date(date);
-    end.setUTCDate(end.getUTCDate() + 6);
+    const scores = await this.prisma.dailyScore.findMany({
+      where: {
+        date: { gte: start, lte: end },
+        ...(opts?.branchId ? { branchId: opts.branchId } : {}),
+      },
+      orderBy: { date: 'asc' },
+    });
+    const avgScore = scores.length
+      ? Math.round((scores.reduce((s, x) => s + x.totalScore, 0) / scores.length) * 10) / 10
+      : 0;
+
+    const entries = await this.prisma.kpiDayEntry.findMany({
+      where: {
+        date: { gte: start, lte: end },
+        ...(opts?.branchId ? { branchId: opts.branchId } : {}),
+      },
+    });
+    const doneCount = entries.filter((e) => e.done).length;
 
     let content = '';
     if (type === 'CALLS') {
       const calls = await this.prisma.callEntry.findMany({
-        where: { date: { gte: date, lte: end } },
+        where: { date: { gte: start, lte: end } },
       });
       const total = calls.reduce((s, c) => s + c.callsCount, 0);
       const booked = calls.reduce((s, c) => s + c.bookedCount, 0);
@@ -378,70 +412,96 @@ export class KpiService {
         ? Math.round((calls.reduce((s, c) => s + c.conversion, 0) / calls.length) * 10) / 10
         : 0;
       content = [
-        `# Haftalik qo'ng'iroqlar tahlili`,
-        `Davr: ${date.toISOString().slice(0, 10)} — ${end.toISOString().slice(0, 10)}`,
+        `# ${periodLabel} qo'ng'iroqlar tahlili`,
+        `Davr: ${startIso} — ${endIso}`,
+        `KPI o'rtacha: ${avgScore}% · Bajarilgan punktlar: ${doneCount}/${entries.length}`,
         ``,
-        `## Asosiy ko'rsatkichlar`,
-        `- Jami qo'ng'iroqlar: ${total}`,
+        `## Asosiy`,
+        `- Qo'ng'iroqlar: ${total}`,
         `- Yozilganlar: ${booked}`,
-        `- O'rtacha konversiya: ${avgConv}%`,
-        ``,
-        `## Tavsiyalar`,
-        `- Eng faol soatlarda retsepshn xodimlarini mustahkamlash`,
-        `- O'tkazib yuborilgan qo'ng'iroqlarni 1 soat ichida qayta qo'ng'iroq qilish`,
-        `- Yangi bemorlar uchun kunlik 100 qo'ng'iroq maqsadini saqlash`,
-        `- Past konversiyali kunlarda skriptlarni qayta ko'rib chiqish`,
-        ``,
-        `_OpenAI kaliti sozlanganda chuqur AI tahlil avtomatik ishlaydi._`,
+        `- Konversiya: ${avgConv}%`,
       ].join('\n');
-    } else {
+    } else if (type === 'SERVICES') {
       const reviews = await this.prisma.review.findMany({
-        where: { date: { gte: date, lte: end } },
+        where: { date: { gte: start, lte: end } },
       });
       const social = await this.prisma.socialStats.findMany({
-        where: { date: { gte: date, lte: end } },
+        where: { date: { gte: start, lte: end } },
       });
       const pos = reviews.filter((r) => r.quality === 'POSITIVE').reduce((s, r) => s + r.count, 0);
       const totalR = reviews.reduce((s, r) => s + r.count, 0);
       content = [
-        `# Haftalik xizmatlar va marketing tahlili`,
-        `Davr: ${date.toISOString().slice(0, 10)} — ${end.toISOString().slice(0, 10)}`,
+        `# ${periodLabel} xizmatlar / marketing tahlili`,
+        `Davr: ${startIso} — ${endIso}`,
+        `KPI o'rtacha: ${avgScore}%`,
         ``,
-        `## Sharhlar`,
-        `- Jami: ${totalR}, ijobiy: ${pos} (${totalR ? Math.round((pos / totalR) * 100) : 0}%)`,
-        ``,
-        `## SMM faollik`,
+        `## Sharhlar: ${totalR}, ijobiy: ${pos}`,
         ...social.map(
           (s) =>
-            `- ${s.platform}: post ${s.posts}, stories ${s.stories}, reels ${s.reels}, +obunachi ${s.newFollowers}`,
+            `- ${s.platform}: post ${s.posts}, stories ${s.stories}, reels ${s.reels}, +${s.newFollowers}`,
+        ),
+      ].join('\n');
+    } else {
+      const byKey: Record<string, { done: number; total: number }> = {};
+      for (const e of entries) {
+        const root = e.nodeKey.split('.')[0];
+        if (!byKey[root]) byKey[root] = { done: 0, total: 0 };
+        byKey[root].total++;
+        if (e.done) byKey[root].done++;
+      }
+      content = [
+        `# ${periodLabel} KPI hisobot`,
+        `Davr: ${startIso} — ${endIso}`,
+        `O'rtacha ball: ${avgScore}%`,
+        `Kunlar: ${scores.length}`,
+        `Bajarilgan: ${doneCount}/${entries.length}`,
+        ``,
+        `## Bo'limlar`,
+        ...Object.entries(byKey).map(
+          ([k, v]) => `- ${k}: ${v.done}/${v.total}`,
         ),
         ``,
-        `## Tavsiyalar`,
-        `- Instagram Reels va shifokor stories chastotasini oshirish`,
-        `- Saytda eng ko'p so'raladigan xizmatlar uchun yangi blog maqolalari`,
-        `- Ijobiy sharhlarni QR orqali ko'paytirish kampaniyasi`,
-        `- Past faollikli kunlarda reklama budjetini qayta taqsimlash`,
-        ``,
-        `_OpenAI kaliti sozlanganda chuqur AI tahlil avtomatik ishlaydi._`,
+        `## Kunlik ballar`,
+        ...scores.map(
+          (s) => `- ${String(s.date).slice(0, 10)}: ${s.totalScore}% (${s.colorStatus})`,
+        ),
       ].join('\n');
     }
 
+    const reportType = type === 'KPI' ? 'SERVICES' : type;
     const aiText = await openaiChat(
-      `Siz dermatologiya klinikasi KPI tahlilchisiz. Quyidagi ma'lumotlar asosida o'zbek tilida qisqa, amaliy haftalik hisobot yozing:\n\n${content}`,
+      `Siz Radeski KPI manager system AI tahlilchisiz. O'zbek tilida qisqa, amaliy ${periodLabel.toLowerCase()} hisobot yozing. Raqamlarni saqlang, aniq tavsiyalar bering.\n\n${content}`,
+      {
+        system:
+          'Siz Radeski KPI AI nazoratchisisiz. Hisobotni o‘zbek tilida, tuzilmali (sarlavha, raqamlar, tavsiyalar) yozing.',
+        maxTokens: 2200,
+      },
     );
     if (aiText) content = aiText;
 
-    const report = await this.prisma.aiWeeklyReport.upsert({
-      where: { weekStart_type: { weekStart: date, type } },
-      create: { weekStart: date, type, content },
-      update: { content },
+    const existing = await this.prisma.aiWeeklyReport.findFirst({
+      where: { weekStart: start, type: reportType as any, period },
     });
+    const report = existing
+      ? await this.prisma.aiWeeklyReport.update({
+          where: { id: existing.id },
+          data: { content, periodEnd: end, period },
+        })
+      : await this.prisma.aiWeeklyReport.create({
+          data: {
+            weekStart: start,
+            periodEnd: end,
+            period,
+            type: reportType as any,
+            content,
+          },
+        });
 
-    const preview = content.slice(0, 700) + (content.length > 700 ? '…' : '');
+    const preview = content.slice(0, 500) + (content.length > 500 ? '…' : '');
     await this.notifications.createForRoles(
-      ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN'],
-      type === 'CALLS' ? "AI: Qo'ng'iroqlar tahlili" : 'AI: Xizmatlar tahlili',
-      `Yangi haftalik hisobot tayyor.\n\n${preview}`,
+      ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
+      `AI: ${periodLabel} hisobot`,
+      preview,
       'AI_REPORT',
       { emoji: '🤖' },
     );
@@ -450,6 +510,43 @@ export class KpiService {
   }
 
   async listAiReports() {
-    return this.prisma.aiWeeklyReport.findMany({ orderBy: { weekStart: 'desc' }, take: 20 });
+    return this.prisma.aiWeeklyReport.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 40,
+    });
   }
+}
+
+function resolveAiPeriod(
+  period: string,
+  from?: string,
+  to?: string,
+): { start: Date; end: Date } {
+  const base = toDateOnly(from || new Date());
+  if (period === 'DAY') {
+    return { start: base, end: base };
+  }
+  if (period === 'WEEK') {
+    const day = base.getUTCDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const start = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() + diff));
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 6);
+    return { start, end };
+  }
+  if (period === 'MONTH') {
+    const start = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), 1));
+    const end = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0));
+    return { start, end };
+  }
+  if (period === 'YEAR') {
+    const start = new Date(Date.UTC(base.getUTCFullYear(), 0, 1));
+    const end = new Date(Date.UTC(base.getUTCFullYear(), 11, 31));
+    return { start, end };
+  }
+  // CUSTOM
+  const start = toDateOnly(from || new Date());
+  const end = toDateOnly(to || from || new Date());
+  if (end < start) return { start: end, end: start };
+  return { start, end };
 }

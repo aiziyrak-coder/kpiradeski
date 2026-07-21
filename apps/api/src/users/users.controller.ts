@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
 import { UsersService } from './users.service';
@@ -51,5 +51,10 @@ export class UsersController {
     @Body() dto: UpdateUserDto,
   ) {
     return this.users.update(actor, id, dto);
+  }
+
+  @Delete(':id')
+  remove(@CurrentUser() actor: { id: string; role: Role }, @Param('id') id: string) {
+    return this.users.remove(actor, id);
   }
 }
