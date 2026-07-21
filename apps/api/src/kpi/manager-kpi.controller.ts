@@ -64,6 +64,7 @@ export class ManagerKpiController {
   }
 
   @Post('proof')
+  @Roles(Role.MANAGER)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),

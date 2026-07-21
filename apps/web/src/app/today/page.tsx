@@ -1,14 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { RoleGate } from '@/components/RoleGate';
 import { useToast } from '@/components/Toast';
 import { useI18n } from '@/lib/i18n';
+import { useAuth } from '@/lib/auth';
 import { api, getToken } from '@/lib/api';
 import { todayISO } from '@/types';
 import { cn } from '@/lib/utils';
-import { Building2, ChevronDown, ChevronRight, Upload } from 'lucide-react';
+import { ChevronDown, ChevronRight, Check, Upload, X } from 'lucide-react';
 
 type Freq = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
@@ -32,16 +33,33 @@ const FREQ_TABS: { id: Freq; uz: string; ru: string }[] = [
   { id: 'MONTHLY', uz: 'Oylik', ru: 'Месяц' },
 ];
 
+function countLeaves(n: TreeNode): { done: number; total: number } {
+  if (!n.children?.length) {
+    return { done: n.done ? 1 : 0, total: 1 };
+  }
+  return n.children.reduce(
+    (acc, c) => {
+      const x = countLeaves(c);
+      return { done: acc.done + x.done, total: acc.total + x.total };
+    },
+    { done: 0, total: 0 },
+  );
+}
+
 export default function TodayPage() {
   const toast = useToast();
   const { lang } = useI18n();
+  const { user } = useAuth();
+  const isManager = user?.role === 'MANAGER';
+  const canUploadProof = isManager;
+
   const [branches, setBranches] = useState<any[]>([]);
   const [branchId, setBranchId] = useState('');
   const [freq, setFreq] = useState<Freq>('DAILY');
   const [date, setDate] = useState(todayISO());
   const [day, setDay] = useState<any>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const [busy, setBusy] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const loadBranches = useCallback(async () => {
     const list = await api<any[]>('/branches/mine');
@@ -55,7 +73,6 @@ export default function TodayPage() {
       `/manager-kpi/day?branchId=${branchId}&date=${date}&frequency=${freq}`,
     );
     setDay(d);
-    // auto-expand roots
     const init: Record<string, boolean> = {};
     for (const n of d.tree || []) init[n.key] = true;
     setOpen((o) => ({ ...init, ...o }));
@@ -70,10 +87,21 @@ export default function TodayPage() {
   }, [branchId, freq, date]);
 
   const title = (n: TreeNode) => (lang === 'ru' ? n.titleRu : n.titleUz);
+  const tree: TreeNode[] = day?.tree || [];
+
+  const totals = useMemo(() => {
+    return tree.reduce(
+      (acc, n) => {
+        const x = countLeaves(n);
+        return { done: acc.done + x.done, total: acc.total + x.total };
+      },
+      { done: 0, total: 0 },
+    );
+  }, [tree]);
 
   async function toggleDone(node: TreeNode) {
-    if (busy) return;
-    setBusy(true);
+    if (busyKey) return;
+    setBusyKey(node.key);
     try {
       const next = !node.done;
       const value =
@@ -96,12 +124,13 @@ export default function TodayPage() {
     } catch (e: any) {
       toast.error(e.message);
     } finally {
-      setBusy(false);
+      setBusyKey(null);
     }
   }
 
   async function uploadProof(nodeKey: string, file: File) {
-    setBusy(true);
+    if (!canUploadProof) return;
+    setBusyKey(nodeKey);
     try {
       const fd = new FormData();
       fd.append('file', file);
@@ -122,115 +151,201 @@ export default function TodayPage() {
     } catch (e: any) {
       toast.error(e.message);
     } finally {
-      setBusy(false);
+      setBusyKey(null);
     }
   }
 
-  function renderRows(nodes: TreeNode[], depth = 0): React.ReactNode[] {
-    const rows: React.ReactNode[] = [];
-    for (const n of nodes) {
-      const hasKids = n.children?.length > 0;
-      const isOpen = hasKids ? open[n.key] !== false : false;
-      rows.push(
-        <tr
-          key={n.key}
+  function LeafRow({ node, depth }: { node: TreeNode; depth: number }) {
+    const showProof = canUploadProof && node.proofRequired && node.inputType !== 'GROUP';
+    const rejected = node.aiStatus === 'REJECTED';
+    const approved = node.aiStatus === 'APPROVED';
+
+    return (
+      <div
+        className={cn(
+          'flex items-center gap-3 px-3 sm:px-4 py-2.5 border-t border-teal-900/[0.06]',
+          node.done && 'bg-teal-50/50',
+        )}
+        style={{ paddingLeft: 12 + depth * 14 }}
+      >
+        <button
+          type="button"
+          disabled={!!busyKey}
+          onClick={() => toggleDone(node)}
           className={cn(
-            'border-b border-black/5',
-            n.done && 'bg-emerald-50/40',
-            depth === 0 && 'bg-white',
+            'shrink-0 w-5 h-5 rounded-md border-2 grid place-items-center transition',
+            node.done
+              ? 'bg-teal-800 border-teal-800 text-white'
+              : 'border-teal-800/25 bg-white hover:border-teal-700',
           )}
+          aria-label="belgilash"
         >
-          <td className="py-2.5 pr-2 w-10">
+          {node.done && <Check className="w-3 h-3" strokeWidth={3} />}
+        </button>
+
+        <div className="flex-1 min-w-0">
+          <p className={cn('text-sm leading-snug', node.done && 'text-teal-900')}>
+            {title(node)}
+          </p>
+          {rejected && node.aiNote && (
+            <p className="text-[11px] text-rose-600 mt-0.5 truncate">{node.aiNote}</p>
+          )}
+        </div>
+
+        {showProof && (
+          <label
+            className={cn(
+              'shrink-0 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium cursor-pointer border transition',
+              approved && 'border-emerald-200 bg-emerald-50 text-emerald-800',
+              rejected && 'border-rose-200 bg-rose-50 text-rose-800',
+              !approved && !rejected && 'border-teal-200 bg-white text-teal-900 hover:bg-teal-50',
+              busyKey === node.key && 'opacity-50 pointer-events-none',
+            )}
+          >
+            {approved ? (
+              <Check className="w-3.5 h-3.5" />
+            ) : rejected ? (
+              <X className="w-3.5 h-3.5" />
+            ) : (
+              <Upload className="w-3.5 h-3.5" />
+            )}
+            {approved ? 'OK' : rejected ? 'Qayta' : 'Dalil'}
             <input
-              type="checkbox"
-              className="w-4 h-4 accent-teal-800"
-              checked={!!n.done}
-              disabled={busy}
-              onChange={() => toggleDone(n)}
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadProof(node.key, f);
+                e.target.value = '';
+              }}
             />
-          </td>
-          <td className="py-2.5">
-            <div className="flex items-center gap-1" style={{ paddingLeft: depth * 16 }}>
-              {hasKids ? (
-                <button
-                  type="button"
-                  className="p-0.5 text-ink-muted"
-                  onClick={() => setOpen((o) => ({ ...o, [n.key]: !isOpen }))}
-                >
-                  {isOpen ? (
-                    <ChevronDown className="w-4 h-4" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
-                </button>
-              ) : (
-                <span className="w-5" />
-              )}
-              <span
-                className={cn(
-                  'text-sm',
-                  depth === 0 && 'font-semibold text-ink',
-                  depth === 1 && 'font-medium text-ink',
-                  depth > 1 && 'text-ink-soft',
-                )}
-              >
-                {title(n)}
-              </span>
-            </div>
-          </td>
-          <td className="py-2.5 text-right text-sm tabular-nums text-teal-800 w-16">
-            {n.score != null ? `${n.score}%` : ''}
-          </td>
-          <td className="py-2.5 w-28">
-            {n.proofRequired && (
-              <label className="inline-flex items-center gap-1 text-xs text-teal-800 cursor-pointer">
-                <Upload className="w-3.5 h-3.5" />
-                {n.aiStatus === 'REJECTED' ? 'Qayta' : n.aiStatus === 'APPROVED' ? '✓' : 'Dalil'}
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  className="hidden"
-                  disabled={busy}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) uploadProof(n.key, f);
-                    e.target.value = '';
-                  }}
-                />
-              </label>
+          </label>
+        )}
+
+        {!canUploadProof && node.proofRequired && node.inputType !== 'GROUP' && (
+          <span
+            className={cn(
+              'shrink-0 text-[11px] font-medium px-2 py-1 rounded-md',
+              approved && 'bg-emerald-50 text-emerald-800',
+              rejected && 'bg-rose-50 text-rose-700',
+              !approved && !rejected && 'bg-black/[0.04] text-ink-muted',
             )}
-            {n.aiStatus === 'REJECTED' && n.aiNote && (
-              <p className="text-[10px] text-rose-600 mt-0.5 line-clamp-1">{n.aiNote}</p>
-            )}
-          </td>
-        </tr>,
-      );
-      if (hasKids && isOpen) {
-        rows.push(...renderRows(n.children, depth + 1));
-      }
-    }
-    return rows;
+          >
+            {approved ? 'Dalil ✓' : rejected ? 'Rad' : '—'}
+          </span>
+        )}
+      </div>
+    );
   }
 
-  const tree: TreeNode[] = day?.tree || [];
+  function SectionCard({ node }: { node: TreeNode }) {
+    const hasKids = !!node.children?.length;
+    const isOpen = open[node.key] !== false;
+    const leaf = countLeaves(node);
+    const pct = leaf.total ? Math.round((leaf.done / leaf.total) * 100) : 0;
+
+    if (!hasKids) {
+      return (
+        <div className="rounded-xl border border-teal-900/10 bg-white overflow-hidden shadow-sm">
+          <LeafRow node={node} depth={0} />
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-xl border border-teal-900/10 bg-white overflow-hidden shadow-sm">
+        <button
+          type="button"
+          className="w-full flex items-center gap-3 px-3 sm:px-4 py-3 text-left bg-teal-950/[0.03] hover:bg-teal-950/[0.05] transition"
+          onClick={() => setOpen((o) => ({ ...o, [node.key]: !isOpen }))}
+        >
+          <span className="text-teal-800/70">
+            {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-ink text-[15px] tracking-tight">{title(node)}</p>
+            <p className="text-xs text-ink-muted mt-0.5 tabular-nums">
+              {leaf.done}/{leaf.total}
+            </p>
+          </div>
+          <div className="shrink-0 flex items-center gap-2">
+            <div className="w-16 h-1.5 rounded-full bg-black/[0.06] overflow-hidden hidden sm:block">
+              <div
+                className="h-full rounded-full bg-teal-700 transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="text-sm tabular-nums font-medium text-teal-900 w-10 text-right">
+              {pct}%
+            </span>
+          </div>
+        </button>
+
+        {isOpen && (
+          <div>
+            {node.children.map((child) =>
+              child.children?.length ? (
+                <NestedGroup key={child.key} node={child} depth={1} />
+              ) : (
+                <LeafRow key={child.key} node={child} depth={1} />
+              ),
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function NestedGroup({ node, depth }: { node: TreeNode; depth: number }) {
+    const isOpen = open[node.key] !== false;
+    const leaf = countLeaves(node);
+
+    return (
+      <div className="border-t border-teal-900/[0.06]">
+        <button
+          type="button"
+          className="w-full flex items-center gap-2 py-2.5 text-left hover:bg-black/[0.02]"
+          style={{ paddingLeft: 12 + depth * 14, paddingRight: 12 }}
+          onClick={() => setOpen((o) => ({ ...o, [node.key]: !isOpen }))}
+        >
+          {isOpen ? (
+            <ChevronDown className="w-3.5 h-3.5 text-ink-muted" />
+          ) : (
+            <ChevronRight className="w-3.5 h-3.5 text-ink-muted" />
+          )}
+          <span className="flex-1 text-sm font-medium text-ink">{title(node)}</span>
+          <span className="text-xs tabular-nums text-ink-muted">
+            {leaf.done}/{leaf.total}
+          </span>
+        </button>
+        {isOpen &&
+          node.children.map((c) =>
+            c.children?.length ? (
+              <NestedGroup key={c.key} node={c} depth={depth + 1} />
+            ) : (
+              <LeafRow key={c.key} node={c} depth={depth + 1} />
+            ),
+          )}
+      </div>
+    );
+  }
 
   return (
     <RoleGate allow={['MANAGER', 'ADMIN', 'SUPER_ADMIN']}>
       <AppShell>
-        <div className="max-w-4xl mx-auto space-y-4 pb-24">
+        <div className="max-w-2xl mx-auto space-y-4 pb-24">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h1 className="font-display text-2xl text-ink">Ishlar</h1>
-              <p className="text-sm tabular-nums text-ink-muted">
-                {day?.totalScore != null ? `${day.totalScore}%` : '—'}
-                {day?.completion
-                  ? ` · ${day.completion.requiredFilled}/${day.completion.requiredTotal}`
-                  : ''}
+              <h1 className="font-display text-2xl sm:text-3xl text-ink tracking-tight">Ishlar</h1>
+              <p className="text-sm tabular-nums text-ink-muted mt-0.5">
+                {totals.done}/{totals.total}
+                {day?.totalScore != null ? ` · ${day.totalScore}%` : ''}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2 items-center">
+            <div className="flex flex-wrap gap-2">
               <select
-                className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm"
+                className="h-10 rounded-lg border border-teal-900/10 bg-white px-3 text-sm"
                 value={branchId}
                 onChange={(e) => setBranchId(e.target.value)}
               >
@@ -242,28 +357,24 @@ export default function TodayPage() {
               </select>
               <input
                 type="date"
-                className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm"
+                className="h-10 rounded-lg border border-teal-900/10 bg-white px-3 text-sm"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
               />
             </div>
           </div>
 
-          {!branches.length && (
-            <div className="flex items-center gap-2 text-sm text-ink-muted">
-              <Building2 className="w-4 h-4" /> Filial yoʻq
-            </div>
-          )}
-
-          <div className="flex gap-1 p-1 rounded-2xl bg-black/[0.04]">
+          <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-teal-950/[0.05]">
             {FREQ_TABS.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => setFreq(t.id)}
                 className={cn(
-                  'flex-1 rounded-xl py-2 text-sm font-medium transition',
-                  freq === t.id ? 'bg-white text-teal-900 shadow-sm' : 'text-ink-muted',
+                  'rounded-lg py-2 text-sm font-medium transition',
+                  freq === t.id
+                    ? 'bg-white text-teal-950 shadow-sm'
+                    : 'text-ink-muted hover:text-ink',
                 )}
               >
                 {lang === 'ru' ? t.ru : t.uz}
@@ -271,20 +382,14 @@ export default function TodayPage() {
             ))}
           </div>
 
-          <div className="rounded-2xl border border-black/8 bg-white overflow-hidden">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-black/8 text-xs uppercase tracking-wide text-ink-muted">
-                  <th className="py-2.5 px-3 w-10" />
-                  <th className="py-2.5 px-1">Boʻlim / ish</th>
-                  <th className="py-2.5 px-2 text-right w-16">%</th>
-                  <th className="py-2.5 px-3 w-28">Dalil</th>
-                </tr>
-              </thead>
-              <tbody className="px-2">{renderRows(tree)}</tbody>
-            </table>
+          <div className="space-y-2.5">
+            {tree.map((n) => (
+              <SectionCard key={n.key} node={n} />
+            ))}
             {!tree.length && (
-              <p className="text-sm text-ink-muted text-center py-8">—</p>
+              <div className="rounded-xl border border-dashed border-teal-900/15 py-12 text-center text-ink-muted text-sm">
+                —
+              </div>
             )}
           </div>
         </div>
