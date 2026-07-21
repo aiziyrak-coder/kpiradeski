@@ -1,0 +1,25 @@
+# Production overrides — TLS va reverse proxy alohida (Caddy/Nginx)
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+services:
+  db:
+    ports: []  # DB faqat ichki tarmoqda
+    restart: always
+
+  api:
+    environment:
+      NODE_ENV: production
+      ALLOW_INITIAL_SEED: ${ALLOW_INITIAL_SEED:-false}
+      SEED_WIPE: "false"
+      SEED_ON_START: "false"
+    restart: always
+    deploy:
+      replicas: 1  # Telegram polling — bitta instansiya
+
+  web:
+    build:
+      args:
+        NEXT_PUBLIC_DEMO: "false"
+    environment:
+      NEXT_PUBLIC_DEMO: "false"
+    restart: always

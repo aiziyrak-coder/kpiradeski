@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --tg-bg: #f7faf9;
+  --tg-text: #0f1f1c;
+  --tg-hint: #6b7c78;
+  --tg-button: #0f766e;
+  --tg-viewport-stable-height: 100dvh;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+html {
+  scroll-behavior: smooth;
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-sand-50 text-ink antialiased;
+  font-feature-settings: 'ss01' on, 'cv11' on;
+  min-height: 100%;
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.tg-mini-app body,
+html.tg-mini-app body {
+  background: var(--tg-bg);
+  min-height: var(--tg-viewport-stable-height, 100dvh);
+}
+
+::selection {
+  @apply bg-teal-200/70 text-ink;
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .safe-top {
+    padding-top: var(--safe-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: var(--safe-bottom);
+  }
+
+  .safe-pad {
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+  }
+
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* Mobile forms: larger tap targets */
+@media (max-width: 1023px) {
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 16px; /* iOS zoom prevent */
+  }
+}
+
+/* Custom scrollbar — desktop only */
+@media (min-width: 1024px) {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #a8d5cc;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

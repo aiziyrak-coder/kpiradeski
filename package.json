@@ -1,0 +1,12 @@
+{
+  "name": "klinikpi",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev:api": "npm run start:dev --prefix apps/api",
+    "dev:web": "npm run dev --prefix apps/web",
+    "db:up": "docker compose up -d db",
+    "db:setup": "npm run db:setup --prefix apps/api",
+    "docker:up": "docker compose up --build"
+  }
+}

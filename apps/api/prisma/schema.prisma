@@ -1,0 +1,540 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  DIRECTOR
+  SUPER_ADMIN
+  STAFF
+}
+
+enum StaffPosition {
+  CLINIC
+  RECEPTION
+  SMM
+  WAREHOUSE
+  MARKETING
+  MANAGEMENT
+  OTHER
+}
+
+enum TaskFrequency {
+  DAILY
+  WEEKLY
+}
+
+enum TaskStatus {
+  PENDING
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum ReviewQuality {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum ReviewSource {
+  QR
+  WEBSITE
+  INSTAGRAM
+  VERBAL
+  OTHER
+}
+
+enum NotificationType {
+  REMINDER
+  ALERT
+  AI_REPORT
+  STOCK
+  SCORE
+  MYSTERY
+  SYSTEM
+}
+
+enum AiReportType {
+  SERVICES
+  CALLS
+}
+
+model User {
+  id           String         @id @default(cuid())
+  name         String
+  email        String         @unique
+  passwordHash String
+  role         Role           @default(ADMIN)
+  position     StaffPosition?
+  phone        String?
+  avatarUrl    String?
+  bio          String?
+  telegramId   String?        @unique
+  branchId     String?
+  active       Boolean        @default(true)
+  tokenVersion Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  branch          Branch?               @relation(fields: [branchId], references: [id])
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+  dailyClinic     DailyClinicCheck[]
+  receptionChecks ReceptionCheck[]
+  uniformChecks   UniformCheck[]
+  warehouseChecks WarehouseCheck[]
+  callEntries     CallEntry[]
+  reviews         Review[]
+  seoChecks       SeoCheck[]
+  adsChecks       AdsCheck[]
+  flyerEntries    FlyerEntry[]
+  bloggerEntries  BloggerEntry[]
+  doctorStories   DoctorStory[]
+  doctorReferrals DoctorReferral[]
+  mysteryTests    MysteryPatientTest[]
+  dailyTasks      DailyTask[]           @relation("TaskAssignee")
+  reviewedTasks   DailyTask[]           @relation("TaskReviewer")
+  monthlyScores   MonthlyEmployeeScore[]
+  taskTemplates   TaskTemplate[]
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  createdAt DateTime @default(now())
+  users     User[]
+  doctors   Doctor[]
+  products  WarehouseProduct[]
+}
+
+model Doctor {
+  id        String   @id @default(cuid())
+  name      String
+  specialty String?
+  active    Boolean  @default(true)
+  branchId  String?
+  createdAt DateTime @default(now())
+
+  branch    Branch?           @relation(fields: [branchId], references: [id])
+  stories   DoctorStory[]
+  referrals DoctorReferral[]
+}
+
+model DailyClinicCheck {
+  id         String   @id @default(cuid())
+  date       DateTime @db.Date
+  items      Json
+  percentage Float
+  adminId    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  admin User @relation(fields: [adminId], references: [id])
+
+  @@unique([date])
+  @@index([date])
+}
+
+model ReceptionCheck {
+  id         String   @id @default(cuid())
+  date       DateTime @db.Date
+  items      Json
+  percentage Float
+  adminId    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  admin User @relation(fields: [adminId], references: [id])
+
+  @@unique([date])
+  @@index([date])
+}
+
+model UniformCheck {
+  id         String   @id @default(cuid())
+  date       DateTime @db.Date
+  items      Json
+  percentage Float
+  adminId    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  admin User @relation(fields: [adminId], references: [id])
+
+  @@unique([date])
+  @@index([date])
+}
+
+model WarehouseCheck {
+  id           String   @id @default(cuid())
+  date         DateTime @db.Date
+  items        Json
+  percentage   Float
+  minStockFlag Boolean  @default(false)
+  adminId      String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  admin User @relation(fields: [adminId], references: [id])
+
+  @@unique([date])
+  @@index([date])
+}
+
+model WarehouseProduct {
+  id           String    @id @default(cuid())
+  name         String
+  category     String
+  minStock     Int       @default(10)
+  currentStock Int       @default(0)
+  expiryDate   DateTime? @db.Date
+  branchId     String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  branch Branch? @relation(fields: [branchId], references: [id])
+}
+
+enum CallType {
+  NEW
+  REPEAT
+  MISSED
+}
+
+model CallEntry {
+  id            String   @id @default(cuid())
+  date          DateTime @db.Date
+  type          CallType
+  callsCount    Int      @default(0)
+  bookedCount   Int      @default(0)
+  recalledCount Int?     @default(0)
+  conversion    Float    @default(0)
+  adminId       String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  admin User @relation(fields: [adminId], references: [id])
+
+  @@unique([date, type])
+  @@index([date])
+}
+
+model Review {
+  id        String        @id @default(cuid())
+  date      DateTime      @db.Date
+  count     Int           @default(1)
+  source    ReviewSource  @default(QR)
+  quality   ReviewQuality @default(POSITIVE)
+  note      String?
+  adminId   String
+  createdAt DateTime      @default(now())
+
+  admin User @relation(fields: [adminId], references: [id])
+
+  @@index([date])
+}
+
+model SeoCheck {
+  id             String   @id @default(cuid())
+  date           DateTime @db.Date
+  newArticle     Boolean  @default(false)
+  newVideo       Boolean  @default(false)
+  newReviews     Boolean  @default(false)
+  pageUpdated    Boolean  @default(false)
+  seoOk          Boolean  @default(false)
+  pagespeedScore Float?
+  note           String?
+  adminId        String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  admin User @relation(fields: [adminId], references: [id])
+
+  @@unique([date])
+  @@index([date])
+}
+
+model SocialStats {
+  id            String   @id @default(cuid())
+  date          DateTime @db.Date
+  platform      String
+  posts         Int      @default(0)
+  stories       Int      @default(0)
+  reels         Int      @default(0)
+  comments      Int      @default(0)
+  likes         Int      @default(0)
+  newFollowers  Int      @default(0)
+  views         Int      @default(0)
+  source        String   @default("manual")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([date, platform])
+  @@index([date])
+}
+
+model AdsCheck {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  aired     Boolean  @default(false)
+  channel   String?
+  timeSlot  String?
+  note      String?
+  adminId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  admin User @relation(fields: [adminId], references: [id])
+
+  @@unique([date])
+  @@index([date])
+}
+
+model FlyerEntry {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  count     Int
+  location  String
+  adminId   String
+  createdAt DateTime @default(now())
+
+  admin User @relation(fields: [adminId], references: [id])
+
+  @@index([date])
+}
+
+model BloggerEntry {
+  id         String   @id @default(cuid())
+  weekStart  DateTime @db.Date
+  name       String
+  followers  Int
+  niche      String?
+  contact    String?
+  note       String?
+  adminId    String
+  createdAt  DateTime @default(now())
+
+  admin User @relation(fields: [adminId], references: [id])
+
+  @@index([weekStart])
+}
+
+model DoctorStory {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  doctorId  String
+  posted    Boolean  @default(false)
+  adminId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctor Doctor @relation(fields: [doctorId], references: [id])
+  admin  User   @relation(fields: [adminId], references: [id])
+
+  @@unique([date, doctorId])
+  @@index([date])
+}
+
+model DoctorReferral {
+  id           String   @id @default(cuid())
+  weekStart    DateTime @db.Date
+  doctorId     String
+  patientsCount Int     @default(0)
+  adminId      String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  doctor Doctor @relation(fields: [doctorId], references: [id])
+  admin  User   @relation(fields: [adminId], references: [id])
+
+  @@unique([weekStart, doctorId])
+  @@index([weekStart])
+}
+
+model MysteryPatientTest {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  booked    Boolean
+  note      String?
+  adminId   String
+  createdAt DateTime @default(now())
+
+  admin User @relation(fields: [adminId], references: [id])
+
+  @@unique([date])
+  @@index([date])
+}
+
+model AiWeeklyReport {
+  id        String      @id @default(cuid())
+  weekStart DateTime    @db.Date
+  type      AiReportType
+  content   String
+  createdAt DateTime    @default(now())
+
+  @@unique([weekStart, type])
+  @@index([weekStart])
+}
+
+model KpiWeight {
+  id        String   @id @default(cuid())
+  blockKey  String   @unique
+  blockName String
+  weight    Float
+  frequency String
+  updatedAt DateTime @updatedAt
+}
+
+model DailyScore {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date @unique
+  totalScore  Float
+  blockScores Json
+  completion  Json?
+  colorStatus String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      NotificationType @default(SYSTEM)
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, read])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+}
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model Holiday {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date @unique
+  title     String
+  createdAt DateTime @default(now())
+
+  @@index([date])
+}
+
+model TaskTemplate {
+  id            String         @id @default(cuid())
+  userId        String?
+  position      StaffPosition
+  title         String
+  description   String
+  proofRequired Boolean        @default(true)
+  weight        Float          @default(10)
+  frequency     TaskFrequency  @default(DAILY)
+  active        Boolean        @default(true)
+  sortOrder     Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  user  User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks DailyTask[]
+
+  @@index([userId, active])
+  @@index([position, active])
+}
+
+model DailyTask {
+  id            String     @id @default(cuid())
+  userId        String
+  templateId    String?
+  date          DateTime   @db.Date
+  title         String
+  description   String
+  proofRequired Boolean    @default(true)
+  weight        Float      @default(10)
+  status        TaskStatus @default(PENDING)
+  employeeNote  String?
+  reviewerNote  String?
+  reviewedById  String?
+  submittedAt   DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  user       User          @relation("TaskAssignee", fields: [userId], references: [id])
+  reviewer   User?         @relation("TaskReviewer", fields: [reviewedById], references: [id])
+  template   TaskTemplate? @relation(fields: [templateId], references: [id])
+  proofs     TaskProof[]
+
+  @@unique([userId, date, templateId])
+  @@index([date, status])
+  @@index([userId, date])
+}
+
+model TaskProof {
+  id        String   @id @default(cuid())
+  taskId    String
+  fileName  String
+  mimeType  String
+  size      Int
+  path      String
+  createdAt DateTime @default(now())
+
+  task DailyTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model MonthlyEmployeeScore {
+  id         String   @id @default(cuid())
+  userId     String
+  year       Int
+  month      Int
+  totalScore Float
+  breakdown  Json
+  aiSummary  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, year, month])
+  @@index([year, month])
+}
+
+model StaffMonthlyReport {
+  id        String   @id @default(cuid())
+  year      Int
+  month     Int
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([year, month])
+}

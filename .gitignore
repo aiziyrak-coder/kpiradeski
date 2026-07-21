@@ -1,0 +1,16 @@
+node_modules
+.next
+dist
+.env
+.env.local
+*.log
+coverage
+.DS_Store
+apps/api/prisma/*.db
+apps/web/.next
+apps/api/dist
+uploads/
+apps/api/uploads/
+scripts/inspect_*.py
+scripts/remote_deploy.py
+.env.production

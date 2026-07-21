@@ -1,0 +1,16 @@
+# Server deploy — isolated localhost port, boshqa dasturlarga ta'sir qilmaydi
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.server.yml up -d --build
+
+services:
+  db:
+    container_name: klinikpi-db
+    ports: []
+
+  api:
+    container_name: klinikpi-api
+    ports: []  # faqat ichki tarmoq (web proxy orqali)
+
+  web:
+    container_name: klinikpi-web
+    ports:
+      - "127.0.0.1:13000:3000"  # nginx → faqat localhost

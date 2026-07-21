@@ -1,0 +1,152 @@
+'use client';
+
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { AppShell } from '@/components/AppShell';
+import { Button, SectionHeader } from '@/components/ui';
+import { api } from '@/lib/api';
+import { useToast } from '@/components/Toast';
+import { useAuth } from '@/lib/auth';
+import { formatTashkent } from '@/types';
+import { cn } from '@/lib/utils';
+
+function linkForType(type?: string) {
+  switch (type) {
+    case 'STOCK':
+      return '/warehouse';
+    case 'AI_REPORT':
+      return '/ai';
+    case 'SCORE':
+    case 'ALERT':
+      return '/dashboard';
+    case 'MYSTERY':
+      return '/doctors';
+    case 'REMINDER':
+      return '/team';
+    default:
+      return null;
+  }
+}
+
+export default function NotificationsPage() {
+  const toast = useToast();
+  const { user } = useAuth();
+  const [items, setItems] = useState<any[]>([]);
+  const canTest = user && ['SUPER_ADMIN', 'MANAGER', 'DIRECTOR'].includes(user.role);
+  const unread = items.filter((n) => !n.read).length;
+
+  async function load() {
+    try {
+      setItems(await api('/notifications'));
+    } catch (e: any) {
+      toast.error('Yuklash xatosi', e.message);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function markAll() {
+    try {
+      await api('/notifications/read-all', { method: 'PATCH' });
+      await load();
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  }
+
+  async function markOne(id: string) {
+    try {
+      await api(`/notifications/${id}/read`, { method: 'PATCH' });
+      await load();
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  }
+
+  async function testTelegram() {
+    try {
+      const res = await api('/notifications/telegram-test', { method: 'POST' });
+      if (res.ok) toast.success('Telegramga xabar yuborildi');
+      else toast.error('Telegram xato', res.error || "Noma'lum");
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  }
+
+  return (
+    <AppShell>
+      <SectionHeader
+        eyebrow="Eslatmalar"
+        title="Bildirishnomalar"
+        description={`${unread} o‘qilmagan · in-app + Telegram`}
+        action={
+          <div className="flex flex-wrap gap-2">
+            {canTest && (
+              <Button variant="secondary" onClick={testTelegram}>
+                Telegram test
+              </Button>
+            )}
+            <Button variant="secondary" onClick={markAll} disabled={unread === 0}>
+              Barchasini oʻqilgan
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="mb-5 rounded-2xl border border-teal-100 bg-white/80 p-4 text-sm text-ink-soft">
+        <p className="font-semibold text-teal-800 mb-2">Tezkor buyruqlar</p>
+        <div className="flex flex-wrap gap-2">
+          {['/bugun', '/holat', '/ombor', '/hafta', '/yordam'].map((c) => (
+            <code key={c} className="text-xs bg-teal-50 px-2 py-1 rounded-lg">
+              {c}
+            </code>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {items.length === 0 && (
+          <p className="text-ink-muted text-sm p-6 rounded-3xl border border-dashed border-teal-200 text-center">
+            Bildirishnoma yoʻq
+          </p>
+        )}
+        {items.map((n) => {
+          const href = linkForType(n.type);
+          return (
+            <div
+              key={n.id}
+              className={cn(
+                'rounded-2xl border p-4 transition',
+                n.read
+                  ? 'bg-white/60 border-teal-50 opacity-70'
+                  : 'bg-white border-teal-200 shadow-soft',
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <button
+                  type="button"
+                  className="text-left flex-1"
+                  onClick={() => !n.read && markOne(n.id)}
+                >
+                  <p className="text-sm font-semibold text-ink">{n.title}</p>
+                  <p className="text-sm text-ink-soft mt-0.5 whitespace-pre-wrap">{n.message}</p>
+                  <p className="text-xs text-ink-muted mt-2">
+                    {n.type} · {formatTashkent(n.createdAt)}
+                  </p>
+                </button>
+                {!n.read && <span className="w-2.5 h-2.5 rounded-full bg-teal-600 mt-1.5 shrink-0" />}
+              </div>
+              {href && (
+                <Link href={href} className="inline-block mt-2 text-xs font-semibold text-teal-700 underline">
+                  Ochish →
+                </Link>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </AppShell>
+  );
+}

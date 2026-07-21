@@ -1,0 +1,98 @@
+# KliniKPI — Development (docker compose up)
+# Production uchun: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: klinikpi-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-klinikpi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-klinikpi_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-klinikpi}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-klinikpi} -d ${POSTGRES_DB:-klinikpi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: klinikpi-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-klinikpi}:${POSTGRES_PASSWORD:-klinikpi_secret}@db:5432/${POSTGRES_DB:-klinikpi}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env — min 32 random chars}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      PORT: 4000
+      TZ: Asia/Tashkent
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      SEED_ON_START: ${SEED_ON_START:-false}
+      SEED_WIPE: ${SEED_WIPE:-false}
+      ALLOW_INITIAL_SEED: ${ALLOW_INITIAL_SEED:-true}
+    ports:
+      - "4000:4000"
+    volumes:
+      - api_uploads:/app/uploads
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ""
+        NEXT_PUBLIC_DEMO: ${NEXT_PUBLIC_DEMO:-false}
+    container_name: klinikpi-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Tashkent
+      API_PROXY_TARGET: http://api:4000
+      NEXT_PUBLIC_DEMO: ${NEXT_PUBLIC_DEMO:-false}
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+volumes:
+  postgres_data:
+  api_uploads:
