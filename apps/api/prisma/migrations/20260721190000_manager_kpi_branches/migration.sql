@@ -90,6 +90,7 @@ ALTER TABLE "KpiProof" ADD CONSTRAINT "KpiProof_userId_fkey" FOREIGN KEY ("userI
 
 -- Alter DailyScore: drop unique date, add branchId
 ALTER TABLE "DailyScore" DROP CONSTRAINT IF EXISTS "DailyScore_date_key";
+DROP INDEX IF EXISTS "DailyScore_date_key";
 ALTER TABLE "DailyScore" ADD COLUMN IF NOT EXISTS "branchId" TEXT;
 
 ALTER TABLE "DailyScore" ADD CONSTRAINT "DailyScore_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "Branch"("id") ON DELETE CASCADE ON UPDATE CASCADE;

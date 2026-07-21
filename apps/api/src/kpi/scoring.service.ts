@@ -67,38 +67,44 @@ export class ScoringService {
           completion: { restDay: true },
         };
       }
-      return this.prisma.dailyScore.upsert({
-        where: { branchId_date: { branchId: branch.id, date } },
-        create: {
+      const restCompletion = {
+        restDay: true,
+        reason: holiday?.title || 'Dam olish kuni',
+        requiredPct: 100,
+        requiredFilled: 0,
+        requiredTotal: 0,
+        incomplete: [],
+        filled: {},
+        allFilledKeys: [],
+      };
+      const existing = await this.prisma.dailyScore.findFirst({
+        where: {
+          OR: [
+            { branchId: branch.id, date },
+            { branchId: null, date },
+          ],
+        },
+        orderBy: { updatedAt: 'desc' },
+      });
+      if (existing) {
+        return this.prisma.dailyScore.update({
+          where: { id: existing.id },
+          data: {
+            branchId: branch.id,
+            totalScore: 0,
+            blockScores: {},
+            completion: restCompletion,
+            colorStatus: 'rest',
+          },
+        });
+      }
+      return this.prisma.dailyScore.create({
+        data: {
           branchId: branch.id,
           date,
           totalScore: 0,
           blockScores: {},
-          completion: {
-            restDay: true,
-            reason: holiday?.title || 'Dam olish kuni',
-            requiredPct: 100,
-            requiredFilled: 0,
-            requiredTotal: 0,
-            incomplete: [],
-            filled: {},
-            allFilledKeys: [],
-          },
-          colorStatus: 'rest',
-        },
-        update: {
-          totalScore: 0,
-          blockScores: {},
-          completion: {
-            restDay: true,
-            reason: holiday?.title || 'Dam olish kuni',
-            requiredPct: 100,
-            requiredFilled: 0,
-            requiredTotal: 0,
-            incomplete: [],
-            filled: {},
-            allFilledKeys: [],
-          },
+          completion: restCompletion,
           colorStatus: 'rest',
         },
       });
@@ -296,23 +302,38 @@ export class ScoringService {
       return { date, totalScore, blockScores, colorStatus: status, completion };
     }
 
-    await this.prisma.dailyScore.upsert({
-      where: { branchId_date: { branchId: branch.id, date } },
-      create: {
-        branchId: branch.id,
-        date,
-        totalScore,
-        blockScores: blockScores as Prisma.InputJsonValue,
-        completion: completion as Prisma.InputJsonValue,
-        colorStatus: status,
+    const existing = await this.prisma.dailyScore.findFirst({
+      where: {
+        OR: [
+          { branchId: branch.id, date },
+          { branchId: null, date },
+        ],
       },
-      update: {
-        totalScore,
-        blockScores: blockScores as Prisma.InputJsonValue,
-        completion: completion as Prisma.InputJsonValue,
-        colorStatus: status,
-      },
+      orderBy: { updatedAt: 'desc' },
     });
+    if (existing) {
+      await this.prisma.dailyScore.update({
+        where: { id: existing.id },
+        data: {
+          branchId: branch.id,
+          totalScore,
+          blockScores: blockScores as Prisma.InputJsonValue,
+          completion: completion as Prisma.InputJsonValue,
+          colorStatus: status,
+        },
+      });
+    } else {
+      await this.prisma.dailyScore.create({
+        data: {
+          branchId: branch.id,
+          date,
+          totalScore,
+          blockScores: blockScores as Prisma.InputJsonValue,
+          completion: completion as Prisma.InputJsonValue,
+          colorStatus: status,
+        },
+      });
+    }
 
     return { date, totalScore, blockScores, colorStatus: status, completion };
   }

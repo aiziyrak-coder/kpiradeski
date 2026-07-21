@@ -367,23 +367,41 @@ export class ManagerKpiService implements OnModuleInit {
       incomplete,
     };
 
-    await this.prisma.dailyScore.upsert({
-      where: { branchId_date: { branchId, date } },
-      create: {
-        branchId,
-        date,
-        totalScore,
-        blockScores,
-        completion,
-        colorStatus: status,
-      },
-      update: {
-        totalScore,
-        blockScores,
-        completion,
-        colorStatus: status,
-      },
+    const existing = await this.prisma.dailyScore.findFirst({
+      where: { OR: [{ branchId, date }, { branchId: null, date }] },
+      orderBy: { updatedAt: 'desc' },
     });
+    if (existing) {
+      await this.prisma.dailyScore.update({
+        where: { id: existing.id },
+        data: {
+          branchId,
+          totalScore,
+          blockScores,
+          completion,
+          colorStatus: status,
+        },
+      });
+    } else {
+      try {
+        await this.prisma.dailyScore.create({
+          data: {
+            branchId,
+            date,
+            totalScore,
+            blockScores,
+            completion,
+            colorStatus: status,
+          },
+        });
+      } catch (e: any) {
+        if (e?.code !== 'P2002') throw e;
+        await this.prisma.dailyScore.updateMany({
+          where: { branchId, date },
+          data: { totalScore, blockScores, completion, colorStatus: status },
+        });
+      }
+    }
 
     return { totalScore, blockScores, colorStatus: status, completion };
   }
