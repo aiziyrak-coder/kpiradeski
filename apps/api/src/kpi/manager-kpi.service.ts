@@ -46,6 +46,22 @@ export class ManagerKpiService implements OnModuleInit {
         await seedKpiCatalog(this.prisma as any);
         this.logger.log('KPI katalog seedlandi');
       }
+      let branch = await this.prisma.branch.findFirst();
+      if (!branch) {
+        branch = await this.prisma.branch.create({
+          data: { name: 'Radeski Dermatologiya', address: 'Toshkent' },
+        });
+      }
+      const manager = await this.prisma.user.findFirst({
+        where: { role: Role.MANAGER, active: true },
+      });
+      if (manager) {
+        await this.prisma.branchManager.upsert({
+          where: { branchId_userId: { branchId: branch.id, userId: manager.id } },
+          create: { branchId: branch.id, userId: manager.id },
+          update: {},
+        });
+      }
     } catch (e) {
       this.logger.warn(`Catalog seed: ${e}`);
     }
