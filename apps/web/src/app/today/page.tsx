@@ -1,360 +1,283 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/AppShell';
-import { ChecklistForm } from '@/components/ChecklistForm';
 import { RoleGate } from '@/components/RoleGate';
-import { Button, Input, SectionHeader, ScoreBadge, Select, Textarea } from '@/components/ui';
+import { Button, Input, SectionHeader, Textarea, ScoreBadge } from '@/components/ui';
 import { useToast } from '@/components/Toast';
-import { api } from '@/lib/api';
-import { todayISO, type ChecklistItemMeta } from '@/types';
+import { useI18n } from '@/lib/i18n';
+import { api, getToken } from '@/lib/api';
+import { todayISO } from '@/types';
 import { cn } from '@/lib/utils';
 
-const LABELS: Record<string, string> = {
-  clinic: 'Klinika',
-  reception: 'Retsepshn',
-  calls: 'Qoʻngʻiroqlar',
-  uniform: 'Uniforma',
+type CatalogNode = {
+  key: string;
+  title: string;
+  description?: string | null;
+  inputType: string;
+  weight: number;
+  proofRequired: boolean;
+  children?: CatalogNode[];
 };
 
 export default function TodayPage() {
   const toast = useToast();
+  const { lang, t } = useI18n();
   const [date, setDate] = useState(todayISO());
-  const [meta, setMeta] = useState<any>(null);
+  const [branches, setBranches] = useState<any[]>([]);
+  const [branchId, setBranchId] = useState('');
+  const [catalog, setCatalog] = useState<CatalogNode[]>([]);
   const [day, setDay] = useState<any>(null);
-  const [tab, setTab] = useState<'clinic' | 'reception' | 'uniform' | 'calls' | 'reviews'>('clinic');
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [callForms, setCallForms] = useState<Record<string, any>>({
-    NEW: { callsCount: 0, bookedCount: 0 },
-    REPEAT: { callsCount: 0, bookedCount: 0 },
-    MISSED: { callsCount: 0, bookedCount: 0, recalledCount: 0 },
-  });
-  const [review, setReview] = useState({
-    count: 1,
-    source: 'QR',
-    quality: 'POSITIVE',
-    note: '',
-  });
+  const [path, setPath] = useState<string[]>([]);
 
-  async function load() {
-    try {
-      const [m, d] = await Promise.all([api('/kpi/meta'), api(`/kpi/day?date=${date}`)]);
-      setMeta(m);
-      setDay(d);
-      const next = {
-        NEW: { callsCount: 0, bookedCount: 0 },
-        REPEAT: { callsCount: 0, bookedCount: 0 },
-        MISSED: { callsCount: 0, bookedCount: 0, recalledCount: 0 },
-      };
-      for (const c of d.calls || []) {
-        next[c.type as keyof typeof next] = {
-          callsCount: c.callsCount,
-          bookedCount: c.bookedCount,
-          recalledCount: c.recalledCount || 0,
-        };
-      }
-      setCallForms(next);
-    } catch (e: any) {
-      toast.error('Yuklanmadi', e.message);
-    }
-  }
+  const loadBranches = useCallback(async () => {
+    const list = await api<any[]>('/branches/mine');
+    setBranches(list);
+    if (!branchId && list[0]) setBranchId(list[0].id);
+  }, [branchId]);
+
+  const loadCatalog = useCallback(async () => {
+    const tree = await api<CatalogNode[]>(`/manager-kpi/catalog?lang=${lang}`);
+    setCatalog(tree);
+  }, [lang]);
+
+  const loadDay = useCallback(async () => {
+    if (!branchId) return;
+    const d = await api(`/manager-kpi/day?branchId=${branchId}&date=${date}`);
+    setDay(d);
+  }, [branchId, date]);
 
   useEffect(() => {
-    load();
-  }, [date]);
+    loadBranches().catch((e) => toast.error(e.message));
+    loadCatalog().catch((e) => toast.error(e.message));
+  }, []);
 
-  async function saveChecklist(kind: string, items: Record<string, boolean>) {
-    setSaving(true);
-    try {
-      await api(`/kpi/${kind}`, { method: 'POST', body: JSON.stringify({ date, items }) });
-      toast.success('Saqlandi');
-      await load();
-    } catch (e: any) {
-      toast.error('Saqlanmadi', e.message);
-    } finally {
-      setSaving(false);
-    }
+  useEffect(() => {
+    loadCatalog().catch(() => {});
+  }, [lang]);
+
+  useEffect(() => {
+    loadDay().catch((e) => toast.error(e.message));
+  }, [branchId, date]);
+
+  const activeNode = useMemo(() => {
+    if (!activeKey) return null;
+    const find = (nodes: CatalogNode[], key: string): CatalogNode | null => {
+      for (const n of nodes) {
+        if (n.key === key) return n;
+        if (n.children?.length) {
+          const f = find(n.children, key);
+          if (f) return f;
+        }
+      }
+      return null;
+    };
+    return find(catalog, activeKey);
+  }, [catalog, activeKey]);
+
+  const displayNodes = useMemo(() => {
+    if (!activeKey) return catalog;
+    if (!activeNode) return catalog;
+    if (activeNode.children?.length) return activeNode.children;
+    return [activeNode];
+  }, [activeKey, activeNode, catalog]);
+
+  function openColumn(key: string) {
+    setActiveKey(key);
+    setPath([key]);
   }
 
-  async function saveCall(type: string) {
-    const f = callForms[type];
-    if (!f) return;
-    if (type !== 'MISSED' && Number(f.bookedCount) > Number(f.callsCount)) {
-      toast.error('Yozilganlar qoʻngʻiroqlardan koʻp boʻlishi mumkin emas');
-      return;
-    }
-    if (
-      type === 'MISSED' &&
-      (f as any).recalledCount != null &&
-      Number(f.bookedCount) > Number((f as any).recalledCount)
-    ) {
-      toast.error('Yozilganlar qayta qoʻngʻiroqlardan koʻp boʻlishi mumkin emas');
-      return;
-    }
+  function drillInto(key: string) {
+    setActiveKey(key);
+    setPath((p) => [...p, key]);
+  }
+
+  function goBack() {
+    setPath((p) => {
+      const next = p.slice(0, -1);
+      setActiveKey(next[next.length - 1] || null);
+      return next;
+    });
+  }
+
+  async function saveValue(nodeKey: string, value: any, done?: boolean) {
     setSaving(true);
     try {
-      await api('/kpi/calls', {
+      await api('/manager-kpi/entry', {
         method: 'POST',
-        body: JSON.stringify({ date, type, ...f }),
+        body: JSON.stringify({ branchId, date, nodeKey, value, done }),
       });
-      toast.success('Qoʻngʻiroq saqlandi');
-      await load();
+      toast.success(t('common.saved'));
+      await loadDay();
     } catch (e: any) {
-      toast.error('Saqlanmadi', e.message);
+      toast.error(e.message);
     } finally {
       setSaving(false);
     }
   }
 
-  async function saveReview() {
+  async function uploadProof(nodeKey: string, file: File) {
     setSaving(true);
     try {
-      await api('/kpi/reviews', { method: 'POST', body: JSON.stringify({ date, ...review }) });
-      toast.success('Sharh qoʻshildi');
-      setReview((r) => ({ ...r, note: '', count: 1 }));
-      await load();
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('branchId', branchId);
+      fd.append('nodeKey', nodeKey);
+      fd.append('date', date);
+      const token = getToken();
+      const res = await fetch('/api/manager-kpi/proof', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.message || 'Yuklanmadi');
+      toast.success(
+        json.aiStatus === 'APPROVED'
+          ? 'Dalil AI tasdiqladi'
+          : json.aiStatus === 'REJECTED'
+            ? 'AI rad etdi'
+            : 'Dalil yuklandi',
+        json.aiNote,
+      );
+      await loadDay();
     } catch (e: any) {
-      toast.error('Saqlanmadi', e.message);
+      toast.error(e.message);
     } finally {
       setSaving(false);
     }
   }
 
-  const completion = day?.completion || day?.score?.completion;
-  const incomplete: string[] = completion?.incomplete || [];
-
-  const tabs = [
-    { key: 'clinic' as const, label: '1. Klinika' },
-    { key: 'reception' as const, label: '2. Retsepshn' },
-    { key: 'uniform' as const, label: '3. Uniforma' },
-    { key: 'calls' as const, label: '4. Qoʻngʻiroq' },
-    { key: 'reviews' as const, label: '5. Sharh' },
-  ];
+  const entryOf = (key: string) => day?.entries?.[key];
 
   return (
     <AppShell>
-      <RoleGate allow={['ADMIN', 'MANAGER', 'SUPER_ADMIN']}>
+      <RoleGate allow={['MANAGER', 'ADMIN', 'SUPER_ADMIN']}>
         <SectionHeader
-          eyebrow="Kunlik ish"
-          title="Bugungi KPI"
-          description="Menejer ishining kunlik bahosi — klinika, retsepshn, uniforma, qoʻngʻiroq va sharhlar."
+          eyebrow="Manager KPI"
+          title="Kunlik vazifalar"
+          description="Tayyor vazifalar — filial boʻyicha. Dalil yuklang, AI avtomatik tekshiradi."
           action={
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="h-11 px-3 rounded-xl border border-teal-200 bg-white text-sm"
-            />
+            <div className="flex flex-wrap gap-2 items-center">
+              <select
+                className="h-11 px-3 rounded-xl border border-teal-200 bg-white text-sm"
+                value={branchId}
+                onChange={(e) => setBranchId(e.target.value)}
+              >
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="h-11 px-3 rounded-xl border border-teal-200 bg-white text-sm"
+              />
+            </div>
           }
         />
 
-        <div className="mb-5 grid sm:grid-cols-3 gap-3">
-          <div className="rounded-2xl bg-gradient-to-br from-teal-800 to-teal-900 text-white p-4">
-            <p className="text-teal-100/80 text-xs uppercase tracking-wider">Umumiy ball</p>
-            <p className="font-display text-4xl mt-1">
-              {day?.score ? Number(day.score.totalScore).toFixed(1) : '—'}%
-            </p>
-          </div>
-          <div className="rounded-2xl border border-teal-100 bg-white/80 p-4">
-            <p className="text-xs text-ink-muted uppercase tracking-wider">Majburiy toʻldirish</p>
-            <p className="font-display text-4xl mt-1 text-teal-800">
-              {completion ? `${completion.requiredFilled}/${completion.requiredTotal}` : '—'}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-teal-100 bg-white/80 p-4">
-            <p className="text-xs text-ink-muted mb-2">Holat</p>
-            <div className="flex flex-wrap gap-1.5">
-              {Object.keys(LABELS).map((k) => {
-                const ok = completion?.filled?.[k];
-                return (
-                  <span
-                    key={k}
-                    className={cn(
-                      'text-[11px] px-2 py-1 rounded-full border',
-                      ok
-                        ? 'bg-emerald-50 border-emerald-200 text-status-green'
-                        : 'bg-rose-50 border-rose-100 text-status-red',
-                    )}
-                  >
-                    {LABELS[k]}
-                  </span>
-                );
-              })}
-            </div>
-            {incomplete.length > 0 && (
-              <p className="text-xs text-status-red mt-2">
-                Qolgan: {incomplete.map((k) => LABELS[k] || k).join(', ')}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="flex gap-2 overflow-x-auto pb-3 mb-4">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className={cn(
-                'shrink-0 px-3 py-2 rounded-xl text-sm font-medium border transition',
-                tab === t.key
-                  ? 'bg-teal-700 text-white border-teal-700'
-                  : 'bg-white border-teal-100 text-ink-soft hover:border-teal-300',
-              )}
-            >
-              {t.label}
-              {completion?.filled?.[t.key === 'calls' ? 'calls' : t.key === 'reviews' ? 'reviews' : t.key] ? (
-                <span className="ml-1">✓</span>
-              ) : null}
-            </button>
-          ))}
-        </div>
-
-        {!meta ? (
-          <p className="text-ink-muted">Yuklanmoqda...</p>
+        {!branchId ? (
+          <p className="text-ink-muted p-8 text-center border border-dashed border-teal-200 rounded-3xl">
+            Sizga filial biriktirilmagan. Admin dan soʻrang.
+          </p>
         ) : (
           <>
-            {tab === 'clinic' && (
-              <ChecklistForm
-                title="Klinika koʻrigi"
-                description="9 punkt"
-                items={meta.clinic as ChecklistItemMeta[]}
-                initial={day?.clinic?.items}
-                percentage={day?.clinic?.percentage}
-                saving={saving}
-                onSave={(items) => saveChecklist('clinic', items)}
-              />
-            )}
-            {tab === 'reception' && (
-              <ChecklistForm
-                title="Retsepshn"
-                description="5 punkt"
-                items={meta.reception as ChecklistItemMeta[]}
-                initial={day?.reception?.items}
-                percentage={day?.reception?.percentage}
-                saving={saving}
-                onSave={(items) => saveChecklist('reception', items)}
-              />
-            )}
-            {tab === 'uniform' && (
-              <ChecklistForm
-                title="Uniforma"
-                items={meta.uniform as ChecklistItemMeta[]}
-                initial={day?.uniform?.items}
-                percentage={day?.uniform?.percentage}
-                saving={saving}
-                onSave={(items) => saveChecklist('uniform', items)}
-              />
-            )}
-            {tab === 'calls' && (
-              <div className="grid lg:grid-cols-3 gap-4">
-                {(
-                  [
-                    { key: 'NEW', label: 'Yangi bemorlar', target: 100 },
-                    { key: 'REPEAT', label: 'Takroriy' },
-                    { key: 'MISSED', label: 'Oʻtkazib yuborilgan', missed: true },
-                  ] as const
-                ).map((t) => {
-                  const f = callForms[t.key];
-                  const existing = (day?.calls || []).find((c: any) => c.type === t.key);
-                  return (
-                    <div key={t.key} className="rounded-3xl border border-teal-100 bg-white/80 p-5 shadow-soft space-y-3">
-                      <div className="flex justify-between">
-                        <h3 className="font-display text-xl">{t.label}</h3>
-                        {existing && <ScoreBadge score={existing.conversion} />}
-                      </div>
-                      <Input
-                        label={'missed' in t && t.missed ? 'Oʻtkazib yuborilgan soni' : 'Qoʻngʻiroqlar soni'}
-                        type="number"
-                        min={0}
-                        value={f.callsCount}
-                        onChange={(e) =>
-                          setCallForms((s) => ({
-                            ...s,
-                            [t.key]: { ...s[t.key], callsCount: Number(e.target.value) },
-                          }))
-                        }
-                      />
-                      {'missed' in t && t.missed && (
-                        <Input
-                          label="Qayta qoʻngʻiroq qilingan"
-                          type="number"
-                          min={0}
-                          value={f.recalledCount}
-                          onChange={(e) =>
-                            setCallForms((s) => ({
-                              ...s,
-                              [t.key]: { ...s[t.key], recalledCount: Number(e.target.value) },
-                            }))
-                          }
-                        />
-                      )}
-                      <Input
-                        label="Yozilganlar"
-                        type="number"
-                        min={0}
-                        value={f.bookedCount}
-                        onChange={(e) =>
-                          setCallForms((s) => ({
-                            ...s,
-                            [t.key]: { ...s[t.key], bookedCount: Number(e.target.value) },
-                          }))
-                        }
-                      />
-                      {'target' in t && t.target && (
-                        <p className="text-xs text-ink-muted">Maqsad: {t.target}/kun</p>
-                      )}
-                      <Button className="w-full" disabled={saving} onClick={() => saveCall(t.key)}>
-                        Saqlash
-                      </Button>
-                    </div>
-                  );
-                })}
+            <div className="mb-5 grid sm:grid-cols-3 gap-3">
+              <div className="rounded-2xl bg-gradient-to-br from-teal-800 to-teal-900 text-white p-4">
+                <p className="text-teal-100/80 text-xs uppercase tracking-wider">Yakuniy baho</p>
+                <p className="font-display text-4xl mt-1">
+                  {day?.totalScore != null ? `${Number(day.totalScore).toFixed(0)}%` : '—'}
+                </p>
               </div>
-            )}
-            {tab === 'reviews' && (
-              <div className="max-w-lg rounded-3xl border border-teal-100 bg-white/80 p-5 shadow-soft space-y-3">
-                <h3 className="font-display text-2xl">Sharh qoʻshish</h3>
-                <Input
-                  label="Soni"
-                  type="number"
-                  min={1}
-                  value={review.count}
-                  onChange={(e) => setReview({ ...review, count: Number(e.target.value) })}
-                />
-                <Select
-                  label="Manba"
-                  value={review.source}
-                  onChange={(e) => setReview({ ...review, source: e.target.value })}
-                >
-                  <option value="QR">QR</option>
-                  <option value="WEBSITE">Sayt</option>
-                  <option value="INSTAGRAM">Instagram</option>
-                  <option value="VERBAL">Ogʻzaki</option>
-                  <option value="OTHER">Boshqa</option>
-                </Select>
-                <Select
-                  label="Sifat"
-                  value={review.quality}
-                  onChange={(e) => setReview({ ...review, quality: e.target.value })}
-                >
-                  <option value="POSITIVE">Ijobiy</option>
-                  <option value="NEUTRAL">Neytral</option>
-                  <option value="NEGATIVE">Salbiy</option>
-                </Select>
-                <Textarea
-                  label="Izoh"
-                  value={review.note}
-                  onChange={(e) => setReview({ ...review, note: e.target.value })}
-                />
-                <Button disabled={saving} onClick={saveReview}>
-                  Qoʻshish
-                </Button>
-                <div className="pt-3 border-t text-sm space-y-1">
-                  {(day?.reviews || []).map((r: any) => (
-                    <p key={r.id}>
-                      {r.count}× {r.source} · {r.quality}
-                    </p>
+              <div className="rounded-2xl border border-teal-100 bg-white/80 p-4">
+                <p className="text-xs text-ink-muted uppercase tracking-wider">Toʻldirilish</p>
+                <p className="font-display text-4xl mt-1 text-teal-800">
+                  {day?.completion
+                    ? `${day.completion.requiredFilled}/${day.completion.requiredTotal}`
+                    : '—'}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-teal-100 bg-white/80 p-4 flex items-center">
+                {day?.totalScore != null ? (
+                  <ScoreBadge score={day.totalScore} color={day.colorStatus} />
+                ) : (
+                  <p className="text-ink-muted text-sm">Hali ball yoʻq</p>
+                )}
+              </div>
+            </div>
+
+            {!activeKey ? (
+              <div className="overflow-x-auto rounded-3xl border border-teal-100 bg-white/90 shadow-soft">
+                <table className="w-full text-sm min-w-[1100px]">
+                  <thead>
+                    <tr className="text-left border-b border-teal-50 bg-teal-50/50">
+                      {(day?.columns || catalog).map((c: any) => (
+                        <th key={c.key} className="p-3 font-semibold text-teal-900 whitespace-nowrap">
+                          {c.title || c.titleUz}
+                        </th>
+                      ))}
+                      <th className="p-3 font-semibold text-teal-900">Yakuniy</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      {(day?.columns || catalog).map((c: any) => {
+                        const e = entryOf(c.key);
+                        return (
+                          <td key={c.key} className="p-2 align-top border-b border-teal-50">
+                            <button
+                              type="button"
+                              onClick={() => openColumn(c.key)}
+                              className={cn(
+                                'w-full min-h-14 rounded-xl border px-2 py-2 text-left transition',
+                                e?.done
+                                  ? 'border-emerald-200 bg-emerald-50'
+                                  : 'border-teal-100 hover:border-teal-300 bg-white',
+                              )}
+                            >
+                              <span className="block text-xs text-ink-muted truncate">
+                                {c.inputType}
+                              </span>
+                              <span className="font-semibold tabular-nums">
+                                {e?.score != null ? `${e.score}%` : e?.done ? '✓' : '—'}
+                              </span>
+                            </button>
+                          </td>
+                        );
+                      })}
+                      <td className="p-3 font-display text-2xl text-teal-800">
+                        {day?.totalScore != null ? `${Number(day.totalScore).toFixed(0)}%` : '—'}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Button variant="secondary" onClick={goBack}>
+                    ← Orqaga
+                  </Button>
+                  <h3 className="font-display text-2xl">{activeNode?.title}</h3>
+                </div>
+
+                <div className="space-y-3">
+                  {displayNodes.map((node) => (
+                    <NodeCard
+                      key={node.key}
+                      node={node}
+                      entry={entryOf(node.key)}
+                      saving={saving}
+                      onDrill={() => drillInto(node.key)}
+                      onSave={(value, done) => saveValue(node.key, value, done)}
+                      onProof={(file) => uploadProof(node.key, file)}
+                    />
                   ))}
                 </div>
               </div>
@@ -363,5 +286,154 @@ export default function TodayPage() {
         )}
       </RoleGate>
     </AppShell>
+  );
+}
+
+function NodeCard({
+  node,
+  entry,
+  saving,
+  onDrill,
+  onSave,
+  onProof,
+}: {
+  node: CatalogNode;
+  entry: any;
+  saving: boolean;
+  onDrill: () => void;
+  onSave: (value: any, done?: boolean) => void;
+  onProof: (file: File) => void;
+}) {
+  const [calls, setCalls] = useState(Number(entry?.value?.calls ?? 0));
+  const [booked, setBooked] = useState(Number(entry?.value?.booked ?? 0));
+  const [count, setCount] = useState(Number(entry?.value?.count ?? entry?.value ?? 0));
+  const [note, setNote] = useState(String(entry?.value?.note ?? ''));
+  const [checked, setChecked] = useState(!!(entry?.value === true || entry?.value?.checked || entry?.done));
+
+  useEffect(() => {
+    setCalls(Number(entry?.value?.calls ?? 0));
+    setBooked(Number(entry?.value?.booked ?? 0));
+    setCount(Number(entry?.value?.count ?? (typeof entry?.value === 'number' ? entry.value : 0)));
+    setNote(String(entry?.value?.note ?? ''));
+    setChecked(!!(entry?.value === true || entry?.value?.checked || entry?.done));
+  }, [entry]);
+
+  const hasChildren = (node.children?.length || 0) > 0;
+
+  return (
+    <div className="rounded-2xl border border-teal-100 bg-white/90 p-4 shadow-soft space-y-3">
+      <div className="flex flex-wrap justify-between gap-2">
+        <div>
+          <p className="font-semibold">{node.title}</p>
+          {node.description && <p className="text-xs text-ink-muted mt-0.5">{node.description}</p>}
+        </div>
+        <div className="flex items-center gap-2">
+          {entry?.score != null && <span className="text-sm tabular-nums text-teal-800">{entry.score}%</span>}
+          {entry?.proofs?.[0] && (
+            <span
+              className={cn(
+                'text-[10px] px-2 py-0.5 rounded-full font-semibold',
+                entry.proofs[0].aiStatus === 'APPROVED' && 'bg-emerald-100 text-emerald-800',
+                entry.proofs[0].aiStatus === 'REJECTED' && 'bg-rose-100 text-rose-800',
+                entry.proofs[0].aiStatus === 'PENDING' && 'bg-amber-100 text-amber-900',
+              )}
+            >
+              AI: {entry.proofs[0].aiStatus}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {hasChildren && (
+        <Button variant="secondary" onClick={onDrill} className="w-full">
+          Ichki vazifalar ({node.children!.length}) →
+        </Button>
+      )}
+
+      {!hasChildren && node.inputType === 'CHECKBOX' && (
+        <label className="flex items-center gap-3 min-h-12">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(e) => {
+              setChecked(e.target.checked);
+              onSave(e.target.checked, e.target.checked);
+            }}
+            className="w-5 h-5"
+          />
+          <span>Bajarildi</span>
+        </label>
+      )}
+
+      {!hasChildren && node.inputType === 'RATIO' && (
+        <div className="grid sm:grid-cols-3 gap-2">
+          <Input label="Qoʻngʻiroqlar" type="number" min={0} value={calls} onChange={(e) => setCalls(Number(e.target.value))} />
+          <Input label="Yozilganlar" type="number" min={0} value={booked} onChange={(e) => setBooked(Number(e.target.value))} />
+          <Button
+            disabled={saving}
+            className="self-end min-h-11"
+            onClick={() => onSave({ calls, booked }, calls > 0)}
+          >
+            Saqlash
+          </Button>
+        </div>
+      )}
+
+      {!hasChildren && node.inputType === 'NUMBER' && (
+        <div className="flex gap-2 items-end">
+          <Input
+            label="Soni"
+            type="number"
+            min={0}
+            value={count}
+            onChange={(e) => setCount(Number(e.target.value))}
+            className="flex-1"
+          />
+          <Button disabled={saving} onClick={() => onSave({ count }, count > 0)}>
+            Saqlash
+          </Button>
+        </div>
+      )}
+
+      {!hasChildren && node.inputType === 'NOTE_CHECK' && (
+        <div className="space-y-2">
+          <Textarea label="Izoh" value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(e) => setChecked(e.target.checked)}
+            />
+            Bajarildi
+          </label>
+          <Button
+            disabled={saving}
+            onClick={() => onSave({ note, checked }, checked || !!note)}
+          >
+            Saqlash
+          </Button>
+        </div>
+      )}
+
+      {node.proofRequired && !hasChildren && (
+        <div>
+          <label className="block text-xs font-medium text-ink-muted mb-1">Dalil (foto)</label>
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            disabled={saving}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onProof(f);
+              e.target.value = '';
+            }}
+            className="block w-full text-sm"
+          />
+          {entry?.proofs?.[0]?.aiNote && (
+            <p className="text-xs text-ink-muted mt-1">{entry.proofs[0].aiNote}</p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

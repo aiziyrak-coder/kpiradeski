@@ -46,6 +46,7 @@ export const ru = {
     settings: 'Календарь / KPI',
     users: 'Пользователи',
     positions: 'Должности',
+    branches: 'Филиалы',
     notifications: 'Уведомления',
     account: 'Профиль',
     tabTasks: 'Задачи',

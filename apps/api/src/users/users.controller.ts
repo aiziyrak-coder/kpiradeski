@@ -30,7 +30,7 @@ class UpdateUserDto {
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.SUPER_ADMIN, Role.MANAGER, Role.ADMIN, Role.DIRECTOR)
+@Roles(Role.SUPER_ADMIN, Role.ADMIN)
 export class UsersController {
   constructor(private users: UsersService) {}
 

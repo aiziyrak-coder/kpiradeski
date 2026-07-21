@@ -61,7 +61,7 @@ export class KpiService {
           where: { date },
           include: { doctor: { select: { id: true, name: true } } },
         }),
-        this.prisma.dailyScore.findUnique({ where: { date } }),
+        this.prisma.dailyScore.findFirst({ where: { date } }),
       ]);
 
     return {

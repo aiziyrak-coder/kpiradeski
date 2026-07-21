@@ -56,6 +56,20 @@ enum AiReportType {
   CALLS
 }
 
+enum KpiInputType {
+  GROUP
+  CHECKBOX
+  RATIO
+  NUMBER
+  NOTE_CHECK
+}
+
+enum AiProofStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model Position {
   id        String   @id @default(cuid())
   code      String   @unique
@@ -110,16 +124,97 @@ model User {
   reviewedTasks   DailyTask[]           @relation("TaskReviewer")
   monthlyScores   MonthlyEmployeeScore[]
   taskTemplates   TaskTemplate[]
+  managedBranches BranchManager[]
+  kpiEntries      KpiDayEntry[]
+  kpiProofs       KpiProof[]
 }
 
 model Branch {
   id        String   @id @default(cuid())
   name      String
   address   String?
+  active    Boolean  @default(true)
   createdAt DateTime @default(now())
-  users     User[]
-  doctors   Doctor[]
-  products  WarehouseProduct[]
+  updatedAt DateTime @updatedAt
+
+  users           User[]
+  doctors         Doctor[]
+  products        WarehouseProduct[]
+  managers        BranchManager[]
+  kpiEntries      KpiDayEntry[]
+  dailyScores     DailyScore[]
+}
+
+model BranchManager {
+  id        String   @id @default(cuid())
+  branchId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, userId])
+  @@index([userId])
+}
+
+model KpiCatalogNode {
+  id          String       @id @default(cuid())
+  key         String       @unique
+  parentKey   String?
+  titleUz     String
+  titleRu     String
+  descriptionUz String?
+  descriptionRu String?
+  inputType   KpiInputType
+  weight      Float        @default(0)
+  sortOrder   Int          @default(0)
+  proofRequired Boolean    @default(false)
+  active      Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([parentKey, sortOrder])
+  @@index([active, sortOrder])
+}
+
+model KpiDayEntry {
+  id        String   @id @default(cuid())
+  branchId  String
+  date      DateTime @db.Date
+  nodeKey   String
+  value     Json?
+  done      Boolean  @default(false)
+  score     Float?
+  userId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  user   User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  proofs KpiProof[]
+
+  @@unique([branchId, date, nodeKey])
+  @@index([branchId, date])
+  @@index([nodeKey])
+}
+
+model KpiProof {
+  id        String        @id @default(cuid())
+  entryId   String
+  userId    String
+  fileName  String
+  mimeType  String
+  path      String
+  size      Int
+  aiStatus  AiProofStatus @default(PENDING)
+  aiNote    String?
+  createdAt DateTime      @default(now())
+
+  entry KpiDayEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([entryId, aiStatus])
 }
 
 model Doctor {
@@ -402,7 +497,8 @@ model KpiWeight {
 
 model DailyScore {
   id          String   @id @default(cuid())
-  date        DateTime @db.Date @unique
+  branchId    String?
+  date        DateTime @db.Date
   totalScore  Float
   blockScores Json
   completion  Json?
@@ -410,7 +506,11 @@ model DailyScore {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, date])
   @@index([date])
+  @@index([branchId, date])
 }
 
 model Notification {

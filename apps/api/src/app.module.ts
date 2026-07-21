@@ -14,6 +14,7 @@ import { TelegramModule } from './telegram/telegram.module';
 import { HealthModule } from './health/health.module';
 import { CalendarModule } from './common/calendar.module';
 import { StaffModule } from './staff/staff.module';
+import { BranchesModule } from './branches/branches.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { StaffModule } from './staff/staff.module';
     HealthModule,
     AuthModule,
     UsersModule,
+    BranchesModule,
     KpiModule,
     DashboardModule,
     TelegramModule,

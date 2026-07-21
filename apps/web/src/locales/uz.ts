@@ -46,6 +46,7 @@ export const uz = {
     settings: 'Kalendar / KPI',
     users: 'Foydalanuvchilar',
     positions: 'Lavozimlar',
+    branches: 'Filiallar',
     notifications: 'Bildirishnomalar',
     account: 'Profil',
     tabTasks: 'Vazifalar',

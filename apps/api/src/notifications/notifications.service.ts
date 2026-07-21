@@ -148,7 +148,7 @@ export class NotificationsService {
     const yesterday = toDateOnly(new Date());
     yesterday.setUTCDate(yesterday.getUTCDate() - 1);
     if (await this.calendar.isRestDay(yesterday)) return;
-    const score = await this.prisma.dailyScore.findUnique({ where: { date: yesterday } });
+    const score = await this.prisma.dailyScore.findFirst({ where: { date: yesterday } });
     if (!score || score.colorStatus === 'rest' || (score.completion as any)?.restDay) return;
     if (score.totalScore < 50) {
       const blocks = (score.blockScores as Record<string, any>) || {};

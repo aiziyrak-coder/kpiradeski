@@ -19,7 +19,7 @@ export class ApiError extends Error {
   }
 }
 
-function getToken() {
+export function getToken() {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('klinikpi_token');
 }

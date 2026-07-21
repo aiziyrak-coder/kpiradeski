@@ -17,6 +17,7 @@ import {
   Sparkles,
   ScrollText,
   KeyRound,
+  Building2,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -27,45 +28,43 @@ import { useTelegram } from '@/components/TelegramProvider';
 import { useI18n } from '@/lib/i18n';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
-/** Faqat Admin va Manager (SUPER_ADMIN = menejer huquqi). Ombor/lavozim/kalendar/shifokor yoʻq. */
 const NAV: Array<{
   href: string;
   labelKey: string;
   icon: React.ComponentType<{ className?: string }>;
   roles?: Role[];
 }> = [
-  { href: '/today', labelKey: 'nav.today', icon: ClipboardList, roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/today', labelKey: 'nav.today', icon: ClipboardList, roles: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
   {
     href: '/dashboard',
     labelKey: 'nav.dashboard',
     icon: LayoutDashboard,
     roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'],
   },
+  { href: '/branches', labelKey: 'nav.branches', icon: Building2, roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { href: '/users', labelKey: 'nav.users', icon: Users, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { href: '/marketing', labelKey: 'nav.marketing', icon: Megaphone, roles: ['MANAGER', 'SUPER_ADMIN'] },
-  { href: '/ai', labelKey: 'nav.ai', icon: Sparkles, roles: ['MANAGER', 'SUPER_ADMIN'] },
-  { href: '/reports', labelKey: 'nav.reports', icon: FileBarChart, roles: ['MANAGER', 'SUPER_ADMIN'] },
-  { href: '/audit', labelKey: 'nav.audit', icon: ScrollText, roles: ['MANAGER', 'SUPER_ADMIN'] },
-  { href: '/users', labelKey: 'nav.users', icon: Users, roles: ['MANAGER', 'SUPER_ADMIN'] },
+  { href: '/ai', labelKey: 'nav.ai', icon: Sparkles, roles: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
+  { href: '/reports', labelKey: 'nav.reports', icon: FileBarChart, roles: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
+  { href: '/audit', labelKey: 'nav.audit', icon: ScrollText, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { href: '/notifications', labelKey: 'nav.notifications', icon: Bell },
   { href: '/account', labelKey: 'nav.account', icon: KeyRound },
 ];
 
 function bottomTabsFor(role: Role, t: (k: string) => string) {
-  if (role === 'ADMIN') {
+  if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
     return [
-      { href: '/today', label: t('nav.tabToday'), icon: ClipboardList },
       { href: '/dashboard', label: t('nav.tabKpi'), icon: LayoutDashboard },
+      { href: '/branches', label: t('nav.branches'), icon: Building2 },
+      { href: '/users', label: t('nav.users'), icon: Users },
       { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
-      { href: '/account', label: t('nav.account'), icon: KeyRound },
     ];
   }
-  // MANAGER / SUPER_ADMIN
   return [
     { href: '/today', label: t('nav.tabToday'), icon: ClipboardList },
     { href: '/dashboard', label: t('nav.tabKpi'), icon: LayoutDashboard },
-    { href: '/ai', label: t('nav.ai'), icon: Sparkles },
-    { href: '/users', label: t('nav.users'), icon: Users },
     { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
+    { href: '/account', label: t('nav.account'), icon: KeyRound },
   ];
 }
 

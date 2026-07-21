@@ -10,8 +10,8 @@ import { useI18n } from '@/lib/i18n';
 import { api } from '@/lib/api';
 import { type Role } from '@/types';
 
-/** Faqat Admin va Manager (SUPER_ADMIN bootstrap uchun) */
-const APP_ROLES: Role[] = ['ADMIN', 'MANAGER', 'SUPER_ADMIN'];
+/** Faqat Admin va Manager */
+const APP_ROLES: Role[] = ['ADMIN', 'MANAGER'];
 
 export default function UsersPage() {
   const toast = useToast();
@@ -131,11 +131,11 @@ export default function UsersPage() {
 
   return (
     <AppShell>
-      <RoleGate allow={['SUPER_ADMIN', 'MANAGER']}>
+      <RoleGate allow={['SUPER_ADMIN', 'ADMIN']}>
         <SectionHeader
           eyebrow={t('users.eyebrow')}
           title={t('users.title')}
-          description="Admin va Manager hisoblari — menejer ishi KPI orqali baholanadi."
+          description="Admin va Manager yaratish. Manager filialga /branches orqali biriktiriladi."
         />
 
         <div className="mb-4">

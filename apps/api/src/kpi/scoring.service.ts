@@ -54,9 +54,23 @@ export class ScoringService {
       : [0, 6];
     const holiday = await this.prisma.holiday.findUnique({ where: { date } });
     if (restWeekdays.includes(weekday) || holiday) {
+      const branch = await this.prisma.branch.findFirst({
+        where: { active: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (!branch) {
+        return {
+          date,
+          totalScore: 0,
+          blockScores: {},
+          colorStatus: 'rest',
+          completion: { restDay: true },
+        };
+      }
       return this.prisma.dailyScore.upsert({
-        where: { date },
+        where: { branchId_date: { branchId: branch.id, date } },
         create: {
+          branchId: branch.id,
           date,
           totalScore: 0,
           blockScores: {},
@@ -274,9 +288,18 @@ export class ScoringService {
       allFilledKeys: Object.keys(filled).filter((k) => filled[k]),
     };
 
+    const branch = await this.prisma.branch.findFirst({
+      where: { active: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!branch) {
+      return { date, totalScore, blockScores, colorStatus: status, completion };
+    }
+
     await this.prisma.dailyScore.upsert({
-      where: { date },
+      where: { branchId_date: { branchId: branch.id, date } },
       create: {
+        branchId: branch.id,
         date,
         totalScore,
         blockScores: blockScores as Prisma.InputJsonValue,

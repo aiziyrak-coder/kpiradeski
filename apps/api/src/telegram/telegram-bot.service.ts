@@ -335,7 +335,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         `KPI ball hisoblanmaydi (${day.holiday?.title || day.weekdayLabel}).`
       );
     }
-    const score = await this.prisma.dailyScore.findUnique({ where: { date } });
+    const score = await this.prisma.dailyScore.findFirst({ where: { date } });
     if (!score) {
       return `📅 <b>${day.date}</b>\nHali kunlik ball hisoblanmagan.`;
     }
