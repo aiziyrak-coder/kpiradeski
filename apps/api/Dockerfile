@@ -16,7 +16,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/assets ./assets
 COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh && mkdir -p uploads/proofs
+RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh && mkdir -p uploads/proofs
 VOLUME ["/app/uploads"]
 EXPOSE 4000
 ENTRYPOINT ["./docker-entrypoint.sh"]
