@@ -1,3 +1,6 @@
+import { uz } from '@/locales/uz';
+import { ru } from '@/locales/ru';
+
 /**
  * Brauzerda doim same-origin (/api) — Next rewrite orqali API ga ketadi.
  * Shunda localhost, 192.168.x.x, telefon — hammasi ishlaydi.
@@ -9,6 +12,11 @@ function getApiOrigin() {
     process.env.NEXT_PUBLIC_API_URL ||
     'http://127.0.0.1:4000'
   );
+}
+
+function apiDict() {
+  if (typeof window === 'undefined') return uz;
+  return localStorage.getItem('klinikpi_lang') === 'ru' ? ru : uz;
 }
 
 export class ApiError extends Error {
@@ -48,13 +56,13 @@ export async function api<T = any>(
   });
 
   if (options.raw) {
-    if (!res.ok) throw new ApiError(res.status, "So'rov xatosi");
+    if (!res.ok) throw new ApiError(res.status, apiDict().common.requestError);
     return res as unknown as T;
   }
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const message = formatError(data, 'Xatolik yuz berdi');
+    const message = formatError(data, apiDict().common.errorOccurred);
     // Telegram bogʻlanmagan — sessiyani tozalash shart emas
     if (
       res.status === 401 &&
@@ -87,7 +95,7 @@ export async function downloadReport(kind: 'excel' | 'pdf', from: string, to: st
   const res = await fetch(`${getApiOrigin()}/api/reports/${kind}?from=${from}&to=${to}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!res.ok) throw new ApiError(res.status, "Hisobot yuklab bo'lmadi");
+  if (!res.ok) throw new ApiError(res.status, apiDict().reports.downloadFail);
   const blob = await res.blob();
   downloadBlob(blob, `klinikpi-${from}-${to}.${kind === 'excel' ? 'xlsx' : 'pdf'}`);
 }

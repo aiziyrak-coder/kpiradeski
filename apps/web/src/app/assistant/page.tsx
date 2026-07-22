@@ -104,7 +104,7 @@ export default function AssistantPage() {
         body: fd,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Voice error');
+      if (!res.ok) throw new Error(data.message || t('assistant.voiceError'));
       if (data.transcript) {
         setMessages((m) => [
           ...m,
@@ -173,7 +173,7 @@ export default function AssistantPage() {
                   ? 'bg-rose-600 text-white border-rose-600 animate-pulse'
                   : 'bg-white border-teal-200 text-teal-800 hover:bg-teal-50',
               )}
-              aria-label="mic"
+              aria-label={t('assistant.mic')}
             >
               {recording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
             </button>

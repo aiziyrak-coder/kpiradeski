@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 
 /** Isbot faylini Authorization header bilan ochadi (JWT URLda emas) */
 export function ProofLink({
@@ -13,6 +14,7 @@ export function ProofLink({
   fileName: string;
   className?: string;
 }) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
 
   async function open() {
@@ -22,13 +24,13 @@ export function ProofLink({
       const res = await fetch(`/api/staff/proofs/${id}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!res.ok) throw new Error('Fayl ochilmadi');
+      if (!res.ok) throw new Error(t('proof.fileOpenFailed'));
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank', 'noopener,noreferrer');
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch {
-      alert('Isbot faylini ochib boʻlmadi');
+      alert(t('proof.openFailed'));
     } finally {
       setBusy(false);
     }

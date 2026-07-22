@@ -302,9 +302,9 @@ export default function TodayPage() {
         body: fd,
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || 'Xato');
-      if (data.aiStatus === 'REJECTED') toast.error(data.aiNote || 'Rad');
-      else toast.success(data.aiNote || 'OK');
+      if (!res.ok) throw new Error(data.message || t('common.error'));
+      if (data.aiStatus === 'REJECTED') toast.error(data.aiNote || t('today.rejected'));
+      else toast.success(data.aiNote || t('common.ok'));
       await loadDay();
     } catch (e: any) {
       toast.error(e.message);
@@ -733,7 +733,7 @@ export default function TodayPage() {
                   href="/assistant"
                   className="h-8 px-3 rounded-lg text-xs font-semibold border border-teal-200 grid place-items-center text-teal-900"
                 >
-                  Jarvis
+                  {t('assistant.openAssistant')}
                 </Link>
               </div>
             </div>

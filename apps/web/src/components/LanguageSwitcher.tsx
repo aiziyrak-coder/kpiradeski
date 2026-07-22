@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { useI18n, type Lang } from '@/lib/i18n';
 
 export function LanguageSwitcher({ className }: { className?: string }) {
-  const { lang, setLang } = useI18n();
+  const { lang, setLang, t } = useI18n();
 
   const btn = (code: Lang, label: string) => (
     <button
@@ -30,7 +30,7 @@ export function LanguageSwitcher({ className }: { className?: string }) {
         className,
       )}
       role="group"
-      aria-label="Til / Language"
+      aria-label={t('common.language')}
     >
       {btn('uz', 'UZ')}
       {btn('ru', 'RU')}

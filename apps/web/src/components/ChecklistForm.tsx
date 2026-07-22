@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Check } from 'lucide-react';
 import { Button } from './ui';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 import type { ChecklistItemMeta } from '@/types';
 
 export function ChecklistForm({
@@ -23,6 +24,7 @@ export function ChecklistForm({
   onSave: (values: Record<string, boolean>) => Promise<void>;
   saving?: boolean;
 }) {
+  const { t } = useI18n();
   const [values, setValues] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -47,7 +49,9 @@ export function ChecklistForm({
           <p className="text-2xl font-semibold text-teal-700 tabular-nums">{livePct}%</p>
           <p className="text-xs text-ink-muted">
             {done}/{items.length}
-            {percentage != null && percentage !== livePct ? ` · saqlangan ${percentage}%` : ''}
+            {percentage != null && percentage !== livePct
+              ? t('checklist.savedPct', { pct: percentage })
+              : ''}
           </p>
         </div>
       </div>
@@ -87,7 +91,7 @@ export function ChecklistForm({
 
       <div className="mt-5 flex justify-end">
         <Button disabled={saving} onClick={() => onSave(values)}>
-          {saving ? 'Saqlanmoqda...' : 'Saqlash'}
+          {saving ? t('common.saving') : t('common.save')}
         </Button>
       </div>
     </div>

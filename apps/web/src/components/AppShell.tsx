@@ -232,6 +232,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   type="button"
                   onClick={() => setOpen(false)}
                   className="touch-target grid place-items-center rounded-xl hover:bg-teal-50"
+                  aria-label={t('common.close')}
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -293,7 +294,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <nav
         className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-teal-100/90 bg-white/95 backdrop-blur-xl safe-bottom"
-        aria-label="Asosiy navigatsiya"
+        aria-label={t('common.mainNav')}
       >
         <div
           className="grid px-1 pt-1"

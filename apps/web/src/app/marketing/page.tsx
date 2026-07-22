@@ -292,8 +292,12 @@ export default function MarketingPage() {
             <div className="space-y-1">
               {(day?.social || []).map((s: any) => (
                 <p key={s.id} className="text-sm">
-                  <span className="capitalize font-medium">{s.platform}</span>: post {s.posts}, stories{' '}
-                  {s.stories}, +{s.newFollowers} obunachi
+                  <span className="capitalize font-medium">{s.platform}</span>:{' '}
+                  {t('marketing.socialLog', {
+                    posts: s.posts,
+                    stories: s.stories,
+                    followers: s.newFollowers,
+                  })}
                 </p>
               ))}
             </div>
