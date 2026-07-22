@@ -172,7 +172,15 @@ export default function TodayPage() {
         fd.append('nodeKey', row.key);
         fd.append('date', date);
         const val = draft[row.key];
-        if (val != null) fd.append('value', JSON.stringify(val));
+        if (val != null) {
+          const parsed =
+            row.inputType === 'NUMBER'
+              ? { count: Number(val.count) || 0 }
+              : row.inputType === 'RATIO'
+                ? { calls: Number(val.calls) || 0, booked: Number(val.booked) || 0 }
+                : val;
+          fd.append('value', JSON.stringify(parsed));
+        }
         const token = getToken();
         const res = await fetch('/api/manager-kpi/proof', {
           method: 'POST',
@@ -196,13 +204,25 @@ export default function TodayPage() {
 
     setBusyKey(row.key);
     try {
+      const raw = draft[row.key];
+      let value: any = true;
+      if (row.inputType === 'NUMBER') {
+        value = { count: Number(raw?.count) || 0 };
+      } else if (row.inputType === 'RATIO') {
+        value = {
+          calls: Number(raw?.calls) || 0,
+          booked: Number(raw?.booked) || 0,
+        };
+      } else if (raw != null) {
+        value = raw;
+      }
       await api('/manager-kpi/complete', {
         method: 'POST',
         body: JSON.stringify({
           branchId,
           date,
           nodeKey: row.key,
-          value: draft[row.key] ?? true,
+          value,
         }),
       });
       toast.success(t('today.markedDone'));
@@ -273,7 +293,7 @@ export default function TodayPage() {
     return t('today.todo');
   }
 
-  function AssignTree({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
+  const renderAssignTree = (node: TreeNode, depth = 0): React.ReactNode => {
     const hasKids = !!node.children?.length;
     const open = treeOpen[node.key] ?? depth < 1;
     const leafKeys = hasKids ? collectLeaves(node) : [];
@@ -286,6 +306,7 @@ export default function TodayPage() {
     if (!hasKids) {
       return (
         <label
+          key={node.key}
           className="flex items-center gap-3 px-3 py-2 border-t border-teal-900/[0.06] cursor-pointer hover:bg-teal-50/40"
           style={{ paddingLeft: 12 + depth * 14 }}
         >
@@ -301,7 +322,7 @@ export default function TodayPage() {
     }
 
     return (
-      <div className="border border-teal-900/10 rounded-xl overflow-hidden bg-white mb-2">
+      <div key={node.key} className="border border-teal-900/10 rounded-xl overflow-hidden bg-white mb-2">
         <div className="flex items-center gap-2 px-3 py-2.5 bg-teal-950/[0.03]">
           <button
             type="button"
@@ -334,18 +355,15 @@ export default function TodayPage() {
             {selectedCount}/{leafKeys.length}
           </span>
         </div>
-        {open && node.children.map((c) => <AssignTree key={c.key} node={c} depth={depth + 1} />)}
+        {open && node.children.map((c) => renderAssignTree(c, depth + 1))}
       </div>
     );
-  }
+  };
 
-  function TaskTable({
-    rows,
-    mode,
-  }: {
-    rows: TaskRow[];
-    mode: 'manager-todo' | 'readonly' | 'admin-review';
-  }) {
+  const renderTaskTable = (
+    rows: TaskRow[],
+    mode: 'manager-todo' | 'readonly' | 'admin-review',
+  ) => {
     if (!rows.length) {
       return (
         <p className="text-sm text-ink-muted py-6 text-center border border-dashed border-teal-900/15 rounded-xl">
@@ -391,54 +409,57 @@ export default function TodayPage() {
                     {row.inputType === 'RATIO' && mode === 'manager-todo' && (
                       <div className="flex gap-2 mt-2">
                         <input
-                          type="number"
-                          min={0}
+                          type="text"
+                          inputMode="numeric"
                           placeholder={t('today.calls')}
                           className="w-20 h-8 rounded-lg border border-teal-200 px-2"
                           value={draft[row.key]?.calls ?? ''}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/[^\d]/g, '');
                             setDraft((d) => ({
                               ...d,
                               [row.key]: {
                                 ...(d[row.key] || {}),
-                                calls: Number(e.target.value) || 0,
-                                booked: d[row.key]?.booked || 0,
+                                calls: v,
+                                booked: d[row.key]?.booked ?? '',
                               },
-                            }))
-                          }
+                            }));
+                          }}
                         />
                         <input
-                          type="number"
-                          min={0}
+                          type="text"
+                          inputMode="numeric"
                           placeholder={t('today.booked')}
                           className="w-20 h-8 rounded-lg border border-teal-200 px-2"
                           value={draft[row.key]?.booked ?? ''}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/[^\d]/g, '');
                             setDraft((d) => ({
                               ...d,
                               [row.key]: {
                                 ...(d[row.key] || {}),
-                                booked: Number(e.target.value) || 0,
-                                calls: d[row.key]?.calls || 0,
+                                booked: v,
+                                calls: d[row.key]?.calls ?? '',
                               },
-                            }))
-                          }
+                            }));
+                          }}
                         />
                       </div>
                     )}
                     {row.inputType === 'NUMBER' && mode === 'manager-todo' && (
                       <input
-                        type="number"
-                        min={0}
+                        type="text"
+                        inputMode="numeric"
                         placeholder={t('today.count')}
-                        className="mt-2 w-24 h-8 rounded-lg border border-teal-200 px-2"
+                        className="mt-2 w-28 h-8 rounded-lg border border-teal-200 px-2"
                         value={draft[row.key]?.count ?? ''}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/[^\d]/g, '');
                           setDraft((d) => ({
                             ...d,
-                            [row.key]: { count: Number(e.target.value) || 0 },
-                          }))
-                        }
+                            [row.key]: { count: v },
+                          }));
+                        }}
                       />
                     )}
                   </td>
@@ -553,7 +574,7 @@ export default function TodayPage() {
         </table>
       </div>
     );
-  }
+  };
 
   const allLeafKeys = useMemo(() => {
     return (day?.tree || []).flatMap((n: TreeNode) => collectLeaves(n));
@@ -679,19 +700,19 @@ export default function TodayPage() {
                     <h2 className="text-sm font-semibold text-ink">
                       {t('today.todo')} · {uniquePending.length}
                     </h2>
-                    <TaskTable rows={uniquePending} mode="manager-todo" />
+                    {renderTaskTable(uniquePending, 'manager-todo')}
                   </section>
                   <section className="space-y-2">
                     <h2 className="text-sm font-semibold text-ink">
                       {t('today.inReview')} · {inReview.length}
                     </h2>
-                    <TaskTable rows={inReview} mode="readonly" />
+                    {renderTaskTable(inReview, 'readonly')}
                   </section>
                   <section className="space-y-2">
                     <h2 className="text-sm font-semibold text-ink">
                       {t('today.doneList')} · {completed.length}
                     </h2>
-                    <TaskTable rows={completed} mode="readonly" />
+                    {renderTaskTable(completed, 'readonly')}
                   </section>
                 </>
               )}
@@ -763,7 +784,7 @@ export default function TodayPage() {
                     </button>
                   </div>
                   {assignOpen &&
-                    (day?.tree || []).map((n: TreeNode) => <AssignTree key={n.key} node={n} />)}
+                    (day?.tree || []).map((n: TreeNode) => renderAssignTree(n))}
                 </div>
               )}
 
@@ -773,19 +794,19 @@ export default function TodayPage() {
                     <h2 className="text-sm font-semibold">
                       {t('today.inReview')} · {inReview.length}
                     </h2>
-                    <TaskTable rows={inReview} mode="admin-review" />
+                    {renderTaskTable(inReview, 'admin-review')}
                   </section>
                   <section className="space-y-2">
                     <h2 className="text-sm font-semibold">
                       {t('today.todo')} · {uniquePending.length}
                     </h2>
-                    <TaskTable rows={uniquePending} mode="readonly" />
+                    {renderTaskTable(uniquePending, 'readonly')}
                   </section>
                   <section className="space-y-2">
                     <h2 className="text-sm font-semibold">
                       {t('today.doneList')} · {completed.length}
                     </h2>
-                    <TaskTable rows={completed} mode="readonly" />
+                    {renderTaskTable(completed, 'readonly')}
                   </section>
                 </div>
               )}
