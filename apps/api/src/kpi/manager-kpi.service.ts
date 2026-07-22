@@ -294,7 +294,7 @@ export class ManagerKpiService implements OnModuleInit {
         const proof = entry?.proofs?.[0] || null;
         const titles = titleOf(n.key);
         const status =
-          proof?.aiStatus === AiProofStatus.APPROVED || entry?.done
+          proof?.aiStatus === AiProofStatus.APPROVED
             ? 'DONE'
             : proof?.aiStatus === AiProofStatus.REJECTED
               ? 'REJECTED'
@@ -306,7 +306,7 @@ export class ManagerKpiService implements OnModuleInit {
           ...titles,
           inputType: n.inputType,
           proofRequired: true,
-          done: entry?.done ?? false,
+          done: proof?.aiStatus === AiProofStatus.APPROVED,
           score: entry?.score ?? null,
           value: entry?.value ?? null,
           status,
