@@ -55,53 +55,139 @@ type CatalogParent = {
 
 const FREQ_IDS = ['DAILY', 'WEEKLY', 'MONTHLY'] as const;
 
-const DEPTH_UI = [
+/** Har bir ishlar bloki uchun alohida och pastel palitra */
+const BLOCK_PALETTES = [
   {
-    wrap: 'border-teal-200',
-    headClosed: 'bg-teal-50 text-teal-950',
-    headOpen: 'bg-teal-100 text-teal-950',
-    body: 'bg-white/80 border-t border-teal-100',
-    badge: 'bg-teal-200/80 text-teal-900',
+    wrap: 'border-teal-300',
+    headClosed: 'bg-teal-100 text-teal-950',
+    headOpen: 'bg-teal-200 text-teal-950',
+    subHead: 'bg-teal-50 text-teal-900',
+    body: 'bg-teal-50/50 border-t border-teal-200',
+    badge: 'bg-teal-300/80 text-teal-950',
     checkOn: 'bg-teal-700 border-teal-700 text-white',
-    checkOff: 'border-teal-400 bg-white',
+    checkOff: 'border-teal-500 bg-white',
+    row: 'bg-teal-50/40',
+    rowHover: 'hover:bg-teal-100/50',
+    noteBg: 'bg-teal-50/60 border-teal-200',
+    btn: 'border-teal-300 text-teal-900 hover:bg-teal-100',
+    btnOn: 'bg-teal-800 text-white border-teal-800',
   },
   {
-    wrap: 'border-amber-200',
-    headClosed: 'bg-amber-50 text-amber-950',
-    headOpen: 'bg-amber-100 text-amber-950',
-    body: 'bg-amber-50/40 border-t border-amber-100',
-    badge: 'bg-amber-200/80 text-amber-900',
+    wrap: 'border-amber-300',
+    headClosed: 'bg-amber-100 text-amber-950',
+    headOpen: 'bg-amber-200 text-amber-950',
+    subHead: 'bg-amber-50 text-amber-900',
+    body: 'bg-amber-50/50 border-t border-amber-200',
+    badge: 'bg-amber-300/80 text-amber-950',
     checkOn: 'bg-amber-700 border-amber-700 text-white',
-    checkOff: 'border-amber-400 bg-white',
+    checkOff: 'border-amber-500 bg-white',
+    row: 'bg-amber-50/40',
+    rowHover: 'hover:bg-amber-100/50',
+    noteBg: 'bg-amber-50/60 border-amber-200',
+    btn: 'border-amber-300 text-amber-900 hover:bg-amber-100',
+    btnOn: 'bg-amber-800 text-white border-amber-800',
   },
   {
-    wrap: 'border-violet-200',
-    headClosed: 'bg-violet-50 text-violet-950',
-    headOpen: 'bg-violet-100 text-violet-950',
-    body: 'bg-violet-50/40 border-t border-violet-100',
-    badge: 'bg-violet-200/80 text-violet-900',
+    wrap: 'border-violet-300',
+    headClosed: 'bg-violet-100 text-violet-950',
+    headOpen: 'bg-violet-200 text-violet-950',
+    subHead: 'bg-violet-50 text-violet-900',
+    body: 'bg-violet-50/50 border-t border-violet-200',
+    badge: 'bg-violet-300/80 text-violet-950',
     checkOn: 'bg-violet-700 border-violet-700 text-white',
-    checkOff: 'border-violet-400 bg-white',
+    checkOff: 'border-violet-500 bg-white',
+    row: 'bg-violet-50/40',
+    rowHover: 'hover:bg-violet-100/50',
+    noteBg: 'bg-violet-50/60 border-violet-200',
+    btn: 'border-violet-300 text-violet-900 hover:bg-violet-100',
+    btnOn: 'bg-violet-800 text-white border-violet-800',
   },
   {
-    wrap: 'border-sky-200',
-    headClosed: 'bg-sky-50 text-sky-950',
-    headOpen: 'bg-sky-100 text-sky-950',
-    body: 'bg-sky-50/40 border-t border-sky-100',
-    badge: 'bg-sky-200/80 text-sky-900',
+    wrap: 'border-sky-300',
+    headClosed: 'bg-sky-100 text-sky-950',
+    headOpen: 'bg-sky-200 text-sky-950',
+    subHead: 'bg-sky-50 text-sky-900',
+    body: 'bg-sky-50/50 border-t border-sky-200',
+    badge: 'bg-sky-300/80 text-sky-950',
     checkOn: 'bg-sky-700 border-sky-700 text-white',
-    checkOff: 'border-sky-400 bg-white',
+    checkOff: 'border-sky-500 bg-white',
+    row: 'bg-sky-50/40',
+    rowHover: 'hover:bg-sky-100/50',
+    noteBg: 'bg-sky-50/60 border-sky-200',
+    btn: 'border-sky-300 text-sky-900 hover:bg-sky-100',
+    btnOn: 'bg-sky-800 text-white border-sky-800',
   },
   {
-    wrap: 'border-lime-200',
-    headClosed: 'bg-lime-50 text-lime-950',
-    headOpen: 'bg-lime-100 text-lime-950',
-    body: 'bg-lime-50/40 border-t border-lime-100',
-    badge: 'bg-lime-200/80 text-lime-900',
+    wrap: 'border-rose-300',
+    headClosed: 'bg-rose-100 text-rose-950',
+    headOpen: 'bg-rose-200 text-rose-950',
+    subHead: 'bg-rose-50 text-rose-900',
+    body: 'bg-rose-50/50 border-t border-rose-200',
+    badge: 'bg-rose-300/80 text-rose-950',
+    checkOn: 'bg-rose-700 border-rose-700 text-white',
+    checkOff: 'border-rose-500 bg-white',
+    row: 'bg-rose-50/40',
+    rowHover: 'hover:bg-rose-100/50',
+    noteBg: 'bg-rose-50/60 border-rose-200',
+    btn: 'border-rose-300 text-rose-900 hover:bg-rose-100',
+    btnOn: 'bg-rose-800 text-white border-rose-800',
+  },
+  {
+    wrap: 'border-lime-300',
+    headClosed: 'bg-lime-100 text-lime-950',
+    headOpen: 'bg-lime-200 text-lime-950',
+    subHead: 'bg-lime-50 text-lime-900',
+    body: 'bg-lime-50/50 border-t border-lime-200',
+    badge: 'bg-lime-300/80 text-lime-950',
     checkOn: 'bg-lime-700 border-lime-700 text-white',
-    checkOff: 'border-lime-400 bg-white',
+    checkOff: 'border-lime-500 bg-white',
+    row: 'bg-lime-50/40',
+    rowHover: 'hover:bg-lime-100/50',
+    noteBg: 'bg-lime-50/60 border-lime-200',
+    btn: 'border-lime-300 text-lime-900 hover:bg-lime-100',
+    btnOn: 'bg-lime-800 text-white border-lime-800',
+  },
+  {
+    wrap: 'border-orange-300',
+    headClosed: 'bg-orange-100 text-orange-950',
+    headOpen: 'bg-orange-200 text-orange-950',
+    subHead: 'bg-orange-50 text-orange-900',
+    body: 'bg-orange-50/50 border-t border-orange-200',
+    badge: 'bg-orange-300/80 text-orange-950',
+    checkOn: 'bg-orange-700 border-orange-700 text-white',
+    checkOff: 'border-orange-500 bg-white',
+    row: 'bg-orange-50/40',
+    rowHover: 'hover:bg-orange-100/50',
+    noteBg: 'bg-orange-50/60 border-orange-200',
+    btn: 'border-orange-300 text-orange-900 hover:bg-orange-100',
+    btnOn: 'bg-orange-800 text-white border-orange-800',
+  },
+  {
+    wrap: 'border-cyan-300',
+    headClosed: 'bg-cyan-100 text-cyan-950',
+    headOpen: 'bg-cyan-200 text-cyan-950',
+    subHead: 'bg-cyan-50 text-cyan-900',
+    body: 'bg-cyan-50/50 border-t border-cyan-200',
+    badge: 'bg-cyan-300/80 text-cyan-950',
+    checkOn: 'bg-cyan-700 border-cyan-700 text-white',
+    checkOff: 'border-cyan-500 bg-white',
+    row: 'bg-cyan-50/40',
+    rowHover: 'hover:bg-cyan-100/50',
+    noteBg: 'bg-cyan-50/60 border-cyan-200',
+    btn: 'border-cyan-300 text-cyan-900 hover:bg-cyan-100',
+    btnOn: 'bg-cyan-800 text-white border-cyan-800',
   },
 ] as const;
+
+function blockPalette(index: number) {
+  return BLOCK_PALETTES[Math.abs(index) % BLOCK_PALETTES.length];
+}
+
+function hashSection(s: string) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
 
 function monthEndISO(from: string) {
   const [y, m] = from.split('-').map(Number);
@@ -443,14 +529,15 @@ export default function TodayPage() {
     return t('today.todo');
   }
 
-  const renderAssignTree = (node: TreeNode, depth = 0): ReactNode => {
+  const renderAssignTree = (node: TreeNode, depth = 0, colorIdx = 0): ReactNode => {
     const hasKids = !!node.children?.length;
     const open = treeOpen[node.key] ?? false;
     const leafKeys = hasKids ? collectLeaves(node) : [];
     const selectedCount = leafKeys.filter((k) => assignSel[k]).length;
     const allSel = leafKeys.length > 0 && selectedCount === leafKeys.length;
     const title = lang === 'ru' ? node.titleRu : node.titleUz;
-    const depthStyle = DEPTH_UI[Math.min(depth, DEPTH_UI.length - 1)];
+    const pal = blockPalette(colorIdx);
+    const headCls = depth === 0 ? (open ? pal.headOpen : pal.headClosed) : pal.subHead;
 
     if (!hasKids && node.inputType === 'GROUP') return null;
 
@@ -458,7 +545,10 @@ export default function TodayPage() {
       return (
         <label
           key={node.key}
-          className="flex items-center gap-3 px-3 py-2.5 border-t border-black/[0.04] cursor-pointer hover:bg-white/70"
+          className={cn(
+            'flex items-center gap-3 px-3 py-2.5 border-t border-black/[0.04] cursor-pointer',
+            pal.rowHover,
+          )}
           style={{ paddingLeft: 12 + depth * 10 }}
         >
           <input
@@ -475,15 +565,10 @@ export default function TodayPage() {
     return (
       <div
         key={node.key}
-        className={cn('rounded-xl overflow-hidden mb-2 border', depthStyle.wrap)}
+        className={cn('rounded-xl overflow-hidden mb-2 border', pal.wrap)}
         style={{ marginLeft: depth > 0 ? 10 : 0 }}
       >
-        <div
-          className={cn(
-            'flex items-center gap-2 px-3 py-2.5',
-            open ? depthStyle.headOpen : depthStyle.headClosed,
-          )}
-        >
+        <div className={cn('flex items-center gap-2 px-3 py-2.5', headCls)}>
           <button
             type="button"
             onClick={() => setTreeOpen((o) => ({ ...o, [node.key]: !open }))}
@@ -506,7 +591,7 @@ export default function TodayPage() {
             }}
             className={cn(
               'w-5 h-5 rounded-md border-2 grid place-items-center shrink-0',
-              allSel ? depthStyle.checkOn : depthStyle.checkOff,
+              allSel ? pal.checkOn : pal.checkOff,
             )}
           >
             {allSel && <Check className="w-3 h-3" strokeWidth={3} />}
@@ -515,7 +600,7 @@ export default function TodayPage() {
           <span
             className={cn(
               'text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded',
-              depthStyle.badge,
+              pal.badge,
             )}
           >
             {open ? t('today.opened') : t('today.closed')}
@@ -525,8 +610,8 @@ export default function TodayPage() {
           </span>
         </div>
         {open && (
-          <div className={cn(depthStyle.body)}>
-            {node.children.map((c) => renderAssignTree(c, depth + 1))}
+          <div className={cn(pal.body)}>
+            {node.children.map((c) => renderAssignTree(c, depth + 1, colorIdx))}
           </div>
         )}
       </div>
@@ -794,40 +879,45 @@ export default function TodayPage() {
                 const s = (lang === 'ru' ? r.sectionRu : r.sectionUz) || '—';
                 return s === section;
               }).length;
+              const pal = blockPalette(hashSection(section));
 
               return (
                 <Fragment key={row.key}>
                   {showSection && (
-                    <tr className="bg-teal-50/80 border-t border-teal-100">
+                    <tr className={cn('border-t', pal.wrap)}>
                       <td colSpan={3} className="p-0">
                         <button
                           type="button"
                           onClick={() =>
                             setSectionOpen((s) => ({ ...s, [section]: !secOpen }))
                           }
-                          className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-teal-100/60"
+                          className={cn(
+                            'w-full flex items-center gap-2 px-2.5 py-2 text-left',
+                            secOpen ? pal.headOpen : pal.headClosed,
+                          )}
                         >
                           {secOpen ? (
-                            <ChevronDown className="w-4 h-4 text-teal-800 shrink-0" />
+                            <ChevronDown className="w-4 h-4 shrink-0" />
                           ) : (
-                            <ChevronRight className="w-4 h-4 text-teal-800 shrink-0" />
+                            <ChevronRight className="w-4 h-4 shrink-0" />
                           )}
-                          <span className="text-[12px] font-semibold text-teal-900 flex-1">
-                            {section}
-                          </span>
-                          <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-teal-200/70 text-teal-900">
+                          <span className="text-[12px] font-semibold flex-1">{section}</span>
+                          <span
+                            className={cn(
+                              'text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded',
+                              pal.badge,
+                            )}
+                          >
                             {secOpen ? t('today.opened') : t('today.closed')}
                           </span>
-                          <span className="text-xs tabular-nums text-teal-800/80">
-                            {sectionCount}
-                          </span>
+                          <span className="text-xs tabular-nums opacity-80">{sectionCount}</span>
                         </button>
                       </td>
                     </tr>
                   )}
                   {secOpen && (
                     <>
-                  <tr className="border-t border-teal-900/[0.06] hover:bg-teal-50/30">
+                  <tr className={cn('border-t border-black/[0.04]', pal.row, pal.rowHover)}>
                     <td className="p-2.5 align-middle">
                       <p className="font-medium text-ink leading-snug">{title}</p>
                       {row.aiNote && (
@@ -853,11 +943,7 @@ export default function TodayPage() {
                         onClick={() => setExpandKey(open ? null : row.key)}
                         className={cn(
                           'inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-xs font-semibold border transition',
-                          open
-                            ? 'bg-teal-800 text-white border-teal-800'
-                            : hasDraft
-                              ? 'bg-amber-50 text-amber-900 border-amber-200'
-                              : 'bg-white text-teal-900 border-teal-200 hover:bg-teal-50',
+                          open ? pal.btnOn : hasDraft ? 'bg-white border-amber-300 text-amber-900' : cn('bg-white', pal.btn),
                         )}
                       >
                         <MessageSquare className="w-3.5 h-3.5" />
@@ -866,9 +952,9 @@ export default function TodayPage() {
                     </td>
                   </tr>
                   {open && (
-                    <tr className="bg-teal-50/40 border-t border-teal-100">
+                    <tr className={cn('border-t', pal.body)}>
                       <td colSpan={3} className="p-3">
-                        <div className="rounded-xl border border-teal-200/80 bg-white p-3 space-y-2.5 max-w-xl">
+                        <div className={cn('rounded-xl border bg-white p-3 space-y-2.5 max-w-xl', pal.noteBg)}>
                           {(row.inputType === 'RATIO' || row.inputType === 'NUMBER') && (
                             <div className="flex flex-wrap gap-2">
                               {row.inputType === 'RATIO' && (
@@ -969,7 +1055,10 @@ export default function TodayPage() {
                               type="button"
                               disabled={busyKey === row.key}
                               onClick={() => submitTask(row)}
-                              className="h-9 px-4 rounded-lg text-xs font-semibold bg-teal-800 text-white disabled:opacity-50 ml-auto"
+                              className={cn(
+                                'h-9 px-4 rounded-lg text-xs font-semibold disabled:opacity-50 ml-auto',
+                                pal.btnOn,
+                              )}
                             >
                               {busyKey === row.key
                                 ? t('today.submitting')
@@ -1327,7 +1416,9 @@ export default function TodayPage() {
                   )}
 
                   {assignOpen &&
-                    (day?.tree || []).map((n: TreeNode) => renderAssignTree(n))}
+                    (day?.tree || []).map((n: TreeNode, i: number) =>
+                      renderAssignTree(n, 0, i),
+                    )}
                 </div>
               )}
 
