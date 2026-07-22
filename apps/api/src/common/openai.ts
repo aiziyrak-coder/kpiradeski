@@ -167,9 +167,13 @@ export async function openaiSpeak(
   }
 }
 
-const AI_SUPERVISOR = `Siz «Radeski KPI manager system» AI nazoratchisisiz.
-Toʻliq vakolat: dalilni tasdiqlash/rad etish, feedback, qayta topshirish, ogohlantirish, jarima (0-40 ball).
-Admin qoʻlda tasdiqlamaydi — faqat siz qaror qilasiz.
+const AI_SUPERVISOR = `Siz «Radeski KPI manager system» asosiy AI nazoratchisisiz.
+Vazifa: menejer yuborgan dalil (foto/fayl) shu konkret ishga mos va haqiqiy ekanini qatʼiy tekshirish.
+Qoidalar:
+- Ish bajarilganini koʻrsatmagan, noaniq, qorongʻi, boshqa joy/mavzu — RAD (approved:false)
+- Haqiqiy, aniq, vazifaga mos dalil — TASDIQ (approved:true)
+- Shubha boʻlsa — RAD + RESUBMIT
+- Admin kuzatadi; asosiy qaror sizniki
 Javob FAQAT JSON:
 {"approved":true|false,"note":"qisqa holat","feedback":"nima qilish kerak","action":"NONE|RESUBMIT|WARN|PENALTY","penalty":0-40,"score":0-100}`;
 
@@ -185,12 +189,12 @@ export async function openaiVisionProof(opts: {
 
   if (!opts.mimeType.startsWith('image/')) {
     return {
-      approved: true,
-      note: 'Fayl qabul qilindi',
-      feedback: 'Keyingi safar rasm yuklang — aniqroq baholanadi',
-      action: 'NONE',
-      penalty: 0,
-      score: 85,
+      approved: false,
+      note: 'Rasm kerak',
+      feedback: 'PDF/hujjat emas — ish bajarilganini koʻrsatuvchi rasm yuklang',
+      action: 'RESUBMIT',
+      penalty: 5,
+      score: 0,
     };
   }
 

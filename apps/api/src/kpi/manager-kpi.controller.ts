@@ -14,7 +14,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { KpiFrequency, Role } from '@prisma/client';
-import { Allow, IsBoolean, IsOptional, IsString } from 'class-validator';
+import { Allow, IsArray, IsBoolean, IsOptional, IsString } from 'class-validator';
 import { Response } from 'express';
 import { ManagerKpiService } from './manager-kpi.service';
 import { JwtAuthGuard, Roles, RolesGuard } from '../common/guards';
@@ -33,6 +33,19 @@ class BulkEntryDto {
   @IsOptional() @IsString() date?: string;
   @Allow() nodeKeys: string[];
   @IsBoolean() done: boolean;
+}
+
+class AssignDto {
+  @IsString() branchId: string;
+  @IsOptional() @IsString() date?: string;
+  @IsString() frequency: string;
+  @IsArray() nodeKeys: string[];
+}
+
+class ReviewDto {
+  @IsString() proofId: string;
+  @IsBoolean() approve: boolean;
+  @IsOptional() @IsString() note?: string;
 }
 
 @Controller('manager-kpi')
@@ -66,11 +79,13 @@ export class ManagerKpiController {
   }
 
   @Post('entry')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   entry(@CurrentUser() user: { id: string; role: Role }, @Body() dto: EntryDto) {
     return this.kpi.saveEntry(user, dto);
   }
 
   @Post('entry-bulk')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   entryBulk(@CurrentUser() user: { id: string; role: Role }, @Body() dto: BulkEntryDto) {
     if (!Array.isArray(dto.nodeKeys) || !dto.nodeKeys.length) {
       throw new BadRequestException('nodeKeys kerak');
@@ -81,6 +96,29 @@ export class ManagerKpiController {
       nodeKeys: dto.nodeKeys,
       done: dto.done,
     });
+  }
+
+  @Post('assign')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  assign(@CurrentUser() user: { id: string; role: Role }, @Body() dto: AssignDto) {
+    const frequency = ['DAILY', 'WEEKLY', 'MONTHLY'].includes(
+      String(dto.frequency || 'DAILY').toUpperCase(),
+    )
+      ? (String(dto.frequency || 'DAILY').toUpperCase() as KpiFrequency)
+      : KpiFrequency.DAILY;
+    if (!Array.isArray(dto.nodeKeys)) throw new BadRequestException('nodeKeys kerak');
+    return this.kpi.setAssignments(user, {
+      branchId: dto.branchId,
+      date: dto.date,
+      frequency,
+      nodeKeys: dto.nodeKeys,
+    });
+  }
+
+  @Post('review-proof')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  review(@CurrentUser() user: { id: string; role: Role }, @Body() dto: ReviewDto) {
+    return this.kpi.reviewProof(user, dto);
   }
 
   @Post('proof')
@@ -97,6 +135,7 @@ export class ManagerKpiController {
     @Body('branchId') branchId: string,
     @Body('nodeKey') nodeKey: string,
     @Body('date') date?: string,
+    @Body('value') value?: string,
   ) {
     if (!file) throw new BadRequestException('Fayl yuklanmadi');
     if (!branchId || !nodeKey) throw new BadRequestException('branchId va nodeKey kerak');
@@ -104,6 +143,7 @@ export class ManagerKpiController {
       branchId,
       nodeKey,
       date,
+      value,
       file: {
         originalname: file.originalname,
         mimetype: file.mimetype,

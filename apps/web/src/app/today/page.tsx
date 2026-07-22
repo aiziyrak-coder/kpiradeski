@@ -9,72 +9,46 @@ import { useAuth } from '@/lib/auth';
 import { api, getToken } from '@/lib/api';
 import { todayISO, weekStartISO } from '@/types';
 import { cn } from '@/lib/utils';
-import {
-  ChevronDown,
-  ChevronRight,
-  Check,
-  Upload,
-  X,
-  Minus,
-  Search,
-} from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Search, Upload } from 'lucide-react';
 
 type Freq = 'DAILY' | 'WEEKLY' | 'MONTHLY';
+type TaskRow = {
+  key: string;
+  titleUz: string;
+  titleRu: string;
+  sectionUz?: string;
+  sectionRu?: string;
+  inputType: string;
+  status: 'TODO' | 'PENDING' | 'REJECTED' | 'DONE';
+  done: boolean;
+  value: any;
+  aiStatus: string | null;
+  aiNote: string | null;
+  aiFeedback: string | null;
+  proof: { id: string; fileName: string; aiStatus: string } | null;
+};
 
 type TreeNode = {
   key: string;
   titleUz: string;
   titleRu: string;
   inputType: string;
-  proofRequired: boolean;
-  done: boolean;
-  score: number | null;
-  value: any;
-  aiStatus: string | null;
-  aiNote: string | null;
+  assigned?: boolean;
   children: TreeNode[];
 };
 
 const FREQ_IDS = ['DAILY', 'WEEKLY', 'MONTHLY'] as const;
 
-function countLeaves(n: TreeNode): { done: number; total: number } {
-  if (!n.children?.length) {
-    return { done: n.done ? 1 : 0, total: 1 };
-  }
-  return n.children.reduce(
-    (acc, c) => {
-      const x = countLeaves(c);
-      return { done: acc.done + x.done, total: acc.total + x.total };
-    },
-    { done: 0, total: 0 },
-  );
-}
-
-function collectLeafKeys(n: TreeNode): string[] {
-  if (!n.children?.length) {
-    return n.inputType === 'GROUP' ? [] : [n.key];
-  }
-  return n.children.flatMap(collectLeafKeys);
-}
-
-function filterTree(nodes: TreeNode[], q: string, lang: string): TreeNode[] {
-  if (!q.trim()) return nodes;
-  const s = q.toLowerCase();
-  const match = (n: TreeNode) => {
-    const t = (lang === 'ru' ? n.titleRu : n.titleUz).toLowerCase();
-    return t.includes(s);
-  };
-  const walk = (n: TreeNode): TreeNode | null => {
-    const kids = (n.children || []).map(walk).filter(Boolean) as TreeNode[];
-    if (match(n) || kids.length) return { ...n, children: kids };
-    return null;
-  };
-  return nodes.map(walk).filter(Boolean) as TreeNode[];
-}
-
 function monthEndISO(from: string) {
   const [y, m] = from.split('-').map(Number);
   return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+}
+
+function collectLeaves(n: TreeNode): string[] {
+  if (!n.children?.length) {
+    return n.inputType === 'GROUP' ? [] : [n.key];
+  }
+  return n.children.flatMap(collectLeaves);
 }
 
 export default function TodayPage() {
@@ -82,18 +56,22 @@ export default function TodayPage() {
   const { lang, t } = useI18n();
   const { user } = useAuth();
   const isManager = user?.role === 'MANAGER';
-  const canUploadProof = isManager;
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
 
   const [branches, setBranches] = useState<any[]>([]);
   const [branchId, setBranchId] = useState('');
   const [freq, setFreq] = useState<Freq>('DAILY');
   const [date, setDate] = useState(todayISO());
   const [day, setDay] = useState<any>(null);
-  const [open, setOpen] = useState<Record<string, boolean>>({});
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [bulkBusy, setBulkBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Record<string, any>>({});
+  const [files, setFiles] = useState<Record<string, File | null>>({});
+  const [assignSel, setAssignSel] = useState<Record<string, boolean>>({});
+  const [assignOpen, setAssignOpen] = useState(true);
+  const [treeOpen, setTreeOpen] = useState<Record<string, boolean>>({});
+  const [adminTab, setAdminTab] = useState<'assign' | 'results'>('assign');
 
   const loadBranches = useCallback(async () => {
     const list = await api<any[]>('/branches/mine');
@@ -114,38 +92,30 @@ export default function TodayPage() {
         `/manager-kpi/day?branchId=${branchId}&date=${date}&frequency=${freq}`,
       );
       setDay(d);
-      const init: Record<string, boolean> = {};
-      for (const n of d.tree || []) init[n.key] = true;
-      setOpen((o) => ({ ...init, ...o }));
+      const next: Record<string, boolean> = {};
+      const walk = (nodes: TreeNode[]) => {
+        for (const n of nodes || []) {
+          if (n.inputType !== 'GROUP') next[n.key] = !!n.assigned;
+          walk(n.children || []);
+        }
+      };
+      walk(d.tree || []);
+      setAssignSel(next);
+    } catch (e: any) {
+      toast.error(e.message);
+      setDay(null);
     } finally {
       setLoading(false);
     }
-  }, [branchId, date, freq]);
+  }, [branchId, date, freq, toast]);
 
   useEffect(() => {
     loadBranches().catch((e) => toast.error(e.message));
-  }, []);
+  }, [loadBranches, toast]);
 
   useEffect(() => {
-    loadDay().catch((e) => toast.error(e.message));
-  }, [branchId, freq, date]);
-
-  const title = (n: TreeNode) => (lang === 'ru' ? n.titleRu : n.titleUz);
-  const rawTree: TreeNode[] = day?.tree || [];
-  const tree = useMemo(() => filterTree(rawTree, q, lang), [rawTree, q, lang]);
-
-  const totals = useMemo(() => {
-    return rawTree.reduce(
-      (acc, n) => {
-        const x = countLeaves(n);
-        return { done: acc.done + x.done, total: acc.total + x.total };
-      },
-      { done: 0, total: 0 },
-    );
-  }, [rawTree]);
-
-  const allLeafKeys = useMemo(() => rawTree.flatMap(collectLeafKeys), [rawTree]);
-  const pct = totals.total ? Math.round((totals.done / totals.total) * 100) : 0;
+    loadDay();
+  }, [loadDay]);
 
   const periodFrom = day?.period?.from || (freq === 'WEEKLY' ? weekStartISO(date) : date);
   const periodTo =
@@ -159,102 +129,48 @@ export default function TodayPage() {
         ? monthEndISO(date)
         : date);
 
-  const freqHint =
-    freq === 'DAILY'
-      ? t('today.hintDaily')
-      : freq === 'WEEKLY'
-        ? t('today.hintWeekly')
-        : t('today.hintMonthly');
+  const filterRows = (rows: TaskRow[]) => {
+    if (!q.trim()) return rows;
+    const s = q.toLowerCase();
+    return rows.filter((r) => {
+      const title = ((lang === 'ru' ? r.titleRu : r.titleUz) || '').toLowerCase();
+      const sec = ((lang === 'ru' ? r.sectionRu : r.sectionUz) || '').toLowerCase();
+      return title.includes(s) || sec.includes(s);
+    });
+  };
 
-  async function toggleDone(node: TreeNode) {
-    if (busyKey || bulkBusy) return;
-    if (node.inputType === 'RATIO' || node.inputType === 'NUMBER') return;
-    setBusyKey(node.key);
-    try {
-      const next = !node.done;
-      const value =
-        node.inputType === 'CHECKBOX' || node.inputType === 'GROUP'
-          ? next
-          : node.inputType === 'NOTE_CHECK'
-            ? { ...(node.value || {}), checked: next }
-            : node.value ?? next;
-      await api('/manager-kpi/entry', {
-        method: 'POST',
-        body: JSON.stringify({
-          branchId,
-          date,
-          nodeKey: node.key,
-          value,
-          done: next,
-        }),
-      });
-      await loadDay();
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setBusyKey(null);
+  const uniquePending = useMemo(
+    () => filterRows(day?.pending || []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [day, q, lang],
+  );
+
+  const inReview = useMemo(
+    () => filterRows(day?.inReview || []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [day, q, lang],
+  );
+  const completed = useMemo(
+    () => filterRows(day?.completed || []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [day, q, lang],
+  );
+
+  async function submitTask(row: TaskRow) {
+    const file = files[row.key];
+    if (!file) {
+      toast.error(t('today.needFile'));
+      return;
     }
-  }
-
-  async function saveValue(node: TreeNode, value: any, done: boolean) {
-    if (busyKey || bulkBusy) return;
-    setBusyKey(node.key);
-    try {
-      await api('/manager-kpi/entry', {
-        method: 'POST',
-        body: JSON.stringify({ branchId, date, nodeKey: node.key, value, done }),
-      });
-      await loadDay();
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
-  async function setGroupDone(node: TreeNode, done: boolean) {
-    if (bulkBusy) return;
-    const keys = collectLeafKeys(node);
-    if (!keys.length) return;
-    setBulkBusy(true);
-    try {
-      await api('/manager-kpi/entry-bulk', {
-        method: 'POST',
-        body: JSON.stringify({ branchId, date, nodeKeys: keys, done }),
-      });
-      await loadDay();
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setBulkBusy(false);
-    }
-  }
-
-  async function setAllDone(done: boolean) {
-    if (bulkBusy || !allLeafKeys.length) return;
-    setBulkBusy(true);
-    try {
-      await api('/manager-kpi/entry-bulk', {
-        method: 'POST',
-        body: JSON.stringify({ branchId, date, nodeKeys: allLeafKeys, done }),
-      });
-      await loadDay();
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setBulkBusy(false);
-    }
-  }
-
-  async function uploadProof(nodeKey: string, file: File) {
-    if (!canUploadProof) return;
-    setBusyKey(nodeKey);
+    setBusyKey(row.key);
     try {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('branchId', branchId);
-      fd.append('nodeKey', nodeKey);
+      fd.append('nodeKey', row.key);
       fd.append('date', date);
+      const val = draft[row.key];
+      if (val != null) fd.append('value', JSON.stringify(val));
       const token = getToken();
       const res = await fetch('/api/manager-kpi/proof', {
         method: 'POST',
@@ -264,7 +180,9 @@ export default function TodayPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || t('common.error'));
       if (data.aiStatus === 'REJECTED') toast.error(data.aiNote || t('today.rejected'));
-      else toast.success(data.aiNote || t('common.ok'));
+      else if (data.aiStatus === 'APPROVED') toast.success(data.aiNote || t('today.proofOk'));
+      else toast.success(t('today.submittedOk'));
+      setFiles((f) => ({ ...f, [row.key]: null }));
       await loadDay();
     } catch (e: any) {
       toast.error(e.message);
@@ -273,329 +191,354 @@ export default function TodayPage() {
     }
   }
 
-  function GroupCheck({
-    done,
-    total,
-    onToggle,
-  }: {
-    done: number;
-    total: number;
-    onToggle: (next: boolean) => void;
-  }) {
-    const all = total > 0 && done === total;
-    const some = done > 0 && done < total;
-    return (
-      <button
-        type="button"
-        disabled={bulkBusy || !total}
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggle(!all);
-        }}
-        className={cn(
-          'shrink-0 w-5 h-5 rounded-md border-2 grid place-items-center transition',
-          all && 'bg-teal-800 border-teal-800 text-white',
-          some && 'bg-teal-100 border-teal-700 text-teal-800',
-          !all && !some && 'border-teal-800/25 bg-white hover:border-teal-700',
-        )}
-        title={all ? t('today.uncheckGroup') : t('today.checkGroup')}
-      >
-        {all ? (
-          <Check className="w-3 h-3" strokeWidth={3} />
-        ) : some ? (
-          <Minus className="w-3 h-3" strokeWidth={3} />
-        ) : null}
-      </button>
-    );
+  async function saveAssign() {
+    const nodeKeys = Object.entries(assignSel)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    setBusyKey('assign');
+    try {
+      await api('/manager-kpi/assign', {
+        method: 'POST',
+        body: JSON.stringify({ branchId, date, frequency: freq, nodeKeys }),
+      });
+      toast.success(t('today.savedAssign'));
+      await loadDay();
+      setAdminTab('results');
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setBusyKey(null);
+    }
   }
 
-  function LeafRow({ node, depth }: { node: TreeNode; depth: number }) {
-    const showProof = canUploadProof && node.proofRequired && node.inputType !== 'GROUP';
-    const rejected = node.aiStatus === 'REJECTED';
-    const approved = node.aiStatus === 'APPROVED';
-    const isRatio = node.inputType === 'RATIO';
-    const isNumber = node.inputType === 'NUMBER';
-    const calls = Number(node.value?.calls ?? node.value?.a ?? 0);
-    const booked = Number(node.value?.booked ?? node.value?.b ?? 0);
-    const count = Number(node.value?.count ?? (typeof node.value === 'number' ? node.value : 0));
-
-    return (
-      <div
-        className={cn(
-          'flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 border-t border-teal-900/[0.06]',
-          node.done && 'bg-teal-50/50',
-        )}
-        style={{ paddingLeft: 12 + depth * 14 }}
-      >
-        {!isRatio && !isNumber ? (
-          <button
-            type="button"
-            disabled={!!busyKey || bulkBusy}
-            onClick={() => toggleDone(node)}
-            className={cn(
-              'shrink-0 w-5 h-5 rounded-md border-2 grid place-items-center transition',
-              node.done
-                ? 'bg-teal-800 border-teal-800 text-white'
-                : 'border-teal-800/25 bg-white hover:border-teal-700',
-            )}
-            aria-label={t('today.mark')}
-          >
-            {node.done && <Check className="w-3 h-3" strokeWidth={3} />}
-          </button>
-        ) : (
-          <span
-            className={cn(
-              'shrink-0 w-5 h-5 rounded-md border-2 grid place-items-center text-[10px] font-bold',
-              node.done
-                ? 'bg-teal-800 border-teal-800 text-white'
-                : 'border-teal-800/25 text-ink-muted',
-            )}
-          >
-            {isRatio ? '%' : '#'}
-          </span>
-        )}
-
-        <div className="flex-1 min-w-[10rem]">
-          <p className={cn('text-sm leading-snug', node.done && 'text-teal-900')}>
-            {title(node)}
-          </p>
-          {rejected && node.aiNote && (
-            <p className="text-[11px] text-rose-600 mt-0.5 truncate">{node.aiNote}</p>
-          )}
-        </div>
-
-        {isRatio && (
-          <div className="flex items-center gap-1.5">
-            <input
-              key={`c-${node.key}-${calls}`}
-              type="number"
-              min={0}
-              placeholder={t('today.calls')}
-              defaultValue={calls || ''}
-              className="w-16 h-8 rounded-lg border border-teal-200 px-2 text-sm"
-              onBlur={(e) => {
-                const c = Number(e.target.value) || 0;
-                const bEl = (e.target.parentElement?.querySelector(
-                  'input[data-booked]',
-                ) as HTMLInputElement) || null;
-                const b = bEl ? Number(bEl.value) || 0 : booked;
-                saveValue(node, { calls: c, booked: b }, c > 0);
-              }}
-            />
-            <span className="text-ink-muted text-xs">/</span>
-            <input
-              key={`b-${node.key}-${booked}`}
-              data-booked
-              type="number"
-              min={0}
-              placeholder={t('today.booked')}
-              defaultValue={booked || ''}
-              className="w-16 h-8 rounded-lg border border-teal-200 px-2 text-sm"
-              onBlur={(e) => {
-                const b = Number(e.target.value) || 0;
-                const cEl = (e.target.parentElement?.querySelector(
-                  'input:not([data-booked])',
-                ) as HTMLInputElement) || null;
-                const c = cEl ? Number(cEl.value) || 0 : calls;
-                saveValue(node, { calls: c, booked: b }, c > 0);
-              }}
-            />
-          </div>
-        )}
-
-        {isNumber && (
-          <input
-            type="number"
-            min={0}
-            placeholder={t('today.count')}
-            defaultValue={count || ''}
-            className="w-20 h-8 rounded-lg border border-teal-200 px-2 text-sm"
-            onBlur={(e) => {
-              const n = Number(e.target.value) || 0;
-              saveValue(node, { count: n }, n > 0);
-            }}
-          />
-        )}
-
-        {showProof && (
-          <label
-            className={cn(
-              'shrink-0 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium cursor-pointer border transition',
-              approved && 'border-emerald-200 bg-emerald-50 text-emerald-800',
-              rejected && 'border-rose-200 bg-rose-50 text-rose-800',
-              !approved && !rejected && 'border-teal-200 bg-white text-teal-900 hover:bg-teal-50',
-              busyKey === node.key && 'opacity-50 pointer-events-none',
-            )}
-          >
-            {approved ? (
-              <Check className="w-3.5 h-3.5" />
-            ) : rejected ? (
-              <X className="w-3.5 h-3.5" />
-            ) : (
-              <Upload className="w-3.5 h-3.5" />
-            )}
-            {approved ? t('common.ok') : rejected ? t('common.retry') : t('common.proof')}
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) uploadProof(node.key, f);
-                e.target.value = '';
-              }}
-            />
-          </label>
-        )}
-
-        {!canUploadProof && node.proofRequired && node.inputType !== 'GROUP' && (
-          <span
-            className={cn(
-              'shrink-0 text-[11px] font-medium px-2 py-1 rounded-md',
-              approved && 'bg-emerald-50 text-emerald-800',
-              rejected && 'bg-rose-50 text-rose-700',
-              !approved && !rejected && 'bg-black/[0.04] text-ink-muted',
-            )}
-          >
-            {approved
-              ? t('today.proofOk')
-              : rejected
-                ? t('today.rejected')
-                : t('common.none')}
-          </span>
-        )}
-      </div>
-    );
+  async function openProof(id: string) {
+    try {
+      const token = getToken();
+      const res = await fetch(`/api/manager-kpi/proofs/${id}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(t('proof.openFailed'));
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e: any) {
+      toast.error(e.message);
+    }
   }
 
-  function SectionCard({ node }: { node: TreeNode }) {
+  async function review(proofId: string, approve: boolean) {
+    setBusyKey(proofId);
+    try {
+      await api('/manager-kpi/review-proof', {
+        method: 'POST',
+        body: JSON.stringify({ proofId, approve }),
+      });
+      toast.success(approve ? t('today.approve') : t('today.reject'));
+      await loadDay();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  function statusLabel(row: TaskRow) {
+    if (row.status === 'DONE' || row.aiStatus === 'APPROVED') return t('today.aiApproved');
+    if (row.status === 'REJECTED' || row.aiStatus === 'REJECTED') return t('today.aiRejected');
+    if (row.status === 'PENDING' || row.aiStatus === 'PENDING') return t('today.aiPending');
+    return t('today.todo');
+  }
+
+  function AssignTree({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
     const hasKids = !!node.children?.length;
-    const isOpen = open[node.key] !== false;
-    const leaf = countLeaves(node);
-    const p = leaf.total ? Math.round((leaf.done / leaf.total) * 100) : 0;
+    const open = treeOpen[node.key] ?? depth < 1;
+    const leafKeys = hasKids ? collectLeaves(node) : [];
+    const selectedCount = leafKeys.filter((k) => assignSel[k]).length;
+    const allSel = leafKeys.length > 0 && selectedCount === leafKeys.length;
+    const title = lang === 'ru' ? node.titleRu : node.titleUz;
+
+    if (!hasKids && node.inputType === 'GROUP') return null;
 
     if (!hasKids) {
       return (
-        <div className="rounded-xl border border-teal-900/10 bg-white overflow-hidden shadow-sm">
-          <LeafRow node={node} depth={0} />
-        </div>
+        <label
+          className="flex items-center gap-3 px-3 py-2 border-t border-teal-900/[0.06] cursor-pointer hover:bg-teal-50/40"
+          style={{ paddingLeft: 12 + depth * 14 }}
+        >
+          <input
+            type="checkbox"
+            checked={!!assignSel[node.key]}
+            onChange={(e) => setAssignSel((s) => ({ ...s, [node.key]: e.target.checked }))}
+            className="w-4 h-4 accent-teal-800"
+          />
+          <span className="text-sm text-ink">{title}</span>
+        </label>
       );
     }
 
     return (
-      <div className="rounded-xl border border-teal-900/10 bg-white overflow-hidden shadow-sm">
-        <div className="flex items-center gap-2 px-3 sm:px-4 py-3 bg-teal-950/[0.03] hover:bg-teal-950/[0.05] transition">
-          <GroupCheck
-            done={leaf.done}
-            total={leaf.total}
-            onToggle={(next) => setGroupDone(node, next)}
-          />
+      <div className="border border-teal-900/10 rounded-xl overflow-hidden bg-white mb-2">
+        <div className="flex items-center gap-2 px-3 py-2.5 bg-teal-950/[0.03]">
           <button
             type="button"
-            className="flex-1 flex items-center gap-3 text-left min-w-0"
-            onClick={() => setOpen((o) => ({ ...o, [node.key]: !isOpen }))}
+            onClick={() => setTreeOpen((o) => ({ ...o, [node.key]: !open }))}
+            className="p-0.5 text-ink-muted"
           >
-            <span className="text-teal-800/70 shrink-0">
-              {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-            </span>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-ink text-[15px] tracking-tight">{title(node)}</p>
-              <p className="text-xs text-ink-muted mt-0.5 tabular-nums">
-                {leaf.done}/{leaf.total}
-              </p>
-            </div>
-            <div className="shrink-0 flex items-center gap-2">
-              <div className="w-16 h-1.5 rounded-full bg-black/[0.06] overflow-hidden hidden sm:block">
-                <div
-                  className="h-full rounded-full bg-teal-700 transition-all"
-                  style={{ width: `${p}%` }}
-                />
-              </div>
-              <span className="text-sm tabular-nums font-medium text-teal-900 w-10 text-right">
-                {p}%
-              </span>
-            </div>
+            {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </button>
-        </div>
-
-        {isOpen && (
-          <div>
-            {node.children.map((child) =>
-              child.children?.length ? (
-                <NestedGroup key={child.key} node={child} depth={1} />
-              ) : (
-                <LeafRow key={child.key} node={child} depth={1} />
-              ),
+          <button
+            type="button"
+            onClick={() => {
+              const next = !allSel;
+              setAssignSel((s) => {
+                const copy = { ...s };
+                leafKeys.forEach((k) => {
+                  copy[k] = next;
+                });
+                return copy;
+              });
+            }}
+            className={cn(
+              'w-5 h-5 rounded-md border-2 grid place-items-center',
+              allSel ? 'bg-teal-800 border-teal-800 text-white' : 'border-teal-800/30',
             )}
-          </div>
-        )}
+          >
+            {allSel && <Check className="w-3 h-3" strokeWidth={3} />}
+          </button>
+          <span className="text-sm font-semibold text-ink flex-1">{title}</span>
+          <span className="text-xs text-ink-muted tabular-nums">
+            {selectedCount}/{leafKeys.length}
+          </span>
+        </div>
+        {open && node.children.map((c) => <AssignTree key={c.key} node={c} depth={depth + 1} />)}
       </div>
     );
   }
 
-  function NestedGroup({ node, depth }: { node: TreeNode; depth: number }) {
-    const isOpen = open[node.key] !== false;
-    const leaf = countLeaves(node);
-
+  function TaskTable({
+    rows,
+    mode,
+  }: {
+    rows: TaskRow[];
+    mode: 'manager-todo' | 'readonly' | 'admin-review';
+  }) {
+    if (!rows.length) {
+      return (
+        <p className="text-sm text-ink-muted py-6 text-center border border-dashed border-teal-900/15 rounded-xl">
+          {t('today.emptyTasks')}
+        </p>
+      );
+    }
     return (
-      <div className="border-t border-teal-900/[0.06]">
-        <div
-          className="flex items-center gap-2 py-2.5 hover:bg-black/[0.02]"
-          style={{ paddingLeft: 12 + depth * 14, paddingRight: 12 }}
-        >
-          <GroupCheck
-            done={leaf.done}
-            total={leaf.total}
-            onToggle={(next) => setGroupDone(node, next)}
-          />
-          <button
-            type="button"
-            className="flex-1 flex items-center gap-2 text-left min-w-0"
-            onClick={() => setOpen((o) => ({ ...o, [node.key]: !isOpen }))}
-          >
-            {isOpen ? (
-              <ChevronDown className="w-3.5 h-3.5 text-ink-muted shrink-0" />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5 text-ink-muted shrink-0" />
-            )}
-            <span className="flex-1 text-sm font-medium text-ink">{title(node)}</span>
-            <span className="text-xs tabular-nums text-ink-muted">
-              {leaf.done}/{leaf.total}
-            </span>
-          </button>
-        </div>
-        {isOpen &&
-          node.children.map((c) =>
-            c.children?.length ? (
-              <NestedGroup key={c.key} node={c} depth={depth + 1} />
-            ) : (
-              <LeafRow key={c.key} node={c} depth={depth + 1} />
-            ),
-          )}
+      <div className="overflow-x-auto rounded-xl border border-teal-900/10 bg-white">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-ink-muted border-b border-teal-900/10 bg-teal-950/[0.03]">
+              <th className="p-3 font-medium">{t('today.section')}</th>
+              <th className="p-3 font-medium">{t('today.task')}</th>
+              <th className="p-3 font-medium">{t('today.status')}</th>
+              {mode === 'manager-todo' && (
+                <>
+                  <th className="p-3 font-medium">{t('today.pickFile')}</th>
+                  <th className="p-3 font-medium">{t('today.action')}</th>
+                </>
+              )}
+              {mode === 'admin-review' && <th className="p-3 font-medium">{t('today.action')}</th>}
+              {mode === 'readonly' && <th className="p-3 font-medium">{t('today.viewProof')}</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const title = lang === 'ru' ? row.titleRu : row.titleUz;
+              const section = lang === 'ru' ? row.sectionRu : row.sectionUz;
+              return (
+                <tr key={row.key} className="border-t border-teal-900/[0.06] align-top">
+                  <td className="p-3 text-xs text-ink-muted whitespace-nowrap">{section || '—'}</td>
+                  <td className="p-3">
+                    <p className="font-medium text-ink">{title}</p>
+                    {row.aiNote && (
+                      <p className="text-xs text-ink-muted mt-1 leading-snug">{row.aiNote}</p>
+                    )}
+                    {row.inputType === 'RATIO' && mode === 'manager-todo' && (
+                      <div className="flex gap-2 mt-2">
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder={t('today.calls')}
+                          className="w-20 h-8 rounded-lg border border-teal-200 px-2"
+                          value={draft[row.key]?.calls ?? ''}
+                          onChange={(e) =>
+                            setDraft((d) => ({
+                              ...d,
+                              [row.key]: {
+                                ...(d[row.key] || {}),
+                                calls: Number(e.target.value) || 0,
+                                booked: d[row.key]?.booked || 0,
+                              },
+                            }))
+                          }
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder={t('today.booked')}
+                          className="w-20 h-8 rounded-lg border border-teal-200 px-2"
+                          value={draft[row.key]?.booked ?? ''}
+                          onChange={(e) =>
+                            setDraft((d) => ({
+                              ...d,
+                              [row.key]: {
+                                ...(d[row.key] || {}),
+                                booked: Number(e.target.value) || 0,
+                                calls: d[row.key]?.calls || 0,
+                              },
+                            }))
+                          }
+                        />
+                      </div>
+                    )}
+                    {row.inputType === 'NUMBER' && mode === 'manager-todo' && (
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder={t('today.count')}
+                        className="mt-2 w-24 h-8 rounded-lg border border-teal-200 px-2"
+                        value={draft[row.key]?.count ?? ''}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            [row.key]: { count: Number(e.target.value) || 0 },
+                          }))
+                        }
+                      />
+                    )}
+                  </td>
+                  <td className="p-3">
+                    <span
+                      className={cn(
+                        'inline-flex text-[11px] font-semibold px-2 py-1 rounded-full',
+                        row.status === 'DONE' && 'bg-teal-100 text-teal-900',
+                        row.status === 'REJECTED' && 'bg-rose-100 text-rose-800',
+                        row.status === 'PENDING' && 'bg-amber-100 text-amber-900',
+                        row.status === 'TODO' && 'bg-sand-100 text-ink-muted',
+                      )}
+                    >
+                      {statusLabel(row)}
+                    </span>
+                  </td>
+                  {mode === 'manager-todo' && (
+                    <>
+                      <td className="p-3">
+                        <label className="inline-flex items-center gap-1.5 text-xs text-teal-800 cursor-pointer">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span className="truncate max-w-[120px]">
+                            {files[row.key]?.name || t('today.pickFile')}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) =>
+                              setFiles((f) => ({
+                                ...f,
+                                [row.key]: e.target.files?.[0] || null,
+                              }))
+                            }
+                          />
+                        </label>
+                      </td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          disabled={busyKey === row.key}
+                          onClick={() => submitTask(row)}
+                          className="h-8 px-3 rounded-lg text-xs font-semibold bg-teal-800 text-white disabled:opacity-50"
+                        >
+                          {busyKey === row.key ? t('today.submitting') : t('today.submit')}
+                        </button>
+                      </td>
+                    </>
+                  )}
+                  {mode === 'readonly' && (
+                    <td className="p-3">
+                      {row.proof?.id ? (
+                        <button
+                          type="button"
+                          onClick={() => openProof(row.proof!.id)}
+                          className="text-xs text-teal-800 underline"
+                        >
+                          {t('today.viewProof')}
+                        </button>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                  )}
+                  {mode === 'admin-review' && (
+                    <td className="p-3 space-x-2 whitespace-nowrap">
+                      {row.proof?.id && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openProof(row.proof!.id)}
+                            className="text-xs text-teal-800 underline"
+                          >
+                            {t('today.viewProof')}
+                          </button>
+                          {row.status === 'PENDING' && (
+                            <>
+                              <button
+                                type="button"
+                                disabled={busyKey === row.proof.id}
+                                onClick={() => review(row.proof!.id, true)}
+                                className="h-7 px-2 rounded-md text-xs font-semibold bg-teal-800 text-white"
+                              >
+                                {t('today.approve')}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busyKey === row.proof.id}
+                                onClick={() => review(row.proof!.id, false)}
+                                className="h-7 px-2 rounded-md text-xs font-semibold border border-rose-200 text-rose-800"
+                              >
+                                {t('today.reject')}
+                              </button>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     );
   }
+
+  const allLeafKeys = useMemo(() => {
+    return (day?.tree || []).flatMap((n: TreeNode) => collectLeaves(n));
+  }, [day]);
 
   return (
     <RoleGate allow={['MANAGER', 'ADMIN', 'SUPER_ADMIN']}>
       <AppShell>
-        <div className="max-w-2xl mx-auto space-y-4 pb-24">
-          <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-4 max-w-5xl">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
             <div>
-              <h1 className="font-display text-2xl sm:text-3xl text-ink tracking-tight">
-                {t('today.title')}
-              </h1>
-              <p className="text-sm tabular-nums text-ink-muted mt-0.5">
-                {totals.done}/{totals.total}
-                {day?.totalScore != null ? ` · ${day.totalScore}%` : ''}
+              <h1 className="font-display text-3xl text-ink tracking-tight">{t('today.title')}</h1>
+              <p className="text-sm text-ink-muted mt-1">
+                {isManager ? t('today.managerHint') : t('today.adminHint')}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <select
-                className="h-10 rounded-lg border border-teal-900/10 bg-white px-3 text-sm min-w-[10rem]"
+                className="h-10 rounded-lg border border-teal-900/10 bg-white px-3 text-sm"
                 value={branchId}
                 onChange={(e) => setBranchId(e.target.value)}
-                disabled={!branches.length}
               >
                 {!branches.length && <option value="">{t('today.noBranch')}</option>}
                 {branches.map((b) => (
@@ -644,13 +587,13 @@ export default function TodayPage() {
 
           <div
             className={cn(
-              'rounded-2xl border p-4',
+              'rounded-2xl border p-3.5',
               freq === 'DAILY' && 'border-teal-200 bg-teal-50/60',
-              freq === 'WEEKLY' && 'border-amber-200 bg-amber-50/60',
-              freq === 'MONTHLY' && 'border-indigo-200 bg-indigo-50/60',
+              freq === 'WEEKLY' && 'border-amber-200 bg-amber-50/50',
+              freq === 'MONTHLY' && 'border-indigo-200 bg-indigo-50/50',
             )}
           >
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-ink">
                   {freq === 'DAILY'
@@ -664,13 +607,12 @@ export default function TodayPage() {
                 </p>
               </div>
               <div className="text-right">
-                <p className="font-display text-3xl tabular-nums text-teal-900">{pct}%</p>
-                <p className="text-[11px] text-ink-muted">
-                  {totals.done}/{totals.total}
+                <p className="font-display text-3xl tabular-nums text-teal-900">
+                  {day?.assignedCount ?? 0}
                 </p>
+                <p className="text-[11px] text-ink-muted">{t('today.assigned')}</p>
               </div>
             </div>
-            <p className="text-xs text-ink-soft mt-2 leading-relaxed">{freqHint}</p>
           </div>
 
           <div className="relative">
@@ -683,46 +625,140 @@ export default function TodayPage() {
             />
           </div>
 
-          {!!rawTree.length && (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={bulkBusy}
-                onClick={() => setAllDone(true)}
-                className="h-9 px-3 rounded-lg text-sm font-medium bg-teal-800 text-white hover:bg-teal-900 disabled:opacity-50"
-              >
-                {t('today.checkAll')}
-              </button>
-              <button
-                type="button"
-                disabled={bulkBusy}
-                onClick={() => setAllDone(false)}
-                className="h-9 px-3 rounded-lg text-sm font-medium border border-teal-200 bg-white text-teal-900 hover:bg-teal-50 disabled:opacity-50"
-              >
-                {t('today.uncheckAll')}
-              </button>
+          {loading && (
+            <div className="rounded-xl border border-dashed border-teal-900/15 py-12 text-center text-ink-muted text-sm">
+              {t('common.loading')}
             </div>
           )}
 
-          <div className="space-y-2.5">
-            {loading && (
-              <div className="rounded-xl border border-dashed border-teal-900/15 py-12 text-center text-ink-muted text-sm">
-                {t('common.loading')}
+          {!loading && isManager && (
+            <div className="space-y-5">
+              {!day?.assignedCount ? (
+                <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/50 py-10 text-center text-sm text-amber-950 px-4">
+                  {t('today.noAssigned')}
+                </div>
+              ) : (
+                <>
+                  <section className="space-y-2">
+                    <h2 className="text-sm font-semibold text-ink">
+                      {t('today.todo')} · {uniquePending.length}
+                    </h2>
+                    <TaskTable rows={uniquePending} mode="manager-todo" />
+                  </section>
+                  <section className="space-y-2">
+                    <h2 className="text-sm font-semibold text-ink">
+                      {t('today.inReview')} · {inReview.length}
+                    </h2>
+                    <TaskTable rows={inReview} mode="readonly" />
+                  </section>
+                  <section className="space-y-2">
+                    <h2 className="text-sm font-semibold text-ink">
+                      {t('today.doneList')} · {completed.length}
+                    </h2>
+                    <TaskTable rows={completed} mode="readonly" />
+                  </section>
+                </>
+              )}
+            </div>
+          )}
+
+          {!loading && isAdmin && (
+            <div className="space-y-4">
+              <div className="flex gap-1 p-1 rounded-xl bg-teal-950/[0.05] w-fit">
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('assign')}
+                  className={cn(
+                    'px-4 py-2 rounded-lg text-sm font-semibold',
+                    adminTab === 'assign' ? 'bg-white text-teal-900 shadow-sm' : 'text-ink-muted',
+                  )}
+                >
+                  {t('today.assignTitle')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('results')}
+                  className={cn(
+                    'px-4 py-2 rounded-lg text-sm font-semibold',
+                    adminTab === 'results' ? 'bg-white text-teal-900 shadow-sm' : 'text-ink-muted',
+                  )}
+                >
+                  {t('today.results')}
+                </button>
               </div>
-            )}
-            {!loading && tree.map((n) => <SectionCard key={n.key} node={n} />)}
-            {!loading && !tree.length && (
-              <div className="rounded-xl border border-dashed border-teal-900/15 py-12 text-center text-ink-muted text-sm space-y-2 px-4">
-                <p>
-                  {branches.length
-                    ? q
-                      ? t('today.noSearch')
-                      : t('today.emptyTasks')
-                    : t('today.noBranchHint')}
-                </p>
-              </div>
-            )}
-          </div>
+
+              {adminTab === 'assign' && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next: Record<string, boolean> = {};
+                        allLeafKeys.forEach((k: string) => {
+                          next[k] = true;
+                        });
+                        setAssignSel(next);
+                      }}
+                      className="h-9 px-3 rounded-lg text-sm font-medium bg-teal-800 text-white"
+                    >
+                      {t('today.assignAll')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAssignSel({})}
+                      className="h-9 px-3 rounded-lg text-sm font-medium border border-teal-200 bg-white"
+                    >
+                      {t('today.assignNone')}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyKey === 'assign'}
+                      onClick={saveAssign}
+                      className="h-9 px-3 rounded-lg text-sm font-semibold bg-ink text-white disabled:opacity-50"
+                    >
+                      {t('today.assignSave')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAssignOpen((v) => !v)}
+                      className="h-9 px-3 rounded-lg text-sm text-ink-muted"
+                    >
+                      {assignOpen ? '−' : '+'}
+                    </button>
+                  </div>
+                  {assignOpen &&
+                    (day?.tree || []).map((n: TreeNode) => <AssignTree key={n.key} node={n} />)}
+                </div>
+              )}
+
+              {adminTab === 'results' && (
+                <div className="space-y-5">
+                  <section className="space-y-2">
+                    <h2 className="text-sm font-semibold">
+                      {t('today.inReview')} · {inReview.length}
+                    </h2>
+                    <TaskTable rows={inReview} mode="admin-review" />
+                  </section>
+                  <section className="space-y-2">
+                    <h2 className="text-sm font-semibold">
+                      {t('today.todo')} · {uniquePending.length}
+                    </h2>
+                    <TaskTable rows={uniquePending} mode="readonly" />
+                  </section>
+                  <section className="space-y-2">
+                    <h2 className="text-sm font-semibold">
+                      {t('today.doneList')} · {completed.length}
+                    </h2>
+                    <TaskTable rows={completed} mode="readonly" />
+                  </section>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!loading && !branches.length && (
+            <p className="text-center text-sm text-ink-muted py-8">{t('today.noBranchHint')}</p>
+          )}
         </div>
       </AppShell>
     </RoleGate>

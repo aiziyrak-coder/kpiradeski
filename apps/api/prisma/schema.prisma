@@ -140,6 +140,7 @@ model User {
   managedBranches BranchManager[]
   kpiEntries      KpiDayEntry[]
   kpiProofs       KpiProof[]
+  kpiAssignments  KpiTaskAssignment[]
 }
 
 model Branch {
@@ -156,6 +157,7 @@ model Branch {
   managers        BranchManager[]
   kpiEntries      KpiDayEntry[]
   dailyScores     DailyScore[]
+  kpiAssignments  KpiTaskAssignment[]
 }
 
 model BranchManager {
@@ -212,6 +214,25 @@ model KpiDayEntry {
   @@unique([branchId, date, nodeKey])
   @@index([branchId, date])
   @@index([nodeKey])
+}
+
+model KpiTaskAssignment {
+  id           String       @id @default(cuid())
+  branchId     String
+  date         DateTime     @db.Date
+  frequency    KpiFrequency
+  nodeKey      String
+  assignedById String?
+  active       Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  branch     Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  assignedBy User?  @relation(fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, date, nodeKey])
+  @@index([branchId, date, frequency])
+  @@index([assignedById])
 }
 
 model KpiProof {

@@ -3,6 +3,8 @@ import {
   Logger,
   NotFoundException,
   OnModuleInit,
+  ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   AiAction,
@@ -233,21 +235,105 @@ export class ManagerKpiService implements OnModuleInit {
           titleUz: n.titleUz,
           titleRu: n.titleRu,
           inputType: n.inputType,
-          proofRequired: n.proofRequired,
+          proofRequired: true,
           done: entry?.done ?? false,
           score: entry?.score ?? null,
           value: entry?.value ?? null,
           aiStatus: proof?.aiStatus ?? null,
           aiNote: proof?.aiNote ?? null,
+          assigned: false,
           children: buildTree(n.key),
         };
       });
     };
 
+    const assignments = await this.prisma.kpiTaskAssignment.findMany({
+      where: { branchId, date, frequency, active: true },
+    });
+    const assignedKeys = new Set(assignments.map((a) => a.nodeKey));
+
+    const markAssigned = (nodes: any[]): any[] =>
+      nodes.map((n) => ({
+        ...n,
+        assigned: assignedKeys.has(n.key),
+        children: markAssigned(n.children || []),
+      }));
+
+    const tree = markAssigned(buildTree(null));
+
+    const leaves = allNodes.filter(
+      (n) => n.frequency === frequency && n.inputType !== KpiInputType.GROUP,
+    );
+    const titleOf = (key: string) => {
+      const parts: string[] = [];
+      let cur = allNodes.find((n) => n.key === key);
+      while (cur) {
+        parts.unshift(cur.titleUz);
+        cur = cur.parentKey ? allNodes.find((n) => n.key === cur!.parentKey) : undefined;
+      }
+      return {
+        titleUz: parts[parts.length - 1] || key,
+        titleRu:
+          allNodes.find((n) => n.key === key)?.titleRu ||
+          parts[parts.length - 1] ||
+          key,
+        sectionUz: parts.length > 1 ? parts[0] : '',
+        sectionRu: (() => {
+          const root = allNodes.find((n) => n.key === key);
+          let p = root;
+          while (p?.parentKey) p = allNodes.find((n) => n.key === p!.parentKey);
+          return p?.titleRu || '';
+        })(),
+      };
+    };
+
+    const rows = leaves
+      .filter((n) => assignedKeys.has(n.key))
+      .map((n) => {
+        const entry = byKey[n.key];
+        const proof = entry?.proofs?.[0] || null;
+        const titles = titleOf(n.key);
+        const status =
+          proof?.aiStatus === AiProofStatus.APPROVED || entry?.done
+            ? 'DONE'
+            : proof?.aiStatus === AiProofStatus.REJECTED
+              ? 'REJECTED'
+              : proof?.aiStatus === AiProofStatus.PENDING
+                ? 'PENDING'
+                : 'TODO';
+        return {
+          key: n.key,
+          ...titles,
+          inputType: n.inputType,
+          proofRequired: true,
+          done: entry?.done ?? false,
+          score: entry?.score ?? null,
+          value: entry?.value ?? null,
+          status,
+          aiStatus: proof?.aiStatus ?? null,
+          aiNote: proof?.aiNote ?? null,
+          aiFeedback: proof?.aiFeedback ?? null,
+          proof: proof
+            ? {
+                id: proof.id,
+                fileName: proof.fileName,
+                aiStatus: proof.aiStatus,
+                createdAt: proof.createdAt,
+              }
+            : null,
+        };
+      });
+
+    const isManager = user.role === Role.MANAGER;
+    const pending = rows.filter((r) => r.status === 'TODO' || r.status === 'REJECTED');
+    const inReview = rows.filter((r) => r.status === 'PENDING');
+    const completed = rows.filter((r) => r.status === 'DONE');
+
     return {
       date: date.toISOString().slice(0, 10),
       branchId,
       frequency,
+      mode: isManager ? 'manager' : 'admin',
       period: {
         frequency,
         from: date.toISOString().slice(0, 10),
@@ -264,7 +350,13 @@ export class ManagerKpiService implements OnModuleInit {
       },
       columns: tasks,
       tasks,
-      tree: buildTree(null),
+      tree,
+      rows,
+      pending,
+      inReview,
+      completed,
+      assignedCount: assignedKeys.size,
+      assignableCount: leaves.length,
       entries: byKey,
       totalScore: score.totalScore,
       colorStatus: score.colorStatus,
@@ -283,6 +375,11 @@ export class ManagerKpiService implements OnModuleInit {
       done?: boolean;
     },
   ) {
+    if (user.role === Role.MANAGER) {
+      throw new ForbiddenException(
+        'Manager ishlarni galochka bilan belgilay olmaydi — dalil yuklab yuboring',
+      );
+    }
     await this.branches.assertCanAccessBranch(user.id, user.role, data.branchId);
     const node = await this.prisma.kpiCatalogNode.findUnique({
       where: { key: data.nodeKey },
@@ -332,6 +429,11 @@ export class ManagerKpiService implements OnModuleInit {
     user: { id: string; role: Role },
     data: { branchId: string; date?: string; nodeKeys: string[]; done: boolean },
   ) {
+    if (user.role === Role.MANAGER) {
+      throw new ForbiddenException(
+        'Manager ommaviy belgilay olmaydi — har bir ishni dalil bilan yuboring',
+      );
+    }
     await this.branches.assertCanAccessBranch(user.id, user.role, data.branchId);
     const keys = [...new Set(data.nodeKeys.filter(Boolean))];
     const nodes = await this.prisma.kpiCatalogNode.findMany({
@@ -579,6 +681,7 @@ export class ManagerKpiService implements OnModuleInit {
       branchId: string;
       date?: string;
       nodeKey: string;
+      value?: any;
       file: { originalname: string; mimetype: string; size: number; buffer: Buffer };
     },
   ) {
@@ -586,9 +689,33 @@ export class ManagerKpiService implements OnModuleInit {
     const node = await this.prisma.kpiCatalogNode.findUnique({
       where: { key: data.nodeKey },
     });
-    if (!node) throw new NotFoundException('Vazifa topilmadi');
+    if (!node || !node.active) throw new NotFoundException('Vazifa topilmadi');
+    if (node.inputType === KpiInputType.GROUP) {
+      throw new BadRequestException('Guruh uchun dalil yuborilmaydi');
+    }
 
     const date = periodDate(node.frequency, data.date);
+    const assigned = await this.prisma.kpiTaskAssignment.findFirst({
+      where: {
+        branchId: data.branchId,
+        date,
+        nodeKey: data.nodeKey,
+        active: true,
+      },
+    });
+    if (!assigned) {
+      throw new ForbiddenException('Bu ish sizga topshirilmagan');
+    }
+
+    let value = data.value ?? null;
+    if (typeof value === 'string') {
+      try {
+        value = JSON.parse(value);
+      } catch {
+        /* keep string */
+      }
+    }
+
     const entry = await this.prisma.kpiDayEntry.upsert({
       where: {
         branchId_date_nodeKey: {
@@ -601,10 +728,15 @@ export class ManagerKpiService implements OnModuleInit {
         branchId: data.branchId,
         date,
         nodeKey: data.nodeKey,
+        value: value as any,
         done: false,
         userId: user.id,
       },
-      update: { userId: user.id },
+      update: {
+        userId: user.id,
+        ...(value != null ? { value: value as any } : {}),
+        done: false,
+      },
     });
 
     const safeName = `${Date.now()}-${data.file.originalname.replace(/[^\w.\-]+/g, '_')}`;
@@ -614,15 +746,15 @@ export class ManagerKpiService implements OnModuleInit {
     fs.writeFileSync(full, data.file.buffer);
 
     let aiStatus: AiProofStatus = AiProofStatus.PENDING;
-    let aiNote: string | null = null;
+    let aiNote: string | null = 'AI tekshiruvda...';
     let aiFeedback: string | null = null;
     let aiAction: AiAction = AiAction.NONE;
     let aiPenalty = 0;
     let aiScore = 0;
 
     const vision = await openaiVisionProof({
-      title: node.titleUz,
-      description: node.descriptionUz,
+      title: `${node.titleUz} / ${node.titleRu}`,
+      description: node.descriptionUz || node.descriptionRu,
       mimeType: data.file.mimetype,
       base64: data.file.buffer.toString('base64'),
       frequency: node.frequency,
@@ -636,12 +768,13 @@ export class ManagerKpiService implements OnModuleInit {
       aiPenalty = vision.penalty;
       aiScore = vision.score;
     } else {
-      aiStatus = AiProofStatus.APPROVED;
-      aiNote = 'AI vaqtincha mavjud emas — avto qabul';
-      aiFeedback = 'Dalil qabul qilindi';
+      // AI yoʻq — avto tasdiqlamaymiz, admin kuzatsin
+      aiStatus = AiProofStatus.PENDING;
+      aiNote = 'AI vaqtincha javob bermadi — tekshiruv kutilmoqda';
+      aiFeedback = 'Admin yoki AI qayta tekshiradi';
       aiAction = AiAction.NONE;
       aiPenalty = 0;
-      aiScore = 90;
+      aiScore = 0;
     }
 
     const proof = await this.prisma.kpiProof.create({
@@ -663,10 +796,13 @@ export class ManagerKpiService implements OnModuleInit {
     if (aiStatus === AiProofStatus.APPROVED) {
       await this.prisma.kpiDayEntry.update({
         where: { id: entry.id },
-        data: { done: true, score: aiScore || entry.score || 100 },
+        data: {
+          done: true,
+          score: aiScore || this.scoreLeaf(node.inputType, value, true) || 100,
+        },
       });
       await this.rollupParents(data.branchId, date, data.nodeKey, user.id);
-    } else {
+    } else if (aiStatus === AiProofStatus.REJECTED) {
       await this.prisma.kpiDayEntry.update({
         where: { id: entry.id },
         data: {
@@ -688,6 +824,135 @@ export class ManagerKpiService implements OnModuleInit {
 
     await this.recalculate(data.branchId, date, node.frequency);
     return proof;
+  }
+
+  async setAssignments(
+    user: { id: string; role: Role },
+    data: {
+      branchId: string;
+      date?: string;
+      frequency: KpiFrequency;
+      nodeKeys: string[];
+    },
+  ) {
+    if (user.role === Role.MANAGER) {
+      throw new ForbiddenException('Faqat admin topshiradi');
+    }
+    await this.branches.assertCanAccessBranch(user.id, user.role, data.branchId);
+    const date = periodDate(data.frequency, data.date);
+    const keys = [...new Set(data.nodeKeys.filter(Boolean))];
+
+    const valid = await this.prisma.kpiCatalogNode.findMany({
+      where: {
+        key: { in: keys },
+        active: true,
+        frequency: data.frequency,
+        inputType: { not: KpiInputType.GROUP },
+      },
+    });
+    const validKeys = valid.map((v) => v.key);
+
+    await this.prisma.kpiTaskAssignment.updateMany({
+      where: { branchId: data.branchId, date, frequency: data.frequency },
+      data: { active: false },
+    });
+
+    for (const nodeKey of validKeys) {
+      await this.prisma.kpiTaskAssignment.upsert({
+        where: {
+          branchId_date_nodeKey: {
+            branchId: data.branchId,
+            date,
+            nodeKey,
+          },
+        },
+        create: {
+          branchId: data.branchId,
+          date,
+          frequency: data.frequency,
+          nodeKey,
+          assignedById: user.id,
+          active: true,
+        },
+        update: {
+          active: true,
+          assignedById: user.id,
+          frequency: data.frequency,
+        },
+      });
+    }
+
+    return {
+      ok: true,
+      count: validKeys.length,
+      date: date.toISOString().slice(0, 10),
+      frequency: data.frequency,
+    };
+  }
+
+  async reviewProof(
+    user: { id: string; role: Role },
+    data: { proofId: string; approve: boolean; note?: string },
+  ) {
+    if (user.role === Role.MANAGER) {
+      throw new ForbiddenException('Faqat admin/AI nazorat qiladi');
+    }
+    const proof = await this.prisma.kpiProof.findUnique({
+      where: { id: data.proofId },
+      include: { entry: true },
+    });
+    if (!proof) throw new NotFoundException('Dalil topilmadi');
+    await this.branches.assertCanAccessBranch(user.id, user.role, proof.entry.branchId);
+
+    const node = await this.prisma.kpiCatalogNode.findUnique({
+      where: { key: proof.entry.nodeKey },
+    });
+    const aiStatus = data.approve ? AiProofStatus.APPROVED : AiProofStatus.REJECTED;
+    const aiNote =
+      data.note ||
+      (data.approve ? 'Admin tasdiqladi' : 'Admin rad etdi');
+
+    await this.prisma.kpiProof.update({
+      where: { id: proof.id },
+      data: {
+        aiStatus,
+        aiNote,
+        aiFeedback: data.note || proof.aiFeedback,
+        aiAction: data.approve ? AiAction.NONE : AiAction.RESUBMIT,
+      },
+    });
+
+    await this.prisma.kpiDayEntry.update({
+      where: { id: proof.entryId },
+      data: {
+        done: data.approve,
+        score: data.approve ? proof.entry.score || 100 : 0,
+        userId: user.id,
+      },
+    });
+
+    if (node) {
+      await this.rollupParents(
+        proof.entry.branchId,
+        proof.entry.date,
+        proof.entry.nodeKey,
+        user.id,
+      );
+      await this.recalculate(proof.entry.branchId, proof.entry.date, node.frequency);
+    }
+
+    if (!data.approve) {
+      await this.prisma.notification.create({
+        data: {
+          userId: proof.userId,
+          title: `Tekshiruv: ${node?.titleUz || proof.entry.nodeKey}`,
+          message: aiNote,
+          type: NotificationType.ALERT,
+        },
+      });
+    }
+
+    return { ok: true, aiStatus };
   }
 
   async getProofFile(proofId: string, user: { id: string; role: Role }) {
