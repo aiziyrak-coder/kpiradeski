@@ -82,10 +82,36 @@ export function isTelegramMiniApp(): boolean {
   return Boolean(wa && (wa.initData || wa.initDataUnsafe?.user));
 }
 
+/** Telegram WebApp version compare (e.g. "6.0" vs "6.1") */
+export function tgVersionAtLeast(min: string): boolean {
+  const wa = getTelegramWebApp();
+  if (!wa?.version) return false;
+  const parse = (v: string) =>
+    String(v)
+      .split('.')
+      .map((p) => Number.parseInt(p, 10) || 0);
+  const a = parse(wa.version);
+  const b = parse(min);
+  const n = Math.max(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    const x = a[i] || 0;
+    const y = b[i] || 0;
+    if (x > y) return true;
+    if (x < y) return false;
+  }
+  return true;
+}
+
 export function haptic(type: 'light' | 'success' | 'error' = 'light') {
+  // HapticFeedback requires WebApp ≥ 6.1 — calling on 6.0 floods the console
+  if (!tgVersionAtLeast('6.1')) return;
   const hf = getTelegramWebApp()?.HapticFeedback;
   if (!hf) return;
-  if (type === 'success') hf.notificationOccurred('success');
-  else if (type === 'error') hf.notificationOccurred('error');
-  else hf.impactOccurred('light');
+  try {
+    if (type === 'success') hf.notificationOccurred('success');
+    else if (type === 'error') hf.notificationOccurred('error');
+    else hf.impactOccurred('light');
+  } catch {
+    // ignore unsupported
+  }
 }

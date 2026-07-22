@@ -57,34 +57,49 @@ const FREQ_IDS = ['DAILY', 'WEEKLY', 'MONTHLY'] as const;
 
 const DEPTH_UI = [
   {
-    wrap: 'border-teal-400/70 shadow-sm',
-    headClosed: 'bg-teal-900 text-white',
-    headOpen: 'bg-teal-700 text-white',
-    body: 'bg-teal-50/50 border-t border-teal-200/80',
+    wrap: 'border-teal-200',
+    headClosed: 'bg-teal-50 text-teal-950',
+    headOpen: 'bg-teal-100 text-teal-950',
+    body: 'bg-white/80 border-t border-teal-100',
+    badge: 'bg-teal-200/80 text-teal-900',
+    checkOn: 'bg-teal-700 border-teal-700 text-white',
+    checkOff: 'border-teal-400 bg-white',
   },
   {
-    wrap: 'border-amber-400/70 shadow-sm',
-    headClosed: 'bg-amber-900 text-white',
-    headOpen: 'bg-amber-700 text-white',
-    body: 'bg-amber-50/60 border-t border-amber-200/80',
+    wrap: 'border-amber-200',
+    headClosed: 'bg-amber-50 text-amber-950',
+    headOpen: 'bg-amber-100 text-amber-950',
+    body: 'bg-amber-50/40 border-t border-amber-100',
+    badge: 'bg-amber-200/80 text-amber-900',
+    checkOn: 'bg-amber-700 border-amber-700 text-white',
+    checkOff: 'border-amber-400 bg-white',
   },
   {
-    wrap: 'border-indigo-400/70 shadow-sm',
-    headClosed: 'bg-indigo-900 text-white',
-    headOpen: 'bg-indigo-700 text-white',
-    body: 'bg-indigo-50/60 border-t border-indigo-200/80',
+    wrap: 'border-violet-200',
+    headClosed: 'bg-violet-50 text-violet-950',
+    headOpen: 'bg-violet-100 text-violet-950',
+    body: 'bg-violet-50/40 border-t border-violet-100',
+    badge: 'bg-violet-200/80 text-violet-900',
+    checkOn: 'bg-violet-700 border-violet-700 text-white',
+    checkOff: 'border-violet-400 bg-white',
   },
   {
-    wrap: 'border-rose-400/70 shadow-sm',
-    headClosed: 'bg-rose-900 text-white',
-    headOpen: 'bg-rose-700 text-white',
-    body: 'bg-rose-50/60 border-t border-rose-200/80',
+    wrap: 'border-sky-200',
+    headClosed: 'bg-sky-50 text-sky-950',
+    headOpen: 'bg-sky-100 text-sky-950',
+    body: 'bg-sky-50/40 border-t border-sky-100',
+    badge: 'bg-sky-200/80 text-sky-900',
+    checkOn: 'bg-sky-700 border-sky-700 text-white',
+    checkOff: 'border-sky-400 bg-white',
   },
   {
-    wrap: 'border-sky-400/70 shadow-sm',
-    headClosed: 'bg-sky-900 text-white',
-    headOpen: 'bg-sky-700 text-white',
-    body: 'bg-sky-50/60 border-t border-sky-200/80',
+    wrap: 'border-lime-200',
+    headClosed: 'bg-lime-50 text-lime-950',
+    headOpen: 'bg-lime-100 text-lime-950',
+    body: 'bg-lime-50/40 border-t border-lime-100',
+    badge: 'bg-lime-200/80 text-lime-900',
+    checkOn: 'bg-lime-700 border-lime-700 text-white',
+    checkOff: 'border-lime-400 bg-white',
   },
 ] as const;
 
@@ -456,7 +471,7 @@ export default function TodayPage() {
     return (
       <div
         key={node.key}
-        className={cn('rounded-xl overflow-hidden mb-2 border-2', depthStyle.wrap)}
+        className={cn('rounded-xl overflow-hidden mb-2 border', depthStyle.wrap)}
         style={{ marginLeft: depth > 0 ? 10 : 0 }}
       >
         <div
@@ -468,7 +483,7 @@ export default function TodayPage() {
           <button
             type="button"
             onClick={() => setTreeOpen((o) => ({ ...o, [node.key]: !open }))}
-            className="p-0.5 rounded bg-white/15 hover:bg-white/25"
+            className="p-0.5 rounded hover:bg-black/5"
             title={open ? 'Yopish' : 'Ochish'}
           >
             {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -487,7 +502,7 @@ export default function TodayPage() {
             }}
             className={cn(
               'w-5 h-5 rounded-md border-2 grid place-items-center shrink-0',
-              allSel ? 'bg-white border-white text-teal-900' : 'border-white/50 bg-transparent',
+              allSel ? depthStyle.checkOn : depthStyle.checkOff,
             )}
           >
             {allSel && <Check className="w-3 h-3" strokeWidth={3} />}
@@ -496,12 +511,12 @@ export default function TodayPage() {
           <span
             className={cn(
               'text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded',
-              open ? 'bg-white/25' : 'bg-black/20',
+              depthStyle.badge,
             )}
           >
             {open ? t('today.opened') : t('today.closed')}
           </span>
-          <span className="text-xs tabular-nums opacity-90">
+          <span className="text-xs tabular-nums opacity-70">
             {selectedCount}/{leafKeys.length}
           </span>
         </div>
@@ -884,7 +899,7 @@ export default function TodayPage() {
       return (
         <div
           key={node.key}
-          className={cn('rounded-xl overflow-hidden mb-2 border-2', depthStyle.wrap)}
+          className={cn('rounded-xl overflow-hidden mb-2 border', depthStyle.wrap)}
           style={{ marginLeft: depth > 0 ? 8 : 0 }}
         >
           <button
@@ -900,12 +915,12 @@ export default function TodayPage() {
             <span
               className={cn(
                 'text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded',
-                open ? 'bg-white/25' : 'bg-black/20',
+                depthStyle.badge,
               )}
             >
               {open ? t('today.opened') : t('today.closed')}
             </span>
-            <span className="text-xs tabular-nums opacity-90">{leafCount}</span>
+            <span className="text-xs tabular-nums opacity-70">{leafCount}</span>
           </button>
           {open && (
             <div className={cn(depthStyle.body, 'py-1')}>

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   getTelegramWebApp,
   isTelegramMiniApp,
+  tgVersionAtLeast,
   type TelegramWebApp,
   type TelegramWebAppUser,
 } from '@/lib/telegram';
@@ -63,9 +64,14 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
       try {
         wa.ready();
         wa.expand();
-        wa.setHeaderColor?.(TEAL_HEADER);
-        wa.setBackgroundColor?.(TEAL_BG);
-        wa.disableVerticalSwipes?.();
+        // Version-gated: calling these on 6.0 logs noisy console warnings
+        if (tgVersionAtLeast('6.1')) {
+          wa.setHeaderColor?.(TEAL_HEADER);
+          wa.setBackgroundColor?.(TEAL_BG);
+        }
+        if (tgVersionAtLeast('7.7')) {
+          wa.disableVerticalSwipes?.();
+        }
         document.documentElement.classList.add('tg-mini-app');
         forceLightTheme();
         document.documentElement.style.setProperty(
@@ -99,10 +105,10 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Telegram BackButton
+  // Telegram BackButton (WebApp ≥ 6.1)
   useEffect(() => {
     const wa = webApp;
-    if (!wa?.BackButton) return;
+    if (!wa?.BackButton || !tgVersionAtLeast('6.1')) return;
 
     const homePaths = ['/my', '/today', '/dashboard', '/team', '/login'];
     const atHome = homePaths.some((p) => pathname === p);
