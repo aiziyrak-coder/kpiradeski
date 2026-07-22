@@ -134,6 +134,7 @@ export default function TodayPage() {
   const [files, setFiles] = useState<Record<string, File | null>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [expandKey, setExpandKey] = useState<string | null>(null);
+  const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>({});
   const [assignSel, setAssignSel] = useState<Record<string, boolean>>({});
   const [assignOpen, setAssignOpen] = useState(true);
   const [treeOpen, setTreeOpen] = useState<Record<string, boolean>>({});
@@ -444,7 +445,7 @@ export default function TodayPage() {
 
   const renderAssignTree = (node: TreeNode, depth = 0): ReactNode => {
     const hasKids = !!node.children?.length;
-    const open = treeOpen[node.key] ?? depth < 1;
+    const open = treeOpen[node.key] ?? false;
     const leafKeys = hasKids ? collectLeaves(node) : [];
     const selectedCount = leafKeys.filter((k) => assignSel[k]).length;
     const allSel = leafKeys.length > 0 && selectedCount === leafKeys.length;
@@ -786,18 +787,46 @@ export default function TodayPage() {
               const section = (lang === 'ru' ? row.sectionRu : row.sectionUz) || '—';
               const showSection = section !== lastSection;
               lastSection = section;
+              const secOpen = sectionOpen[section] === true;
               const open = expandKey === row.key;
               const hasDraft = !!(notes[row.key]?.trim() || files[row.key]);
+              const sectionCount = sorted.filter((r) => {
+                const s = (lang === 'ru' ? r.sectionRu : r.sectionUz) || '—';
+                return s === section;
+              }).length;
 
               return (
                 <Fragment key={row.key}>
                   {showSection && (
-                    <tr className="bg-teal-50/80">
-                      <td colSpan={3} className="px-2.5 py-1.5 text-[11px] font-semibold text-teal-900">
-                        {section}
+                    <tr className="bg-teal-50/80 border-t border-teal-100">
+                      <td colSpan={3} className="p-0">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSectionOpen((s) => ({ ...s, [section]: !secOpen }))
+                          }
+                          className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-teal-100/60"
+                        >
+                          {secOpen ? (
+                            <ChevronDown className="w-4 h-4 text-teal-800 shrink-0" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-teal-800 shrink-0" />
+                          )}
+                          <span className="text-[12px] font-semibold text-teal-900 flex-1">
+                            {section}
+                          </span>
+                          <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-teal-200/70 text-teal-900">
+                            {secOpen ? t('today.opened') : t('today.closed')}
+                          </span>
+                          <span className="text-xs tabular-nums text-teal-800/80">
+                            {sectionCount}
+                          </span>
+                        </button>
                       </td>
                     </tr>
                   )}
+                  {secOpen && (
+                    <>
                   <tr className="border-t border-teal-900/[0.06] hover:bg-teal-50/30">
                     <td className="p-2.5 align-middle">
                       <p className="font-medium text-ink leading-snug">{title}</p>
@@ -954,6 +983,8 @@ export default function TodayPage() {
                       </td>
                     </tr>
                   )}
+                    </>
+                  )}
                 </Fragment>
               );
             })}
@@ -1008,6 +1039,9 @@ export default function TodayPage() {
                 onClick={() => {
                   setFreq(id);
                   setQ('');
+                  setTreeOpen({});
+                  setSectionOpen({});
+                  setExpandKey(null);
                 }}
                 className={cn(
                   'rounded-lg py-2.5 text-sm font-semibold transition',
