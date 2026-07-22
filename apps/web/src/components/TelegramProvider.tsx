@@ -65,7 +65,7 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
         wa.ready();
         wa.expand();
         // Version-gated: calling these on 6.0 logs noisy console warnings
-        if (tgVersionAtLeast('6.1')) {
+        if (tgVersionAtLeast('6.9')) {
           wa.setHeaderColor?.(TEAL_HEADER);
           wa.setBackgroundColor?.(TEAL_BG);
         }

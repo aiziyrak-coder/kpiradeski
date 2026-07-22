@@ -152,7 +152,7 @@ export const uz = {
     booked: 'Yozuv',
     count: 'Soni',
     managerHint:
-      'Admin topshirgan ishlarni bajaring. Oddiy ishlar — «Bajardim»; dalil kerak boʻlsa — rasm yuklang.',
+      'Topshiriqlarni bajaring: «Izoh» — izoh yozing yoki fayl yuklang. Dalil majburiy ishlarda rasm/hujjat shart.',
     adminHint: 'Ishlarni managerga topshiring. Natijani AI nazorati bilan kuzating.',
     todo: 'Bajarilmagan',
     inReview: 'Tekshiruvda',
@@ -204,6 +204,7 @@ export const uz = {
     proofNeeded: 'Dalil (rasm) majburiy',
     addTaskBtn: 'Vazifani qoʻshish',
     taskAdded: 'Yangi vazifa qoʻshildi',
+    taskAddedHint: 'Belgilanib qoldi — «Topshirishni saqlash» ni bosing',
     pickCategory: 'Kategoriyani tanlang',
   },
   ai: {

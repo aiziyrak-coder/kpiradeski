@@ -343,6 +343,10 @@ export default function TodayPage() {
   async function submitTask(row: TaskRow) {
     const note = (notes[row.key] || '').trim();
     const file = files[row.key];
+    if (row.proofRequired && !file) {
+      toast.error(t('today.needFile'));
+      return;
+    }
     if (!note && !file) {
       toast.error(t('today.needNoteOrFile'));
       return;
@@ -469,7 +473,7 @@ export default function TodayPage() {
           proofRequired: newTask.proofRequired,
         }),
       });
-      toast.success(t('today.taskAdded'));
+      toast.success(`${t('today.taskAdded')}. ${t('today.taskAddedHint')}`);
       setNewTask((s) => ({
         ...s,
         titleUz: '',
@@ -523,9 +527,10 @@ export default function TodayPage() {
   }
 
   function statusLabel(row: TaskRow) {
-    if (row.status === 'DONE' || row.aiStatus === 'APPROVED') return t('today.aiApproved');
+    if (row.aiStatus === 'APPROVED') return t('today.aiApproved');
     if (row.status === 'REJECTED' || row.aiStatus === 'REJECTED') return t('today.aiRejected');
     if (row.status === 'PENDING' || row.aiStatus === 'PENDING') return t('today.aiPending');
+    if (row.status === 'DONE') return t('today.markedDone');
     return t('today.todo');
   }
 
@@ -573,7 +578,7 @@ export default function TodayPage() {
             type="button"
             onClick={() => setTreeOpen((o) => ({ ...o, [node.key]: !open }))}
             className="p-0.5 rounded hover:bg-black/5"
-            title={open ? 'Yopish' : 'Ochish'}
+            title={open ? t('today.closed') : t('today.opened')}
           >
             {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </button>
@@ -920,6 +925,11 @@ export default function TodayPage() {
                   <tr className={cn('border-t border-black/[0.04]', pal.row, pal.rowHover)}>
                     <td className="p-2.5 align-middle">
                       <p className="font-medium text-ink leading-snug">{title}</p>
+                      {row.proofRequired && (
+                        <span className="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                          {t('today.needsProof')}
+                        </span>
+                      )}
                       {row.aiNote && (
                         <p className="text-[11px] text-ink-muted mt-0.5 line-clamp-1">{row.aiNote}</p>
                       )}
@@ -1066,7 +1076,9 @@ export default function TodayPage() {
                             </button>
                           </div>
                           <p className="text-[10px] text-ink-muted">
-                            {t('today.needNoteOrFileHint')}
+                            {row.proofRequired
+                              ? t('today.needFile')
+                              : t('today.needNoteOrFileHint')}
                           </p>
                         </div>
                       </td>

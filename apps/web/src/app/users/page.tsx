@@ -272,7 +272,9 @@ export default function UsersPage() {
                         size="sm"
                         variant="ghost"
                         onClick={() => removeUser(u)}
-                        disabled={u.id === me?.id}
+                        disabled={
+                          u.id === me?.id || (u.role === 'SUPER_ADMIN' && !isSA)
+                        }
                       >
                         {t('common.delete')}
                       </Button>

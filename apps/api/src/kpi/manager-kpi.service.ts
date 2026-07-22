@@ -120,28 +120,6 @@ export class ManagerKpiService implements OnModuleInit {
     try {
       await seedKpiCatalog(this.prisma as any);
       this.logger.log('KPI katalog sync');
-      let branch = await this.prisma.branch.findFirst();
-      if (!branch) {
-        branch = await this.prisma.branch.create({
-          data: { name: 'Radeski Dermatologiya', address: 'Toshkent' },
-        });
-      }
-      const managers = await this.prisma.user.findMany({
-        where: { role: Role.MANAGER, active: true },
-      });
-      for (const manager of managers) {
-        await this.prisma.branchManager.upsert({
-          where: { branchId_userId: { branchId: branch.id, userId: manager.id } },
-          create: { branchId: branch.id, userId: manager.id },
-          update: {},
-        });
-        if (!manager.branchId) {
-          await this.prisma.user.update({
-            where: { id: manager.id },
-            data: { branchId: branch.id },
-          });
-        }
-      }
     } catch (e) {
       this.logger.warn(`Catalog seed: ${e}`);
     }
@@ -279,7 +257,7 @@ export class ManagerKpiService implements OnModuleInit {
 
     const buildTree = (parentKey: string | null): any[] => {
       const list = parentKey
-        ? allNodes.filter((n) => n.parentKey === parentKey)
+        ? allNodes.filter((n) => n.parentKey === parentKey && n.frequency === frequency)
         : roots;
       return list.map((n) => {
         const entry = byKey[n.key];
@@ -348,17 +326,13 @@ export class ManagerKpiService implements OnModuleInit {
         const entry = byKey[n.key];
         const proof = entry?.proofs?.[0] || null;
         const titles = titleOf(n.key);
-        const status = proof
-          ? proof.aiStatus === AiProofStatus.APPROVED
-            ? 'DONE'
-            : proof.aiStatus === AiProofStatus.REJECTED
-              ? 'REJECTED'
-              : proof.aiStatus === AiProofStatus.PENDING
-                ? 'PENDING'
-                : 'TODO'
-          : entry?.done
-            ? 'DONE'
-            : 'TODO';
+        // Priority: AI approved > pending review > entry done (note redo) > rejected > todo
+        let status: 'TODO' | 'PENDING' | 'REJECTED' | 'DONE' = 'TODO';
+        if (proof?.aiStatus === AiProofStatus.APPROVED) status = 'DONE';
+        else if (proof?.aiStatus === AiProofStatus.PENDING) status = 'PENDING';
+        else if (entry?.done) status = 'DONE';
+        else if (proof?.aiStatus === AiProofStatus.REJECTED) status = 'REJECTED';
+        else status = 'TODO';
         return {
           key: n.key,
           ...titles,
@@ -773,6 +747,20 @@ export class ManagerKpiService implements OnModuleInit {
         /* keep string */
       }
     }
+    if (typeof value !== 'object' || value == null) {
+      value = value != null ? { note: String(value) } : {};
+    }
+
+    if (node.inputType === KpiInputType.RATIO) {
+      const calls = Number(value?.calls ?? 0);
+      if (!calls) throw new BadRequestException('Qoʻngʻiroq sonini kiriting');
+      value = { ...value, calls, booked: Number(value?.booked ?? 0) };
+    }
+    if (node.inputType === KpiInputType.NUMBER) {
+      const count = Number(value?.count ?? value ?? 0);
+      if (!count) throw new BadRequestException('Sonini kiriting');
+      value = { ...value, count };
+    }
 
     const entry = await this.prisma.kpiDayEntry.upsert({
       where: {
@@ -915,6 +903,11 @@ export class ManagerKpiService implements OnModuleInit {
     if (!assigned) {
       throw new ForbiddenException('Bu ish sizga topshirilmagan');
     }
+    if (node.proofRequired) {
+      throw new BadRequestException(
+        'Bu ish uchun dalil (rasm/hujjat) majburiy — fayl yuklab yuboring',
+      );
+    }
 
     let value = data.value ?? {};
     if (typeof value === 'string') {
@@ -928,9 +921,7 @@ export class ManagerKpiService implements OnModuleInit {
 
     const note = String(value.note || '').trim();
     if (!note) {
-      throw new BadRequestException(
-        'Izoh yozing yoki dalil (hujjat/rasm) yuklang — kamida bittasi majburiy',
-      );
+      throw new BadRequestException('Izoh yozish majburiy (yoki dalil yuklang)');
     }
 
     if (node.inputType === KpiInputType.CHECKBOX || node.inputType === KpiInputType.NOTE_CHECK) {

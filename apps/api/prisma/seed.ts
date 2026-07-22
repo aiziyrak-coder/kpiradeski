@@ -10,6 +10,8 @@ async function wipeAllData() {
   await prisma.$transaction([
     prisma.kpiProof.deleteMany({}),
     prisma.kpiDayEntry.deleteMany({}),
+    prisma.kpiAssignmentTemplate.deleteMany({}),
+    prisma.kpiTaskAssignment.deleteMany({}),
     prisma.kpiCatalogNode.deleteMany({}),
     prisma.branchManager.deleteMany({}),
     prisma.taskProof.deleteMany({}),
@@ -71,6 +73,7 @@ async function main() {
     }
     const manager = await prisma.user.findFirst({ where: { role: Role.MANAGER } });
     if (manager) {
+      // Faqat mavjud managerni filialga bogʻlash — yangi demo yaratilmaydi
       await prisma.branchManager.upsert({
         where: { branchId_userId: { branchId: branch.id, userId: manager.id } },
         create: { branchId: branch.id, userId: manager.id },
