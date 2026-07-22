@@ -246,7 +246,7 @@ export default function TodayPage() {
       });
       toast.success(t('today.savedAssign'));
       await loadDay();
-      setAdminTab('results');
+      setAdminTab('assign');
     } catch (e: any) {
       toast.error(e.message);
     } finally {

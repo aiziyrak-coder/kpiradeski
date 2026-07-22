@@ -247,8 +247,8 @@ export class ManagerKpiService implements OnModuleInit {
       });
     };
 
-    const assignments = await this.prisma.kpiTaskAssignment.findMany({
-      where: { branchId, date, frequency, active: true },
+    const assignments = await this.prisma.kpiAssignmentTemplate.findMany({
+      where: { branchId, frequency, active: true },
     });
     const assignedKeys = new Set(assignments.map((a) => a.nodeKey));
 
@@ -698,10 +698,10 @@ export class ManagerKpiService implements OnModuleInit {
     }
 
     const date = periodDate(node.frequency, data.date);
-    const assigned = await this.prisma.kpiTaskAssignment.findFirst({
+    const assigned = await this.prisma.kpiAssignmentTemplate.findFirst({
       where: {
         branchId: data.branchId,
-        date,
+        frequency: node.frequency,
         nodeKey: data.nodeKey,
         active: true,
       },
@@ -854,10 +854,10 @@ export class ManagerKpiService implements OnModuleInit {
     }
 
     const date = periodDate(node.frequency, data.date);
-    const assigned = await this.prisma.kpiTaskAssignment.findFirst({
+    const assigned = await this.prisma.kpiAssignmentTemplate.findFirst({
       where: {
         branchId: data.branchId,
-        date,
+        frequency: node.frequency,
         nodeKey: data.nodeKey,
         active: true,
       },
@@ -934,7 +934,6 @@ export class ManagerKpiService implements OnModuleInit {
       throw new ForbiddenException('Faqat admin topshiradi');
     }
     await this.branches.assertCanAccessBranch(user.id, user.role, data.branchId);
-    const date = periodDate(data.frequency, data.date);
     const keys = [...new Set(data.nodeKeys.filter(Boolean))];
 
     const valid = await this.prisma.kpiCatalogNode.findMany({
@@ -947,23 +946,23 @@ export class ManagerKpiService implements OnModuleInit {
     });
     const validKeys = valid.map((v) => v.key);
 
-    await this.prisma.kpiTaskAssignment.updateMany({
-      where: { branchId: data.branchId, date, frequency: data.frequency },
+    // Doimiy shablon: sana emas — filial + chastota. Har kun/hafta/oy shu toʻplam yangilanadi.
+    await this.prisma.kpiAssignmentTemplate.updateMany({
+      where: { branchId: data.branchId, frequency: data.frequency },
       data: { active: false },
     });
 
     for (const nodeKey of validKeys) {
-      await this.prisma.kpiTaskAssignment.upsert({
+      await this.prisma.kpiAssignmentTemplate.upsert({
         where: {
-          branchId_date_nodeKey: {
+          branchId_frequency_nodeKey: {
             branchId: data.branchId,
-            date,
+            frequency: data.frequency,
             nodeKey,
           },
         },
         create: {
           branchId: data.branchId,
-          date,
           frequency: data.frequency,
           nodeKey,
           assignedById: user.id,
@@ -972,7 +971,6 @@ export class ManagerKpiService implements OnModuleInit {
         update: {
           active: true,
           assignedById: user.id,
-          frequency: data.frequency,
         },
       });
     }
@@ -980,8 +978,8 @@ export class ManagerKpiService implements OnModuleInit {
     return {
       ok: true,
       count: validKeys.length,
-      date: date.toISOString().slice(0, 10),
       frequency: data.frequency,
+      persistent: true,
     };
   }
 

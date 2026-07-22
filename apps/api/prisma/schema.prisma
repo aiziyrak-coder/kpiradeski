@@ -141,6 +141,7 @@ model User {
   kpiEntries      KpiDayEntry[]
   kpiProofs       KpiProof[]
   kpiAssignments  KpiTaskAssignment[]
+  kpiTemplates    KpiAssignmentTemplate[]
 }
 
 model Branch {
@@ -158,6 +159,7 @@ model Branch {
   kpiEntries      KpiDayEntry[]
   dailyScores     DailyScore[]
   kpiAssignments  KpiTaskAssignment[]
+  kpiTemplates    KpiAssignmentTemplate[]
 }
 
 model BranchManager {
@@ -232,6 +234,25 @@ model KpiTaskAssignment {
 
   @@unique([branchId, date, nodeKey])
   @@index([branchId, date, frequency])
+  @@index([assignedById])
+}
+
+/** Doimiy topshiriq shabloni — sana emas, chastota boʻyicha (kunlik/haftalik/oylik) */
+model KpiAssignmentTemplate {
+  id           String       @id @default(cuid())
+  branchId     String
+  frequency    KpiFrequency
+  nodeKey      String
+  assignedById String?
+  active       Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  branch     Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  assignedBy User?  @relation(fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, frequency, nodeKey])
+  @@index([branchId, frequency, active])
   @@index([assignedById])
 }
 

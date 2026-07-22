@@ -182,7 +182,7 @@ export const ru: LocaleDict = {
     aiApproved: 'AI одобрил',
     aiRejected: 'AI отклонил',
     viewProof: 'Док.',
-    savedAssign: 'Назначения сохранены',
+    savedAssign: 'Назначения сохранены постоянно — обновляются каждый день/неделю/месяц',
     needFile: 'Фото обязательно',
     submittedOk: 'Отправлено — AI проверяет',
   },

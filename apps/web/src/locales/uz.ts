@@ -182,7 +182,7 @@ export const uz = {
     aiApproved: 'AI tasdiqladi',
     aiRejected: 'AI rad etdi',
     viewProof: 'Dalil',
-    savedAssign: 'Topshiriqlar saqlandi',
+    savedAssign: 'Topshiriqlar doimiy saqlandi — har kun/hafta/oy yangilanadi',
     needFile: 'Dalil (rasm) majburiy',
     submittedOk: 'Yuborildi — AI tekshirmoqda',
   },
