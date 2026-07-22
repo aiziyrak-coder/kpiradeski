@@ -348,12 +348,12 @@ export class ManagerKpiService implements OnModuleInit {
         const entry = byKey[n.key];
         const proof = entry?.proofs?.[0] || null;
         const titles = titleOf(n.key);
-        const status = n.proofRequired
-          ? proof?.aiStatus === AiProofStatus.APPROVED
+        const status = proof
+          ? proof.aiStatus === AiProofStatus.APPROVED
             ? 'DONE'
-            : proof?.aiStatus === AiProofStatus.REJECTED
+            : proof.aiStatus === AiProofStatus.REJECTED
               ? 'REJECTED'
-              : proof?.aiStatus === AiProofStatus.PENDING
+              : proof.aiStatus === AiProofStatus.PENDING
                 ? 'PENDING'
                 : 'TODO'
           : entry?.done
@@ -764,11 +764,6 @@ export class ManagerKpiService implements OnModuleInit {
     if (!assigned) {
       throw new ForbiddenException('Bu ish sizga topshirilmagan');
     }
-    if (!node.proofRequired) {
-      throw new BadRequestException(
-        'Bu ish uchun dalil shart emas — «Bajardim» tugmasidan foydalaning',
-      );
-    }
 
     let value = data.value ?? null;
     if (typeof value === 'string') {
@@ -815,29 +810,32 @@ export class ManagerKpiService implements OnModuleInit {
     let aiPenalty = 0;
     let aiScore = 0;
 
-    const vision = await openaiVisionProof({
-      title: `${node.titleUz} / ${node.titleRu}`,
-      description: node.descriptionUz || node.descriptionRu,
-      mimeType: data.file.mimetype,
-      base64: data.file.buffer.toString('base64'),
-      frequency: node.frequency,
-    });
+    const isImage = String(data.file.mimetype || '').startsWith('image/');
+    if (isImage) {
+      const vision = await openaiVisionProof({
+        title: `${node.titleUz} / ${node.titleRu}`,
+        description: node.descriptionUz || node.descriptionRu,
+        mimeType: data.file.mimetype,
+        base64: data.file.buffer.toString('base64'),
+        frequency: node.frequency,
+      });
 
-    if (vision) {
-      aiStatus = vision.approved ? AiProofStatus.APPROVED : AiProofStatus.REJECTED;
-      aiNote = vision.note;
-      aiFeedback = vision.feedback;
-      aiAction = vision.action as AiAction;
-      aiPenalty = vision.penalty;
-      aiScore = vision.score;
+      if (vision) {
+        aiStatus = vision.approved ? AiProofStatus.APPROVED : AiProofStatus.REJECTED;
+        aiNote = vision.note;
+        aiFeedback = vision.feedback;
+        aiAction = vision.action as AiAction;
+        aiPenalty = vision.penalty;
+        aiScore = vision.score;
+      } else {
+        aiStatus = AiProofStatus.PENDING;
+        aiNote = 'AI vaqtincha javob bermadi — tekshiruv kutilmoqda';
+        aiFeedback = 'Admin yoki AI qayta tekshiradi';
+      }
     } else {
-      // AI yoʻq — avto tasdiqlamaymiz, admin kuzatsin
       aiStatus = AiProofStatus.PENDING;
-      aiNote = 'AI vaqtincha javob bermadi — tekshiruv kutilmoqda';
-      aiFeedback = 'Admin yoki AI qayta tekshiradi';
-      aiAction = AiAction.NONE;
-      aiPenalty = 0;
-      aiScore = 0;
+      aiNote = 'Hujjat yuklandi — admin tekshiradi';
+      aiFeedback = value?.note ? String(value.note) : null;
     }
 
     const proof = await this.prisma.kpiProof.create({
@@ -904,9 +902,6 @@ export class ManagerKpiService implements OnModuleInit {
     if (node.inputType === KpiInputType.GROUP) {
       throw new BadRequestException('Guruh uchun yuborilmaydi');
     }
-    if (node.proofRequired) {
-      throw new BadRequestException('Bu ish uchun dalil (rasm) majburiy');
-    }
 
     const date = periodDate(node.frequency, data.date);
     const assigned = await this.prisma.kpiAssignmentTemplate.findFirst({
@@ -921,26 +916,35 @@ export class ManagerKpiService implements OnModuleInit {
       throw new ForbiddenException('Bu ish sizga topshirilmagan');
     }
 
-    let value = data.value ?? true;
+    let value = data.value ?? {};
     if (typeof value === 'string') {
       try {
         value = JSON.parse(value);
       } catch {
-        /* keep */
+        value = { note: value };
       }
     }
-    if (node.inputType === KpiInputType.CHECKBOX) value = true;
-    if (node.inputType === KpiInputType.NOTE_CHECK) {
-      value = { ...(typeof value === 'object' && value ? value : {}), checked: true };
+    if (typeof value !== 'object' || value == null) value = {};
+
+    const note = String(value.note || '').trim();
+    if (!note) {
+      throw new BadRequestException(
+        'Izoh yozing yoki dalil (hujjat/rasm) yuklang — kamida bittasi majburiy',
+      );
     }
-    if (node.inputType === KpiInputType.RATIO) {
+
+    if (node.inputType === KpiInputType.CHECKBOX || node.inputType === KpiInputType.NOTE_CHECK) {
+      value = { ...value, checked: true, note };
+    } else if (node.inputType === KpiInputType.RATIO) {
       const calls = Number(value?.calls ?? 0);
       if (!calls) throw new BadRequestException('Qoʻngʻiroq sonini kiriting');
-    }
-    if (node.inputType === KpiInputType.NUMBER) {
-      const count = Number(value?.count ?? value ?? 0);
+      value = { ...value, note, calls, booked: Number(value?.booked ?? 0) };
+    } else if (node.inputType === KpiInputType.NUMBER) {
+      const count = Number(value?.count ?? 0);
       if (!count) throw new BadRequestException('Sonini kiriting');
-      value = { count };
+      value = { ...value, note, count };
+    } else {
+      value = { ...value, note };
     }
 
     const leafScore = this.scoreLeaf(node.inputType, value, true);

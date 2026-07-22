@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { RoleGate } from '@/components/RoleGate';
 import { useToast } from '@/components/Toast';
@@ -55,6 +55,39 @@ type CatalogParent = {
 
 const FREQ_IDS = ['DAILY', 'WEEKLY', 'MONTHLY'] as const;
 
+const DEPTH_UI = [
+  {
+    wrap: 'border-teal-400/70 shadow-sm',
+    headClosed: 'bg-teal-900 text-white',
+    headOpen: 'bg-teal-700 text-white',
+    body: 'bg-teal-50/50 border-t border-teal-200/80',
+  },
+  {
+    wrap: 'border-amber-400/70 shadow-sm',
+    headClosed: 'bg-amber-900 text-white',
+    headOpen: 'bg-amber-700 text-white',
+    body: 'bg-amber-50/60 border-t border-amber-200/80',
+  },
+  {
+    wrap: 'border-indigo-400/70 shadow-sm',
+    headClosed: 'bg-indigo-900 text-white',
+    headOpen: 'bg-indigo-700 text-white',
+    body: 'bg-indigo-50/60 border-t border-indigo-200/80',
+  },
+  {
+    wrap: 'border-rose-400/70 shadow-sm',
+    headClosed: 'bg-rose-900 text-white',
+    headOpen: 'bg-rose-700 text-white',
+    body: 'bg-rose-50/60 border-t border-rose-200/80',
+  },
+  {
+    wrap: 'border-sky-400/70 shadow-sm',
+    headClosed: 'bg-sky-900 text-white',
+    headOpen: 'bg-sky-700 text-white',
+    body: 'bg-sky-50/60 border-t border-sky-200/80',
+  },
+] as const;
+
 function monthEndISO(from: string) {
   const [y, m] = from.split('-').map(Number);
   return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
@@ -84,6 +117,7 @@ export default function TodayPage() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, any>>({});
   const [files, setFiles] = useState<Record<string, File | null>>({});
+  const [notes, setNotes] = useState<Record<string, string>>({});
   const [assignSel, setAssignSel] = useState<Record<string, boolean>>({});
   const [assignOpen, setAssignOpen] = useState(true);
   const [treeOpen, setTreeOpen] = useState<Record<string, boolean>>({});
@@ -204,12 +238,14 @@ export default function TodayPage() {
   );
 
   async function submitTask(row: TaskRow) {
-    if (row.proofRequired) {
-      const file = files[row.key];
-      if (!file) {
-        toast.error(t('today.needFile'));
-        return;
-      }
+    const note = (notes[row.key] || '').trim();
+    const file = files[row.key];
+    if (!note && !file) {
+      toast.error(t('today.needNoteOrFile'));
+      return;
+    }
+
+    if (file) {
       setBusyKey(row.key);
       try {
         const fd = new FormData();
@@ -217,16 +253,18 @@ export default function TodayPage() {
         fd.append('branchId', branchId);
         fd.append('nodeKey', row.key);
         fd.append('date', date);
-        const val = draft[row.key];
-        if (val != null) {
-          const parsed =
-            row.inputType === 'NUMBER'
-              ? { count: Number(val.count) || 0 }
-              : row.inputType === 'RATIO'
-                ? { calls: Number(val.calls) || 0, booked: Number(val.booked) || 0 }
-                : val;
-          fd.append('value', JSON.stringify(parsed));
-        }
+        const val = draft[row.key] || {};
+        const parsed =
+          row.inputType === 'NUMBER'
+            ? { count: Number(val.count) || 0, note }
+            : row.inputType === 'RATIO'
+              ? {
+                  calls: Number(val.calls) || 0,
+                  booked: Number(val.booked) || 0,
+                  note,
+                }
+              : { ...val, note };
+        fd.append('value', JSON.stringify(parsed));
         const token = getToken();
         const res = await fetch('/api/manager-kpi/proof', {
           method: 'POST',
@@ -239,6 +277,7 @@ export default function TodayPage() {
         else if (data.aiStatus === 'APPROVED') toast.success(data.aiNote || t('today.proofOk'));
         else toast.success(t('today.submittedOk'));
         setFiles((f) => ({ ...f, [row.key]: null }));
+        setNotes((n) => ({ ...n, [row.key]: '' }));
         await loadDay();
       } catch (e: any) {
         toast.error(e.message);
@@ -251,16 +290,17 @@ export default function TodayPage() {
     setBusyKey(row.key);
     try {
       const raw = draft[row.key];
-      let value: any = true;
+      let value: any = { note };
       if (row.inputType === 'NUMBER') {
-        value = { count: Number(raw?.count) || 0 };
+        value = { count: Number(raw?.count) || 0, note };
       } else if (row.inputType === 'RATIO') {
         value = {
           calls: Number(raw?.calls) || 0,
           booked: Number(raw?.booked) || 0,
+          note,
         };
-      } else if (raw != null) {
-        value = raw;
+      } else if (raw != null && typeof raw === 'object') {
+        value = { ...raw, note };
       }
       await api('/manager-kpi/complete', {
         method: 'POST',
@@ -272,6 +312,7 @@ export default function TodayPage() {
         }),
       });
       toast.success(t('today.markedDone'));
+      setNotes((n) => ({ ...n, [row.key]: '' }));
       await loadDay();
     } catch (e: any) {
       toast.error(e.message);
@@ -383,13 +424,14 @@ export default function TodayPage() {
     return t('today.todo');
   }
 
-  const renderAssignTree = (node: TreeNode, depth = 0): React.ReactNode => {
+  const renderAssignTree = (node: TreeNode, depth = 0): ReactNode => {
     const hasKids = !!node.children?.length;
     const open = treeOpen[node.key] ?? depth < 1;
     const leafKeys = hasKids ? collectLeaves(node) : [];
     const selectedCount = leafKeys.filter((k) => assignSel[k]).length;
     const allSel = leafKeys.length > 0 && selectedCount === leafKeys.length;
     const title = lang === 'ru' ? node.titleRu : node.titleUz;
+    const depthStyle = DEPTH_UI[Math.min(depth, DEPTH_UI.length - 1)];
 
     if (!hasKids && node.inputType === 'GROUP') return null;
 
@@ -397,8 +439,8 @@ export default function TodayPage() {
       return (
         <label
           key={node.key}
-          className="flex items-center gap-3 px-3 py-2 border-t border-teal-900/[0.06] cursor-pointer hover:bg-teal-50/40"
-          style={{ paddingLeft: 12 + depth * 14 }}
+          className="flex items-center gap-3 px-3 py-2.5 border-t border-black/[0.04] cursor-pointer hover:bg-white/70"
+          style={{ paddingLeft: 12 + depth * 10 }}
         >
           <input
             type="checkbox"
@@ -412,12 +454,22 @@ export default function TodayPage() {
     }
 
     return (
-      <div key={node.key} className="border border-teal-900/10 rounded-xl overflow-hidden bg-white mb-2">
-        <div className="flex items-center gap-2 px-3 py-2.5 bg-teal-950/[0.03]">
+      <div
+        key={node.key}
+        className={cn('rounded-xl overflow-hidden mb-2 border-2', depthStyle.wrap)}
+        style={{ marginLeft: depth > 0 ? 10 : 0 }}
+      >
+        <div
+          className={cn(
+            'flex items-center gap-2 px-3 py-2.5',
+            open ? depthStyle.headOpen : depthStyle.headClosed,
+          )}
+        >
           <button
             type="button"
             onClick={() => setTreeOpen((o) => ({ ...o, [node.key]: !open }))}
-            className="p-0.5 text-ink-muted"
+            className="p-0.5 rounded bg-white/15 hover:bg-white/25"
+            title={open ? 'Yopish' : 'Ochish'}
           >
             {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </button>
@@ -434,18 +486,30 @@ export default function TodayPage() {
               });
             }}
             className={cn(
-              'w-5 h-5 rounded-md border-2 grid place-items-center',
-              allSel ? 'bg-teal-800 border-teal-800 text-white' : 'border-teal-800/30',
+              'w-5 h-5 rounded-md border-2 grid place-items-center shrink-0',
+              allSel ? 'bg-white border-white text-teal-900' : 'border-white/50 bg-transparent',
             )}
           >
             {allSel && <Check className="w-3 h-3" strokeWidth={3} />}
           </button>
-          <span className="text-sm font-semibold text-ink flex-1">{title}</span>
-          <span className="text-xs text-ink-muted tabular-nums">
+          <span className="text-sm font-semibold flex-1">{title}</span>
+          <span
+            className={cn(
+              'text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded',
+              open ? 'bg-white/25' : 'bg-black/20',
+            )}
+          >
+            {open ? t('today.opened') : t('today.closed')}
+          </span>
+          <span className="text-xs tabular-nums opacity-90">
             {selectedCount}/{leafKeys.length}
           </span>
         </div>
-        {open && node.children.map((c) => renderAssignTree(c, depth + 1))}
+        {open && (
+          <div className={cn(depthStyle.body)}>
+            {node.children.map((c) => renderAssignTree(c, depth + 1))}
+          </div>
+        )}
       </div>
     );
   };
@@ -471,7 +535,7 @@ export default function TodayPage() {
               <th className="p-3 font-medium">{t('today.status')}</th>
               {mode === 'manager-todo' && (
                 <>
-                  <th className="p-3 font-medium">{t('today.proofCol')}</th>
+                  <th className="p-3 font-medium">{t('today.noteOrFile')}</th>
                   <th className="p-3 font-medium">{t('today.action')}</th>
                 </>
               )}
@@ -568,28 +632,33 @@ export default function TodayPage() {
                   </td>
                   {mode === 'manager-todo' && (
                     <>
-                      <td className="p-3">
-                        {row.proofRequired ? (
-                          <label className="inline-flex items-center gap-1.5 text-xs text-teal-800 cursor-pointer">
-                            <Upload className="w-3.5 h-3.5" />
-                            <span className="truncate max-w-[120px]">
-                              {files[row.key]?.name || t('today.pickFile')}
-                            </span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) =>
-                                setFiles((f) => ({
-                                  ...f,
-                                  [row.key]: e.target.files?.[0] || null,
-                                }))
-                              }
-                            />
-                          </label>
-                        ) : (
-                          <span className="text-xs text-ink-muted">{t('today.noProofNeeded')}</span>
-                        )}
+                      <td className="p-3 min-w-[200px]">
+                        <textarea
+                          className="w-full min-h-[56px] rounded-lg border border-teal-200 bg-white px-2 py-1.5 text-xs"
+                          placeholder={t('today.notePlaceholder')}
+                          value={notes[row.key] || ''}
+                          onChange={(e) =>
+                            setNotes((n) => ({ ...n, [row.key]: e.target.value }))
+                          }
+                        />
+                        <label className="mt-2 inline-flex items-center gap-1.5 text-xs text-teal-800 cursor-pointer">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span className="truncate max-w-[140px]">
+                            {files[row.key]?.name || t('today.pickFile')}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                            className="hidden"
+                            onChange={(e) =>
+                              setFiles((f) => ({
+                                ...f,
+                                [row.key]: e.target.files?.[0] || null,
+                              }))
+                            }
+                          />
+                        </label>
+                        <p className="text-[10px] text-ink-muted mt-1">{t('today.needNoteOrFileHint')}</p>
                       </td>
                       <td className="p-3">
                         <button
@@ -598,11 +667,7 @@ export default function TodayPage() {
                           onClick={() => submitTask(row)}
                           className="h-8 px-3 rounded-lg text-xs font-semibold bg-teal-800 text-white disabled:opacity-50"
                         >
-                          {busyKey === row.key
-                            ? t('today.submitting')
-                            : row.proofRequired
-                              ? t('today.submitProof')
-                              : t('today.markDone')}
+                          {busyKey === row.key ? t('today.submitting') : t('today.submit')}
                         </button>
                       </td>
                     </>
@@ -664,6 +729,200 @@ export default function TodayPage() {
         </table>
       </div>
     );
+  };
+
+  const renderManagerTaskCard = (row: TaskRow) => {
+    const title = lang === 'ru' ? row.titleRu : row.titleUz;
+    return (
+      <div
+        key={row.key}
+        className="rounded-lg border border-teal-900/10 bg-white p-3 space-y-2"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="text-sm font-medium text-ink">{title}</p>
+            {row.aiNote && (
+              <p className="text-xs text-ink-muted mt-1 leading-snug">{row.aiNote}</p>
+            )}
+          </div>
+          <span
+            className={cn(
+              'inline-flex text-[11px] font-semibold px-2 py-1 rounded-full shrink-0',
+              row.status === 'DONE' && 'bg-teal-100 text-teal-900',
+              row.status === 'REJECTED' && 'bg-rose-100 text-rose-800',
+              row.status === 'PENDING' && 'bg-amber-100 text-amber-900',
+              row.status === 'TODO' && 'bg-sand-100 text-ink-muted',
+            )}
+          >
+            {statusLabel(row)}
+          </span>
+        </div>
+        {row.inputType === 'RATIO' && (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder={t('today.calls')}
+              className="w-20 h-8 rounded-lg border border-teal-200 px-2 text-sm"
+              value={draft[row.key]?.calls ?? ''}
+              onChange={(e) => {
+                const v = e.target.value.replace(/[^\d]/g, '');
+                setDraft((d) => ({
+                  ...d,
+                  [row.key]: {
+                    ...(d[row.key] || {}),
+                    calls: v,
+                    booked: d[row.key]?.booked ?? '',
+                  },
+                }));
+              }}
+            />
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder={t('today.booked')}
+              className="w-20 h-8 rounded-lg border border-teal-200 px-2 text-sm"
+              value={draft[row.key]?.booked ?? ''}
+              onChange={(e) => {
+                const v = e.target.value.replace(/[^\d]/g, '');
+                setDraft((d) => ({
+                  ...d,
+                  [row.key]: {
+                    ...(d[row.key] || {}),
+                    booked: v,
+                    calls: d[row.key]?.calls ?? '',
+                  },
+                }));
+              }}
+            />
+          </div>
+        )}
+        {row.inputType === 'NUMBER' && (
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder={t('today.count')}
+            className="w-28 h-8 rounded-lg border border-teal-200 px-2 text-sm"
+            value={draft[row.key]?.count ?? ''}
+            onChange={(e) => {
+              const v = e.target.value.replace(/[^\d]/g, '');
+              setDraft((d) => ({ ...d, [row.key]: { count: v } }));
+            }}
+          />
+        )}
+        <textarea
+          className="w-full min-h-[56px] rounded-lg border border-teal-200 bg-white px-2 py-1.5 text-xs"
+          placeholder={t('today.notePlaceholder')}
+          value={notes[row.key] || ''}
+          onChange={(e) => setNotes((n) => ({ ...n, [row.key]: e.target.value }))}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex items-center gap-1.5 text-xs text-teal-800 cursor-pointer">
+            <Upload className="w-3.5 h-3.5" />
+            <span className="truncate max-w-[160px]">
+              {files[row.key]?.name || t('today.pickFile')}
+            </span>
+            <input
+              type="file"
+              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+              className="hidden"
+              onChange={(e) =>
+                setFiles((f) => ({ ...f, [row.key]: e.target.files?.[0] || null }))
+              }
+            />
+          </label>
+          <button
+            type="button"
+            disabled={busyKey === row.key}
+            onClick={() => submitTask(row)}
+            className="h-8 px-3 rounded-lg text-xs font-semibold bg-teal-800 text-white disabled:opacity-50 ml-auto"
+          >
+            {busyKey === row.key ? t('today.submitting') : t('today.submit')}
+          </button>
+        </div>
+        <p className="text-[10px] text-ink-muted">{t('today.needNoteOrFileHint')}</p>
+      </div>
+    );
+  };
+
+  const renderManagerGroups = (rows: TaskRow[]) => {
+    if (!rows.length) {
+      return (
+        <p className="text-sm text-ink-muted py-6 text-center border border-dashed border-teal-900/15 rounded-xl">
+          {t('today.emptyTasks')}
+        </p>
+      );
+    }
+    const keySet = new Set(rows.map((r) => r.key));
+    const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
+
+    const hasIn = (node: TreeNode): boolean => {
+      if (keySet.has(node.key)) return true;
+      return (node.children || []).some(hasIn);
+    };
+
+    const renderNode = (node: TreeNode, depth = 0): ReactNode => {
+      if (!hasIn(node)) return null;
+      const hasKids = !!node.children?.length;
+      const title = lang === 'ru' ? node.titleRu : node.titleUz;
+      const depthStyle = DEPTH_UI[Math.min(depth, DEPTH_UI.length - 1)];
+      const openKey = `mgr-${node.key}`;
+      const open = treeOpen[openKey] ?? depth < 2;
+
+      if (!hasKids) {
+        const row = byKey[node.key];
+        if (!row) return null;
+        return (
+          <div key={node.key} className="px-2 py-1.5">
+            {renderManagerTaskCard(row)}
+          </div>
+        );
+      }
+
+      const leafCount = collectLeaves(node).filter((k) => keySet.has(k)).length;
+
+      return (
+        <div
+          key={node.key}
+          className={cn('rounded-xl overflow-hidden mb-2 border-2', depthStyle.wrap)}
+          style={{ marginLeft: depth > 0 ? 8 : 0 }}
+        >
+          <button
+            type="button"
+            onClick={() => setTreeOpen((o) => ({ ...o, [openKey]: !open }))}
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-2.5 text-left',
+              open ? depthStyle.headOpen : depthStyle.headClosed,
+            )}
+          >
+            {open ? <ChevronDown className="w-4 h-4 shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
+            <span className="text-sm font-semibold flex-1">{title}</span>
+            <span
+              className={cn(
+                'text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded',
+                open ? 'bg-white/25' : 'bg-black/20',
+              )}
+            >
+              {open ? t('today.opened') : t('today.closed')}
+            </span>
+            <span className="text-xs tabular-nums opacity-90">{leafCount}</span>
+          </button>
+          {open && (
+            <div className={cn(depthStyle.body, 'py-1')}>
+              {node.children.map((c) => renderNode(c, depth + 1))}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const tree = day?.tree || [];
+    if (!tree.length) {
+      return (
+        <div className="space-y-2">{rows.map((r) => renderManagerTaskCard(r))}</div>
+      );
+    }
+    return <div className="space-y-1">{tree.map((n: TreeNode) => renderNode(n))}</div>;
   };
 
   const allLeafKeys = useMemo(() => {
@@ -790,7 +1049,7 @@ export default function TodayPage() {
                     <h2 className="text-sm font-semibold text-ink">
                       {t('today.todo')} · {uniquePending.length}
                     </h2>
-                    {renderTaskTable(uniquePending, 'manager-todo')}
+                    {renderManagerGroups(uniquePending)}
                   </section>
                   <section className="space-y-2">
                     <h2 className="text-sm font-semibold text-ink">
