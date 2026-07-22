@@ -25,6 +25,7 @@ const PAGES: Record<string, string> = {
   ai: '/ai',
   assistant: '/assistant',
   ассистент: '/assistant',
+  'ai assistant': '/assistant',
   notifications: '/notifications',
   account: '/account',
 };
@@ -45,6 +46,10 @@ export class AssistantService {
 
   async buildContext(user: { id: string; role: Role; name?: string }) {
     const date = toDateOnly();
+    const weekAgo = new Date(date);
+    weekAgo.setUTCDate(weekAgo.getUTCDate() - 6);
+    const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+
     const branches = await this.prisma.branch.findMany({
       where: { active: true },
       include: {
@@ -52,17 +57,27 @@ export class AssistantService {
       },
     });
 
-    const scores = await this.prisma.dailyScore.findMany({
-      where: { date, branchId: { not: null } },
-      include: { branch: { select: { name: true } } },
-    });
-
-    const entries = await this.prisma.kpiDayEntry.findMany({
-      where: { date },
-      include: {
-        proofs: { take: 1, orderBy: { createdAt: 'desc' } },
-      },
-    });
+    const [scores, weekScores, monthScores, entries] = await Promise.all([
+      this.prisma.dailyScore.findMany({
+        where: { date, branchId: { not: null } },
+        include: { branch: { select: { name: true } } },
+      }),
+      this.prisma.dailyScore.findMany({
+        where: { date: { gte: weekAgo, lte: date }, branchId: { not: null } },
+        orderBy: { date: 'asc' },
+        include: { branch: { select: { name: true } } },
+      }),
+      this.prisma.dailyScore.findMany({
+        where: { date: { gte: monthStart, lte: date }, branchId: { not: null } },
+        include: { branch: { select: { name: true } } },
+      }),
+      this.prisma.kpiDayEntry.findMany({
+        where: { date },
+        include: {
+          proofs: { take: 1, orderBy: { createdAt: 'desc' } },
+        },
+      }),
+    ]);
 
     const catalog = await this.prisma.kpiCatalogNode.findMany({
       where: { active: true, frequency: KpiFrequency.DAILY, parentKey: null },
@@ -93,11 +108,17 @@ export class AssistantService {
         doneToday: entries.filter((e) => e.branchId === b.id && e.done).length,
       }));
 
+    const avg = (list: { totalScore: number }[]) =>
+      list.length
+        ? Math.round((list.reduce((s, x) => s + x.totalScore, 0) / list.length) * 10) / 10
+        : null;
+
     return {
       now: new Date().toISOString(),
       date: date.toISOString().slice(0, 10),
       user: { name: user.name, role: user.role },
       platform: 'Radeski KPI manager system',
+      clinic: 'Radeski Skin Clinic / dermatologiya',
       pages: Object.values(PAGES),
       blocks: catalog.map((c) => ({
         key: c.key.replace(/_w$|_m$/, ''),
@@ -111,11 +132,28 @@ export class AssistantService {
         color: s.colorStatus,
         completion: s.completion,
       })),
+      weekTrend: {
+        avgScore: avg(weekScores),
+        days: weekScores.length,
+        byDay: weekScores.map((s) => ({
+          date: s.date.toISOString().slice(0, 10),
+          branch: s.branch?.name,
+          total: s.totalScore,
+          color: s.colorStatus,
+        })),
+      },
+      monthTrend: {
+        avgScore: avg(monthScores),
+        days: monthScores.length,
+      },
       incompleteSample: incomplete.slice(0, 40),
       incompleteTotal: incomplete.length,
       managersIdle,
       leafTotal: leaves.length,
       leafDone: leaves.filter((l) => doneKeys.has(l.key)).length,
+      completionPct: leaves.length
+        ? Math.round((leaves.filter((l) => doneKeys.has(l.key)).length / leaves.length) * 100)
+        : 0,
     };
   }
 
@@ -124,11 +162,12 @@ export class AssistantService {
     const isAdmin = user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN;
 
     const system = isAdmin
-      ? `Ты — Jarvis, элитный бизнес-ассистент владельца клиники Radeski.
+      ? `Ты — AI assistant Radeski: элитный бизнес-помощник владельца клиники.
 Дай 5–7 коротких, жёстких и практичных рекомендаций по развитию на русском.
-Учитывай незавершённые задачи и простои менеджеров.
+Учитывай незавершённые задачи, тренд недели/месяца и простои менеджеров.
 Ответ JSON: {"items":[{"title":"...","detail":"...","priority":"high|mid|low","navigate":"/path или null"}]}`
-      : `Siz Radeski menejer AI yordamchisisiz. Bugungi ishlar boʻyicha 5 ta amaliy maslahat bering.
+      : `Siz Radeski klinikasi uchun kuchli AI assistant biznes yordamchisisiz.
+Bugungi KPI, ishlar va biznes holatiga asoslanib 5 ta aniq amaliy tavsiya bering.
 Javob JSON: {"items":[{"title":"...","detail":"...","priority":"high|mid|low","navigate":"/today"}]}`;
 
     const raw = await openaiChatMessages(
@@ -209,21 +248,34 @@ Javob JSON: {"items":[{"title":"...","detail":"...","priority":"high|mid|low","n
     }
 
     const system = isAdmin
-      ? `Ты — JARVIS Radeski: фантастически сильный бизнес-ассистент владельца клиники.
-Говори ТОЛЬКО по-русски. Ты видишь реальное состояние платформы из CONTEXT.
-Можешь:
-- анализировать KPI, незавершённые задачи, простои менеджеров
-- давать стратегию роста клиники (маркетинг, сервис, HR, финансы операций)
-- отвечать, сделана ли конкретная работа (смотри incompleteSample / scores)
-- открывать разделы: верни navigate из списка pages
-Ответ строго JSON:
-{"reply":"текст ответа пользователю","navigate":"/path или null","suggestions":["..."]}
-Будь конкретным, жёстким и полезным как топ-консультант McKinsey + операционный директор.`
-      : `Siz Radeski KPI menejer yordamchisisiz (Jarvis-lite).
-Foydalanuvchi qaysi tilda yozsa/gapirsa — SHU tilda javob bering (uz/ru).
-Ishlar boʻyicha maslahat, qanday bajarish, nimalar esdan chiqqan — CONTEXT dan foydalaning.
-JSON:
-{"reply":"...","navigate":"/today yoki null","suggestions":["..."]}`;
+      ? `Ты — AI assistant Radeski: фантастически сильный бизнес-помощник владельца/админа клиники.
+Говори ТОЛЬКО по-русски. Имя продукта: «AI assistant» (не Jarvis).
+Ты видишь реальное состояние платформы из CONTEXT (KPI дня, тренд недели/месяца, незакрытые задачи, простаивающие менеджеры).
+
+Твои сверхспособности:
+1) Операционный контроль — что не сделано сегодня, кто отстаёт, какой блок тянет балл вниз
+2) Стратегия роста — маркетинг, SMM/SEO, конверсия звонков, сервис, HR, касса, бренд
+3) Финансово-операционный совет — приоритеты на день/неделю/месяц с конкретными шагами
+4) Навигация платформы — открывай разделы через navigate из pages
+5) Честные жёсткие выводы без воды — как топ-консультант + операционный директор клиники
+
+Формат ответа строго JSON:
+{"reply":"развёрнутый полезный ответ","navigate":"/path или null","suggestions":["следующий вопрос 1","..."]}
+Структурируй reply: вывод → цифры из CONTEXT → 2–4 действия. Не выдумывай данные вне CONTEXT.`
+      : `Siz Radeski Skin Clinic uchun kuchli AI assistant biznes yordamchisisiz.
+Mahsulot nomi: «AI assistant» (Jarvis emas).
+Foydalanuvchi qaysi tilda yozsa/gapirsa — SHU tilda javob bering (uz yoki ru).
+
+CONTEXT dagi real KPI, bajarilmagan ishlar, haftalik/oylik trend va filial holatidan foydalaning.
+Qila olasiz:
+- bugungi/haftalik/oylik ishlarni tahlil qilish va nima qilishni aytish
+- qoʻngʻiroq konversiyasi, sharhlar, SMM, marketing boʻyicha amaliy maslahat
+- menejer kunini prioritetlash (eng muhim 3 ish)
+- platforma boʻlimlarini ochish (navigate)
+
+Javob faqat JSON:
+{"reply":"...","navigate":"/path yoki null","suggestions":["..."]}
+Aniq, qisqa, amaliy boʻling. CONTEXT dan tashqari raqam uydirmang.`;
 
     const history = (opts?.history || [])
       .slice(-8)
@@ -241,7 +293,7 @@ JSON:
           content: `CONTEXT:\n${JSON.stringify(ctx)}\n\nUSER:\n${message}\n\nHint navigate: ${navigateHint || 'null'}`,
         },
       ],
-      { json: true, maxTokens: 1600, temperature: 0.4 },
+      { json: true, maxTokens: 2200, temperature: 0.35 },
     );
 
     let reply = raw || (isAdmin ? 'Сервис ИИ временно недоступен.' : 'AI hozircha javob bera olmadi.');

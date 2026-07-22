@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { RoleGate } from '@/components/RoleGate';
@@ -17,7 +16,6 @@ import {
   Upload,
   X,
   Minus,
-  Sparkles,
   Search,
 } from 'lucide-react';
 
@@ -59,14 +57,6 @@ function collectLeafKeys(n: TreeNode): string[] {
   return n.children.flatMap(collectLeafKeys);
 }
 
-function collectIncomplete(n: TreeNode, lang: string): string[] {
-  if (!n.children?.length) {
-    if (n.inputType === 'GROUP' || n.done) return [];
-    return [lang === 'ru' ? n.titleRu : n.titleUz];
-  }
-  return n.children.flatMap((c) => collectIncomplete(c, lang));
-}
-
 function filterTree(nodes: TreeNode[], q: string, lang: string): TreeNode[] {
   if (!q.trim()) return nodes;
   const s = q.toLowerCase();
@@ -104,8 +94,6 @@ export default function TodayPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
-  const [aiTip, setAiTip] = useState('');
-  const [aiBusy, setAiBusy] = useState(false);
 
   const loadBranches = useCallback(async () => {
     const list = await api<any[]>('/branches/mine');
@@ -155,11 +143,6 @@ export default function TodayPage() {
       { done: 0, total: 0 },
     );
   }, [rawTree]);
-
-  const incompleteTitles = useMemo(
-    () => rawTree.flatMap((n) => collectIncomplete(n, lang)).slice(0, 8),
-    [rawTree, lang],
-  );
 
   const allLeafKeys = useMemo(() => rawTree.flatMap(collectLeafKeys), [rawTree]);
   const pct = totals.total ? Math.round((totals.done / totals.total) * 100) : 0;
@@ -260,29 +243,6 @@ export default function TodayPage() {
       toast.error(e.message);
     } finally {
       setBulkBusy(false);
-    }
-  }
-
-  async function askAi() {
-    if (aiBusy) return;
-    setAiBusy(true);
-    try {
-      const list = incompleteTitles.length
-        ? incompleteTitles.join('; ')
-        : t('today.aiAllDone');
-      const prompt =
-        lang === 'ru'
-          ? `Период: ${freq}. Незавершённые задачи: ${list}. Дай 3 коротких практических совета администратору клиники Radeski, как закрыть эти задачи сегодня. Без воды.`
-          : `Davr: ${freq}. Bajarilmagan ishlar: ${list}. Radeski administratoriga shu ishlarni yopish uchun 3 ta qisqa amaliy maslahat ber. Ortiga gap yoʻq.`;
-      const res = await api<any>('/assistant/chat', {
-        method: 'POST',
-        body: JSON.stringify({ message: prompt, wantAudio: false }),
-      });
-      setAiTip(res.reply || '');
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setAiBusy(false);
     }
   }
 
@@ -660,7 +620,6 @@ export default function TodayPage() {
                 type="button"
                 onClick={() => {
                   setFreq(id);
-                  setAiTip('');
                   setQ('');
                 }}
                 className={cn(
@@ -712,41 +671,6 @@ export default function TodayPage() {
               </div>
             </div>
             <p className="text-xs text-ink-soft mt-2 leading-relaxed">{freqHint}</p>
-          </div>
-
-          <div className="rounded-2xl border border-teal-100 bg-white p-3.5 space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-ink flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-teal-700" />
-                {t('today.aiHelp')}
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={aiBusy || loading}
-                  onClick={askAi}
-                  className="h-8 px-3 rounded-lg text-xs font-semibold bg-teal-800 text-white disabled:opacity-50"
-                >
-                  {aiBusy ? '...' : t('today.aiAsk')}
-                </button>
-                <Link
-                  href="/assistant"
-                  className="h-8 px-3 rounded-lg text-xs font-semibold border border-teal-200 grid place-items-center text-teal-900"
-                >
-                  {t('assistant.openAssistant')}
-                </Link>
-              </div>
-            </div>
-            {incompleteTitles.length > 0 && !aiTip && (
-              <ul className="text-xs text-ink-muted space-y-0.5">
-                {incompleteTitles.slice(0, 4).map((x) => (
-                  <li key={x}>· {x}</li>
-                ))}
-              </ul>
-            )}
-            {aiTip && (
-              <p className="text-sm text-ink-soft whitespace-pre-wrap leading-relaxed">{aiTip}</p>
-            )}
           </div>
 
           <div className="relative">

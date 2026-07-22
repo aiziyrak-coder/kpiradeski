@@ -71,7 +71,7 @@ export const ru: LocaleDict = {
     tabNotify: 'Уведомл.',
     tabKpi: 'Панель',
     tabReport: 'Отчёт',
-    assistant: 'Jarvis',
+    assistant: 'AI assistant',
   },
   roles: {
     ADMIN: 'Администратор',
@@ -146,9 +146,6 @@ export const ru: LocaleDict = {
     hintDaily: 'Ежедневные операционные задачи и чек-лист администратора.',
     hintWeekly: 'Недельный глубокий анализ и аудит — отличается от ежедневных задач.',
     hintMonthly: 'Месячная стратегия, KPI, бюджет и бренд — только раз в месяц.',
-    aiHelp: 'AI совет',
-    aiAsk: 'Получить совет',
-    aiAllDone: 'Все задачи выполнены',
     search: 'Поиск по задачам...',
     noSearch: 'Ничего не найдено',
     calls: 'Звонки',
@@ -314,12 +311,14 @@ export const ru: LocaleDict = {
     fileOpenFailed: 'Файл не открыт',
   },
   assistant: {
-    adminTitle: 'Jarvis — бизнес-ассистент',
-    managerTitle: 'AI помощник',
-    adminHint: 'Только русский · голос + текст · управление платформой',
-    managerHint: 'Голосовые советы · ответ на языке речи',
-    emptyAdmin: 'Спросите о KPI, задачах менеджера или скажите «открой отчёты»',
-    emptyManager: 'Спросите о задачах или нажмите микрофон',
+    adminTitle: 'AI assistant',
+    managerTitle: 'AI assistant',
+    adminHint: 'Мощный бизнес-помощник · только русский · голос + текст · управление платформой',
+    managerHint: 'Мощный бизнес-помощник · голос + текст · ответ на языке речи',
+    emptyAdmin:
+      'Спросите о KPI, филиалах, менеджерах или скажите «открой отчёты»',
+    emptyManager:
+      'Спросите о бизнесе, KPI, задачах или маркетинге — голос или текст',
     phAdmin: 'Спросите по-русски...',
     phManager: 'Ваш вопрос...',
     micDenied: 'Нет доступа к микрофону',
@@ -328,6 +327,6 @@ export const ru: LocaleDict = {
     suggestions: 'AI предложения',
     alerts: 'Предупреждения',
     incomplete: 'Не выполнено',
-    openAssistant: 'Jarvis',
+    openAssistant: 'AI assistant',
   },
 };

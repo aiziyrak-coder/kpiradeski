@@ -69,7 +69,7 @@ export const uz = {
     tabNotify: 'Bildirish',
     tabKpi: 'Boshqaruv',
     tabReport: 'Hisobot',
-    assistant: 'Jarvis',
+    assistant: 'AI assistant',
   },
   roles: {
     ADMIN: 'Administrator',
@@ -146,9 +146,6 @@ export const uz = {
       'Haftalik chuqur tahlil, audit va sifat nazorati — kunlikdan farq qiladi.',
     hintMonthly:
       'Oylik strategiya, KPI, byudjet va brend ishlari — faqat oyda bir marta.',
-    aiHelp: 'AI maslahat',
-    aiAsk: 'Maslahat olish',
-    aiAllDone: 'Barcha ishlar bajarilgan',
     search: 'Ishlar ichidan qidirish...',
     noSearch: 'Qidiruv boʻyicha topilmadi',
     calls: 'Qoʻngʻiroq',
@@ -314,13 +311,14 @@ export const uz = {
     fileOpenFailed: 'Fayl ochilmadi',
   },
   assistant: {
-    adminTitle: 'Jarvis — biznes assistenti',
-    managerTitle: 'AI yordamchi',
-    adminHint: 'Faqat rus tilida · ovoz + matn · platformani boshqaradi',
-    managerHint: 'Ovozli maslahat · gapirgan tilingizda javob',
+    adminTitle: 'AI assistant',
+    managerTitle: 'AI assistant',
+    adminHint: 'Kuchli biznes yordamchi · faqat rus tilida · ovoz + matn · platformani boshqaradi',
+    managerHint: 'Kuchli biznes yordamchi · ovoz + matn · gapirgan tilingizda javob',
     emptyAdmin:
-      'KPI, menejer ishlari yoki «hisobotlarni och» deb soʻrang (Jarvis ruscha javob beradi)',
-    emptyManager: 'Ishlar boʻyicha soʻrang yoki mikrofonni bosing',
+      'KPI, filiallar, menejerlar yoki «открой отчёты» deb soʻrang — AI assistant ruscha javob beradi',
+    emptyManager:
+      'Biznes, KPI, ishlar yoki marketing boʻyicha soʻrang — mikrofon yoki matn',
     phAdmin: 'Ruscha soʻrang...',
     phManager: 'Savolingiz...',
     micDenied: 'Mikrofon ruxsati yoʻq',
@@ -329,7 +327,7 @@ export const uz = {
     suggestions: 'AI takliflari',
     alerts: 'Ogohlantirishlar',
     incomplete: 'Bajarilmagan',
-    openAssistant: 'Jarvis',
+    openAssistant: 'AI assistant',
   },
 } as const;
 

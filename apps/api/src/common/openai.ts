@@ -1,5 +1,5 @@
 /**
- * OpenAI helpers — Radeski KPI AI Supervisor + Jarvis
+ * OpenAI helpers — Radeski KPI AI Supervisor + AI assistant
  */
 export type AiProofVerdict = {
   approved: boolean;
