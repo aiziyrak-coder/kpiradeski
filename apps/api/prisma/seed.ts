@@ -98,26 +98,13 @@ async function main() {
     },
   });
 
-  const manager = await prisma.user.create({
-    data: {
-      email: 'manager@klinikpi.uz',
-      name: 'Menejer',
-      role: Role.MANAGER,
-      passwordHash,
-      branchId: branch.id,
-      active: true,
-    },
-  });
-
-  await prisma.branchManager.create({
-    data: { branchId: branch.id, userId: manager.id },
-  });
+  // Demo manager yaratilmaydi — admin o‘zi qo‘shadi
 
   await prisma.appSetting.create({
     data: { key: 'rest_weekdays', value: [0, 6] },
   });
 
-  console.log('Seed OK:', admin.email, manager.email, branch.name);
+  console.log('Seed OK:', admin.email, branch.name);
   void forceCatalog;
 }
 

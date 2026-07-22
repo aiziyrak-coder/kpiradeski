@@ -23,7 +23,6 @@ export default function LoginPage() {
   const showDemo = process.env.NEXT_PUBLIC_DEMO === 'true';
 
   const demos = [
-    { email: 'manager@klinikpi.uz', role: 'MANAGER' as const },
     { email: 'super@klinikpi.uz', role: 'SUPER_ADMIN' as const },
   ];
 
