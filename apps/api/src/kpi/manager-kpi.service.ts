@@ -1054,7 +1054,7 @@ export class ManagerKpiService implements OnModuleInit {
     const byKey = Object.fromEntries(groups.map((g) => [g.key, g]));
     const pathOf = (key: string, lang: 'uz' | 'ru') => {
       const parts: string[] = [];
-      let cur = byKey[key];
+      let cur: (typeof groups)[number] | undefined = byKey[key];
       const seen = new Set<string>();
       while (cur && !seen.has(cur.key)) {
         seen.add(cur.key);
