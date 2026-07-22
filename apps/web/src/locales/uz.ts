@@ -189,6 +189,8 @@ export const uz = {
     needNoteOrFileHint: 'Kamida biri majburiy: izoh yoki fayl (yoki ikkalasi)',
     notePlaceholder: 'Izoh yozing...',
     noteOrFile: 'Izoh / dalil',
+    writeNote: 'Izoh',
+    closeNote: 'Yopish',
     opened: 'Ochiq',
     closed: 'Yopiq',
     addTask: 'Yangi vazifa',

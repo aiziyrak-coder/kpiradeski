@@ -189,6 +189,8 @@ export const ru: LocaleDict = {
     needNoteOrFileHint: 'Обязательно хотя бы одно: комментарий или файл (или оба)',
     notePlaceholder: 'Комментарий...',
     noteOrFile: 'Комментарий / файл',
+    writeNote: 'Коммент',
+    closeNote: 'Закрыть',
     opened: 'Открыто',
     closed: 'Закрыто',
     addTask: 'Новая задача',

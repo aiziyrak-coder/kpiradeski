@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, Fragment, type ReactNode } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { RoleGate } from '@/components/RoleGate';
 import { useToast } from '@/components/Toast';
@@ -9,7 +9,7 @@ import { useAuth } from '@/lib/auth';
 import { api, getToken } from '@/lib/api';
 import { todayISO, weekStartISO } from '@/types';
 import { cn } from '@/lib/utils';
-import { Check, ChevronDown, ChevronRight, Search, Upload } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, MessageSquare, Search, Upload, X } from 'lucide-react';
 
 type Freq = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 type TaskRow = {
@@ -133,6 +133,7 @@ export default function TodayPage() {
   const [draft, setDraft] = useState<Record<string, any>>({});
   const [files, setFiles] = useState<Record<string, File | null>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [expandKey, setExpandKey] = useState<string | null>(null);
   const [assignSel, setAssignSel] = useState<Record<string, boolean>>({});
   const [assignOpen, setAssignOpen] = useState(true);
   const [treeOpen, setTreeOpen] = useState<Record<string, boolean>>({});
@@ -293,6 +294,7 @@ export default function TodayPage() {
         else toast.success(t('today.submittedOk'));
         setFiles((f) => ({ ...f, [row.key]: null }));
         setNotes((n) => ({ ...n, [row.key]: '' }));
+        setExpandKey(null);
         await loadDay();
       } catch (e: any) {
         toast.error(e.message);
@@ -328,6 +330,7 @@ export default function TodayPage() {
       });
       toast.success(t('today.markedDone'));
       setNotes((n) => ({ ...n, [row.key]: '' }));
+      setExpandKey(null);
       await loadDay();
     } catch (e: any) {
       toast.error(e.message);
@@ -746,121 +749,7 @@ export default function TodayPage() {
     );
   };
 
-  const renderManagerTaskCard = (row: TaskRow) => {
-    const title = lang === 'ru' ? row.titleRu : row.titleUz;
-    return (
-      <div
-        key={row.key}
-        className="rounded-lg border border-teal-900/10 bg-white p-3 space-y-2"
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <p className="text-sm font-medium text-ink">{title}</p>
-            {row.aiNote && (
-              <p className="text-xs text-ink-muted mt-1 leading-snug">{row.aiNote}</p>
-            )}
-          </div>
-          <span
-            className={cn(
-              'inline-flex text-[11px] font-semibold px-2 py-1 rounded-full shrink-0',
-              row.status === 'DONE' && 'bg-teal-100 text-teal-900',
-              row.status === 'REJECTED' && 'bg-rose-100 text-rose-800',
-              row.status === 'PENDING' && 'bg-amber-100 text-amber-900',
-              row.status === 'TODO' && 'bg-sand-100 text-ink-muted',
-            )}
-          >
-            {statusLabel(row)}
-          </span>
-        </div>
-        {row.inputType === 'RATIO' && (
-          <div className="flex gap-2">
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder={t('today.calls')}
-              className="w-20 h-8 rounded-lg border border-teal-200 px-2 text-sm"
-              value={draft[row.key]?.calls ?? ''}
-              onChange={(e) => {
-                const v = e.target.value.replace(/[^\d]/g, '');
-                setDraft((d) => ({
-                  ...d,
-                  [row.key]: {
-                    ...(d[row.key] || {}),
-                    calls: v,
-                    booked: d[row.key]?.booked ?? '',
-                  },
-                }));
-              }}
-            />
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder={t('today.booked')}
-              className="w-20 h-8 rounded-lg border border-teal-200 px-2 text-sm"
-              value={draft[row.key]?.booked ?? ''}
-              onChange={(e) => {
-                const v = e.target.value.replace(/[^\d]/g, '');
-                setDraft((d) => ({
-                  ...d,
-                  [row.key]: {
-                    ...(d[row.key] || {}),
-                    booked: v,
-                    calls: d[row.key]?.calls ?? '',
-                  },
-                }));
-              }}
-            />
-          </div>
-        )}
-        {row.inputType === 'NUMBER' && (
-          <input
-            type="text"
-            inputMode="numeric"
-            placeholder={t('today.count')}
-            className="w-28 h-8 rounded-lg border border-teal-200 px-2 text-sm"
-            value={draft[row.key]?.count ?? ''}
-            onChange={(e) => {
-              const v = e.target.value.replace(/[^\d]/g, '');
-              setDraft((d) => ({ ...d, [row.key]: { count: v } }));
-            }}
-          />
-        )}
-        <textarea
-          className="w-full min-h-[56px] rounded-lg border border-teal-200 bg-white px-2 py-1.5 text-xs"
-          placeholder={t('today.notePlaceholder')}
-          value={notes[row.key] || ''}
-          onChange={(e) => setNotes((n) => ({ ...n, [row.key]: e.target.value }))}
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex items-center gap-1.5 text-xs text-teal-800 cursor-pointer">
-            <Upload className="w-3.5 h-3.5" />
-            <span className="truncate max-w-[160px]">
-              {files[row.key]?.name || t('today.pickFile')}
-            </span>
-            <input
-              type="file"
-              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-              className="hidden"
-              onChange={(e) =>
-                setFiles((f) => ({ ...f, [row.key]: e.target.files?.[0] || null }))
-              }
-            />
-          </label>
-          <button
-            type="button"
-            disabled={busyKey === row.key}
-            onClick={() => submitTask(row)}
-            className="h-8 px-3 rounded-lg text-xs font-semibold bg-teal-800 text-white disabled:opacity-50 ml-auto"
-          >
-            {busyKey === row.key ? t('today.submitting') : t('today.submit')}
-          </button>
-        </div>
-        <p className="text-[10px] text-ink-muted">{t('today.needNoteOrFileHint')}</p>
-      </div>
-    );
-  };
-
-  const renderManagerGroups = (rows: TaskRow[]) => {
+  const renderManagerTable = (rows: TaskRow[]) => {
     if (!rows.length) {
       return (
         <p className="text-sm text-ink-muted py-6 text-center border border-dashed border-teal-900/15 rounded-xl">
@@ -868,76 +757,210 @@ export default function TodayPage() {
         </p>
       );
     }
-    const keySet = new Set(rows.map((r) => r.key));
-    const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
 
-    const hasIn = (node: TreeNode): boolean => {
-      if (keySet.has(node.key)) return true;
-      return (node.children || []).some(hasIn);
-    };
+    // Sort by section then title for stable table scan
+    const sorted = [...rows].sort((a, b) => {
+      const sa = (lang === 'ru' ? a.sectionRu : a.sectionUz) || '';
+      const sb = (lang === 'ru' ? b.sectionRu : b.sectionUz) || '';
+      if (sa !== sb) return sa.localeCompare(sb, 'uz');
+      const ta = (lang === 'ru' ? a.titleRu : a.titleUz) || '';
+      const tb = (lang === 'ru' ? b.titleRu : b.titleUz) || '';
+      return ta.localeCompare(tb, 'uz');
+    });
 
-    const renderNode = (node: TreeNode, depth = 0): ReactNode => {
-      if (!hasIn(node)) return null;
-      const hasKids = !!node.children?.length;
-      const title = lang === 'ru' ? node.titleRu : node.titleUz;
-      const depthStyle = DEPTH_UI[Math.min(depth, DEPTH_UI.length - 1)];
-      const openKey = `mgr-${node.key}`;
-      const open = treeOpen[openKey] ?? depth < 2;
+    let lastSection = '';
 
-      if (!hasKids) {
-        const row = byKey[node.key];
-        if (!row) return null;
-        return (
-          <div key={node.key} className="px-2 py-1.5">
-            {renderManagerTaskCard(row)}
-          </div>
-        );
-      }
+    return (
+      <div className="overflow-x-auto rounded-xl border border-teal-900/10 bg-white">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-ink-muted border-b border-teal-900/10 bg-teal-950/[0.03]">
+              <th className="p-2.5 font-medium">{t('today.task')}</th>
+              <th className="p-2.5 font-medium w-[100px]">{t('today.status')}</th>
+              <th className="p-2.5 font-medium w-[110px]">{t('today.action')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((row) => {
+              const title = lang === 'ru' ? row.titleRu : row.titleUz;
+              const section = (lang === 'ru' ? row.sectionRu : row.sectionUz) || '—';
+              const showSection = section !== lastSection;
+              lastSection = section;
+              const open = expandKey === row.key;
+              const hasDraft = !!(notes[row.key]?.trim() || files[row.key]);
 
-      const leafCount = collectLeaves(node).filter((k) => keySet.has(k)).length;
-
-      return (
-        <div
-          key={node.key}
-          className={cn('rounded-xl overflow-hidden mb-2 border', depthStyle.wrap)}
-          style={{ marginLeft: depth > 0 ? 8 : 0 }}
-        >
-          <button
-            type="button"
-            onClick={() => setTreeOpen((o) => ({ ...o, [openKey]: !open }))}
-            className={cn(
-              'w-full flex items-center gap-2 px-3 py-2.5 text-left',
-              open ? depthStyle.headOpen : depthStyle.headClosed,
-            )}
-          >
-            {open ? <ChevronDown className="w-4 h-4 shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
-            <span className="text-sm font-semibold flex-1">{title}</span>
-            <span
-              className={cn(
-                'text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded',
-                depthStyle.badge,
-              )}
-            >
-              {open ? t('today.opened') : t('today.closed')}
-            </span>
-            <span className="text-xs tabular-nums opacity-70">{leafCount}</span>
-          </button>
-          {open && (
-            <div className={cn(depthStyle.body, 'py-1')}>
-              {node.children.map((c) => renderNode(c, depth + 1))}
-            </div>
-          )}
-        </div>
-      );
-    };
-
-    const tree = day?.tree || [];
-    if (!tree.length) {
-      return (
-        <div className="space-y-2">{rows.map((r) => renderManagerTaskCard(r))}</div>
-      );
-    }
-    return <div className="space-y-1">{tree.map((n: TreeNode) => renderNode(n))}</div>;
+              return (
+                <Fragment key={row.key}>
+                  {showSection && (
+                    <tr className="bg-teal-50/80">
+                      <td colSpan={3} className="px-2.5 py-1.5 text-[11px] font-semibold text-teal-900">
+                        {section}
+                      </td>
+                    </tr>
+                  )}
+                  <tr className="border-t border-teal-900/[0.06] hover:bg-teal-50/30">
+                    <td className="p-2.5 align-middle">
+                      <p className="font-medium text-ink leading-snug">{title}</p>
+                      {row.aiNote && (
+                        <p className="text-[11px] text-ink-muted mt-0.5 line-clamp-1">{row.aiNote}</p>
+                      )}
+                    </td>
+                    <td className="p-2.5 align-middle">
+                      <span
+                        className={cn(
+                          'inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full',
+                          row.status === 'DONE' && 'bg-teal-100 text-teal-900',
+                          row.status === 'REJECTED' && 'bg-rose-100 text-rose-800',
+                          row.status === 'PENDING' && 'bg-amber-100 text-amber-900',
+                          row.status === 'TODO' && 'bg-sand-100 text-ink-muted',
+                        )}
+                      >
+                        {statusLabel(row)}
+                      </span>
+                    </td>
+                    <td className="p-2.5 align-middle">
+                      <button
+                        type="button"
+                        onClick={() => setExpandKey(open ? null : row.key)}
+                        className={cn(
+                          'inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-xs font-semibold border transition',
+                          open
+                            ? 'bg-teal-800 text-white border-teal-800'
+                            : hasDraft
+                              ? 'bg-amber-50 text-amber-900 border-amber-200'
+                              : 'bg-white text-teal-900 border-teal-200 hover:bg-teal-50',
+                        )}
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        {open ? t('today.closeNote') : t('today.writeNote')}
+                      </button>
+                    </td>
+                  </tr>
+                  {open && (
+                    <tr className="bg-teal-50/40 border-t border-teal-100">
+                      <td colSpan={3} className="p-3">
+                        <div className="rounded-xl border border-teal-200/80 bg-white p-3 space-y-2.5 max-w-xl">
+                          {(row.inputType === 'RATIO' || row.inputType === 'NUMBER') && (
+                            <div className="flex flex-wrap gap-2">
+                              {row.inputType === 'RATIO' && (
+                                <>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    placeholder={t('today.calls')}
+                                    className="w-24 h-9 rounded-lg border border-teal-200 px-2 text-sm"
+                                    value={draft[row.key]?.calls ?? ''}
+                                    onChange={(e) => {
+                                      const v = e.target.value.replace(/[^\d]/g, '');
+                                      setDraft((d) => ({
+                                        ...d,
+                                        [row.key]: {
+                                          ...(d[row.key] || {}),
+                                          calls: v,
+                                          booked: d[row.key]?.booked ?? '',
+                                        },
+                                      }));
+                                    }}
+                                  />
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    placeholder={t('today.booked')}
+                                    className="w-24 h-9 rounded-lg border border-teal-200 px-2 text-sm"
+                                    value={draft[row.key]?.booked ?? ''}
+                                    onChange={(e) => {
+                                      const v = e.target.value.replace(/[^\d]/g, '');
+                                      setDraft((d) => ({
+                                        ...d,
+                                        [row.key]: {
+                                          ...(d[row.key] || {}),
+                                          booked: v,
+                                          calls: d[row.key]?.calls ?? '',
+                                        },
+                                      }));
+                                    }}
+                                  />
+                                </>
+                              )}
+                              {row.inputType === 'NUMBER' && (
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  placeholder={t('today.count')}
+                                  className="w-28 h-9 rounded-lg border border-teal-200 px-2 text-sm"
+                                  value={draft[row.key]?.count ?? ''}
+                                  onChange={(e) => {
+                                    const v = e.target.value.replace(/[^\d]/g, '');
+                                    setDraft((d) => ({ ...d, [row.key]: { count: v } }));
+                                  }}
+                                />
+                              )}
+                            </div>
+                          )}
+                          <textarea
+                            autoFocus
+                            className="w-full min-h-[72px] rounded-lg border border-teal-200 px-3 py-2 text-sm"
+                            placeholder={t('today.notePlaceholder')}
+                            value={notes[row.key] || ''}
+                            onChange={(e) =>
+                              setNotes((n) => ({ ...n, [row.key]: e.target.value }))
+                            }
+                          />
+                          <div className="flex flex-wrap items-center gap-2">
+                            <label className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-teal-200 text-xs text-teal-900 cursor-pointer hover:bg-teal-50">
+                              <Upload className="w-3.5 h-3.5" />
+                              <span className="truncate max-w-[140px]">
+                                {files[row.key]?.name || t('today.pickFile')}
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                                className="hidden"
+                                onChange={(e) =>
+                                  setFiles((f) => ({
+                                    ...f,
+                                    [row.key]: e.target.files?.[0] || null,
+                                  }))
+                                }
+                              />
+                            </label>
+                            {files[row.key] && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFiles((f) => ({ ...f, [row.key]: null }))
+                                }
+                                className="h-9 w-9 grid place-items-center rounded-lg border border-teal-100 text-ink-muted"
+                                aria-label="clear file"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              disabled={busyKey === row.key}
+                              onClick={() => submitTask(row)}
+                              className="h-9 px-4 rounded-lg text-xs font-semibold bg-teal-800 text-white disabled:opacity-50 ml-auto"
+                            >
+                              {busyKey === row.key
+                                ? t('today.submitting')
+                                : t('today.submit')}
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-ink-muted">
+                            {t('today.needNoteOrFileHint')}
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
   };
 
   const allLeafKeys = useMemo(() => {
@@ -1064,7 +1087,7 @@ export default function TodayPage() {
                     <h2 className="text-sm font-semibold text-ink">
                       {t('today.todo')} · {uniquePending.length}
                     </h2>
-                    {renderManagerGroups(uniquePending)}
+                    {renderManagerTable(uniquePending)}
                   </section>
                   <section className="space-y-2">
                     <h2 className="text-sm font-semibold text-ink">
