@@ -235,7 +235,7 @@ export class ManagerKpiService implements OnModuleInit {
           titleUz: n.titleUz,
           titleRu: n.titleRu,
           inputType: n.inputType,
-          proofRequired: true,
+          proofRequired: n.proofRequired,
           done: entry?.done ?? false,
           score: entry?.score ?? null,
           value: entry?.value ?? null,
@@ -293,20 +293,23 @@ export class ManagerKpiService implements OnModuleInit {
         const entry = byKey[n.key];
         const proof = entry?.proofs?.[0] || null;
         const titles = titleOf(n.key);
-        const status =
-          proof?.aiStatus === AiProofStatus.APPROVED
+        const status = n.proofRequired
+          ? proof?.aiStatus === AiProofStatus.APPROVED
             ? 'DONE'
             : proof?.aiStatus === AiProofStatus.REJECTED
               ? 'REJECTED'
               : proof?.aiStatus === AiProofStatus.PENDING
                 ? 'PENDING'
-                : 'TODO';
+                : 'TODO'
+          : entry?.done
+            ? 'DONE'
+            : 'TODO';
         return {
           key: n.key,
           ...titles,
           inputType: n.inputType,
-          proofRequired: true,
-          done: proof?.aiStatus === AiProofStatus.APPROVED,
+          proofRequired: n.proofRequired,
+          done: status === 'DONE',
           score: entry?.score ?? null,
           value: entry?.value ?? null,
           status,
@@ -706,6 +709,11 @@ export class ManagerKpiService implements OnModuleInit {
     if (!assigned) {
       throw new ForbiddenException('Bu ish sizga topshirilmagan');
     }
+    if (!node.proofRequired) {
+      throw new BadRequestException(
+        'Bu ish uchun dalil shart emas — «Bajardim» tugmasidan foydalaning',
+      );
+    }
 
     let value = data.value ?? null;
     if (typeof value === 'string') {
@@ -824,6 +832,93 @@ export class ManagerKpiService implements OnModuleInit {
 
     await this.recalculate(data.branchId, date, node.frequency);
     return proof;
+  }
+
+  async completeTask(
+    user: { id: string; role: Role },
+    data: { branchId: string; date?: string; nodeKey: string; value?: any },
+  ) {
+    if (user.role !== Role.MANAGER) {
+      throw new ForbiddenException('Faqat manager bajaraman deb yuboradi');
+    }
+    await this.branches.assertCanAccessBranch(user.id, user.role, data.branchId);
+    const node = await this.prisma.kpiCatalogNode.findUnique({
+      where: { key: data.nodeKey },
+    });
+    if (!node || !node.active) throw new NotFoundException('Vazifa topilmadi');
+    if (node.inputType === KpiInputType.GROUP) {
+      throw new BadRequestException('Guruh uchun yuborilmaydi');
+    }
+    if (node.proofRequired) {
+      throw new BadRequestException('Bu ish uchun dalil (rasm) majburiy');
+    }
+
+    const date = periodDate(node.frequency, data.date);
+    const assigned = await this.prisma.kpiTaskAssignment.findFirst({
+      where: {
+        branchId: data.branchId,
+        date,
+        nodeKey: data.nodeKey,
+        active: true,
+      },
+    });
+    if (!assigned) {
+      throw new ForbiddenException('Bu ish sizga topshirilmagan');
+    }
+
+    let value = data.value ?? true;
+    if (typeof value === 'string') {
+      try {
+        value = JSON.parse(value);
+      } catch {
+        /* keep */
+      }
+    }
+    if (node.inputType === KpiInputType.CHECKBOX) value = true;
+    if (node.inputType === KpiInputType.NOTE_CHECK) {
+      value = { ...(typeof value === 'object' && value ? value : {}), checked: true };
+    }
+    if (node.inputType === KpiInputType.RATIO) {
+      const calls = Number(value?.calls ?? 0);
+      if (!calls) throw new BadRequestException('Qoʻngʻiroq sonini kiriting');
+    }
+    if (node.inputType === KpiInputType.NUMBER) {
+      const count = Number(value?.count ?? value ?? 0);
+      if (!count) throw new BadRequestException('Sonini kiriting');
+      value = { count };
+    }
+
+    const leafScore = this.scoreLeaf(node.inputType, value, true);
+    const entry = await this.prisma.kpiDayEntry.upsert({
+      where: {
+        branchId_date_nodeKey: {
+          branchId: data.branchId,
+          date,
+          nodeKey: data.nodeKey,
+        },
+      },
+      create: {
+        branchId: data.branchId,
+        date,
+        nodeKey: data.nodeKey,
+        value: value as any,
+        done: true,
+        score: leafScore,
+        userId: user.id,
+      },
+      update: {
+        value: value as any,
+        done: true,
+        score: leafScore,
+        userId: user.id,
+      },
+    });
+
+    if (node.parentKey) {
+      await this.rollupParents(data.branchId, date, data.nodeKey, user.id);
+    }
+    const dayScore = await this.recalculate(data.branchId, date, node.frequency);
+    return { entry, dayScore, status: 'DONE' };
   }
 
   async setAssignments(

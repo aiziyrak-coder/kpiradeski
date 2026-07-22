@@ -29,7 +29,7 @@ function leaf(
     titleRu,
     inputType: 'CHECKBOX',
     sortOrder,
-    proofRequired: true,
+    proofRequired: opts?.proofRequired ?? false,
     frequency: opts?.frequency || 'DAILY',
     descriptionUz: opts?.descriptionUz,
     descriptionRu: opts?.descriptionRu,
@@ -52,7 +52,7 @@ function group(
     titleRu,
     inputType: 'GROUP',
     sortOrder,
-    proofRequired: opts?.proofRequired ?? true,
+    proofRequired: opts?.proofRequired ?? false,
     frequency: opts?.frequency || 'DAILY',
     weight: opts?.weight,
     descriptionUz: opts?.descriptionUz,
@@ -489,7 +489,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     descriptionRu: 'Всего звонков и записанных',
     inputType: 'RATIO',
     sortOrder: 2,
-    proofRequired: true,
+    proofRequired: false,
     frequency: 'DAILY',
   },
   leaf('calls.new.script', 'calls.new', 'Skript boʻyicha gaplashildi', 'Разговор по скрипту', 3),
@@ -505,7 +505,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     titleRu: 'Звонки / записи',
     inputType: 'RATIO',
     sortOrder: 2,
-    proofRequired: true,
+    proofRequired: false,
     frequency: 'DAILY',
   },
   leaf('calls.repeat.remind', 'calls.repeat', 'Eslatma berildi', 'Напоминание сделано', 3),
@@ -520,7 +520,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     titleRu: 'Перезвон / записи',
     inputType: 'RATIO',
     sortOrder: 2,
-    proofRequired: true,
+    proofRequired: false,
     frequency: 'DAILY',
   },
   leaf('calls.missed.same_day', 'calls.missed', 'Shu kuni qaytarildi', 'Перезвонили в тот же день', 3),
@@ -540,7 +540,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     titleRu: 'Кол-во отзывов сегодня',
     inputType: 'NUMBER',
     sortOrder: 1,
-    proofRequired: true,
+    proofRequired: false,
     frequency: 'DAILY',
   },
   leaf('reviews.collect.qr', 'reviews.collect', 'QR orqali soʻraldi', 'Попросили через QR', 2),
@@ -551,7 +551,9 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   leaf('reviews.handle.read', 'reviews.handle', 'Barcha sharhlar oʻqildi', 'Все отзывы прочитаны', 1),
   leaf('reviews.handle.reply', 'reviews.handle', 'Javob berildi', 'Ответы даны', 2),
   leaf('reviews.handle.negative', 'reviews.handle', 'Salbiy → admin xabardor', 'Негатив → админ уведомлён', 3),
-  leaf('reviews.handle.photo', 'reviews.handle', 'Dalil / screenshot', 'Доказательство / скрин', 4),
+  leaf('reviews.handle.photo', 'reviews.handle', 'Dalil / screenshot', 'Доказательство / скрин', 4, {
+    proofRequired: true,
+  }),
 
   // —— Uniform daily
   group('uniform.check', 'uniform', 'Kunlik tekshiruv', 'Ежедневная проверка', 1),
@@ -561,7 +563,9 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   leaf('uniform.check.shoes', 'uniform.check', 'Poyabzal / koʻrinish', 'Обувь / внешний вид', 4),
   leaf('uniform.check.hair', 'uniform.check', 'Soch / gigiyena', 'Волосы / гигиена', 5),
   leaf('uniform.check.standard', 'uniform.check', 'Korporativ standart', 'Корпоративный стандарт', 6),
-  leaf('uniform.check.photo', 'uniform.check', 'Jamoa fotosurati (dalil)', 'Фото команды (доказательство)', 7),
+  leaf('uniform.check.photo', 'uniform.check', 'Jamoa fotosurati (dalil)', 'Фото команды (доказательство)', 7, {
+    proofRequired: true,
+  }),
 
   // —— SMM daily
   group('smm.social', 'smm', 'Ijtimoiy tarmoqlar', 'Соцсети', 1),
@@ -624,11 +628,20 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   }),
 
   group('clinic_w.deep', 'clinic_w', 'Chuqur tekshiruv', 'Глубокая проверка', 1, { frequency: 'WEEKLY' }),
-  leaf('clinic_w.deep.inventory', 'clinic_w.deep', 'Ombor inventarizatsiyasi', 'Инвентаризация склада', 1, { frequency: 'WEEKLY' }),
+  leaf('clinic_w.deep.inventory', 'clinic_w.deep', 'Ombor inventarizatsiyasi', 'Инвентаризация склада', 1, {
+    frequency: 'WEEKLY',
+    proofRequired: true,
+  }),
   leaf('clinic_w.deep.equipment', 'clinic_w.deep', 'Uskunalar holati', 'Состояние оборудования', 2, { frequency: 'WEEKLY' }),
   leaf('clinic_w.deep.repair', 'clinic_w.deep', 'Taʼmir / nosozliklar', 'Ремонт / неисправности', 3, { frequency: 'WEEKLY' }),
-  leaf('clinic_w.deep.photo', 'clinic_w.deep', 'Haftalik foto-audit', 'Еженедельный фото-аудит', 4, { frequency: 'WEEKLY' }),
-  leaf('clinic_w.deep.sterile', 'clinic_w.deep', 'Sterilizatsiya jurnalini tekshirish', 'Проверка журнала стерилизации', 5, { frequency: 'WEEKLY' }),
+  leaf('clinic_w.deep.photo', 'clinic_w.deep', 'Haftalik foto-audit', 'Еженедельный фото-аудит', 4, {
+    frequency: 'WEEKLY',
+    proofRequired: true,
+  }),
+  leaf('clinic_w.deep.sterile', 'clinic_w.deep', 'Sterilizatsiya jurnalini tekshirish', 'Проверка журнала стерилизации', 5, {
+    frequency: 'WEEKLY',
+    proofRequired: true,
+  }),
 
   group('reception_w.ops', 'reception_w', 'Operatsiyalar', 'Операции', 1, { frequency: 'WEEKLY' }),
   leaf('reception_w.ops.schedule', 'reception_w.ops', 'Grafik / smena tahlili', 'Анализ графика / смен', 1, { frequency: 'WEEKLY' }),
@@ -705,8 +718,14 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   }),
 
   group('clinic_m.audit', 'clinic_m', 'Oylik audit', 'Месячный аудит', 1, { frequency: 'MONTHLY' }),
-  leaf('clinic_m.audit.full', 'clinic_m.audit', 'Toʻliq klinika auditi', 'Полный аудит клиники', 1, { frequency: 'MONTHLY' }),
-  leaf('clinic_m.audit.licenses', 'clinic_m.audit', 'Litsenziya / hujjatlar', 'Лицензии / документы', 2, { frequency: 'MONTHLY' }),
+  leaf('clinic_m.audit.full', 'clinic_m.audit', 'Toʻliq klinika auditi', 'Полный аудит клиники', 1, {
+    frequency: 'MONTHLY',
+    proofRequired: true,
+  }),
+  leaf('clinic_m.audit.licenses', 'clinic_m.audit', 'Litsenziya / hujjatlar', 'Лицензии / документы', 2, {
+    frequency: 'MONTHLY',
+    proofRequired: true,
+  }),
   leaf('clinic_m.audit.vendor', 'clinic_m.audit', 'Yetkazib beruvchilar', 'Поставщики', 3, { frequency: 'MONTHLY' }),
   leaf('clinic_m.audit.budget', 'clinic_m.audit', 'Ehtiyot material byudjeti', 'Бюджет расходников', 4, { frequency: 'MONTHLY' }),
 
@@ -730,7 +749,10 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
 
   group('uniform_m.brand', 'uniform_m', 'Brend', 'Бренд', 1, { frequency: 'MONTHLY' }),
   leaf('uniform_m.brand.refresh', 'uniform_m.brand', 'Forma yangilash rejasi', 'План обновления формы', 1, { frequency: 'MONTHLY' }),
-  leaf('uniform_m.brand.photo', 'uniform_m.brand', 'Brend foto sessiyasi', 'Бренд-фотосессия', 2, { frequency: 'MONTHLY' }),
+  leaf('uniform_m.brand.photo', 'uniform_m.brand', 'Brend foto sessiyasi', 'Бренд-фотосессия', 2, {
+    frequency: 'MONTHLY',
+    proofRequired: true,
+  }),
 
   group('smm_m.strategy', 'smm_m', 'Strategiya', 'Стратегия', 1, { frequency: 'MONTHLY' }),
   leaf('smm_m.strategy.report', 'smm_m.strategy', 'Oylik SMM hisobot', 'Месячный SMM отчёт', 1, { frequency: 'MONTHLY' }),
@@ -744,3 +766,12 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   leaf('marketing_m.big.doctor', 'marketing_m.big', 'Shifokorlar referral', 'Рефералы врачей', 4, { frequency: 'MONTHLY' }),
   leaf('marketing_m.big.events', 'marketing_m.big', 'Event / ochiq kun', 'Ивент / открытый день', 5, { frequency: 'MONTHLY' }),
 ];
+
+// Foto / screenshot / dalil ishlari — dalil majburiy
+for (const n of KPI_CATALOG_SEED) {
+  if (n.inputType === 'GROUP') continue;
+  const hay = `${n.key} ${n.titleUz} ${n.titleRu}`.toLowerCase();
+  if (/foto|photo|dalil|screenshot|скрин|доказател|inventar|audit\.full|sterile|litsenziya|лиценз/.test(hay)) {
+    n.proofRequired = true;
+  }
+}

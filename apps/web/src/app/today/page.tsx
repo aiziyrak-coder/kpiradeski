@@ -19,6 +19,7 @@ type TaskRow = {
   sectionUz?: string;
   sectionRu?: string;
   inputType: string;
+  proofRequired: boolean;
   status: 'TODO' | 'PENDING' | 'REJECTED' | 'DONE';
   done: boolean;
   value: any;
@@ -157,32 +158,54 @@ export default function TodayPage() {
   );
 
   async function submitTask(row: TaskRow) {
-    const file = files[row.key];
-    if (!file) {
-      toast.error(t('today.needFile'));
+    if (row.proofRequired) {
+      const file = files[row.key];
+      if (!file) {
+        toast.error(t('today.needFile'));
+        return;
+      }
+      setBusyKey(row.key);
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('branchId', branchId);
+        fd.append('nodeKey', row.key);
+        fd.append('date', date);
+        const val = draft[row.key];
+        if (val != null) fd.append('value', JSON.stringify(val));
+        const token = getToken();
+        const res = await fetch('/api/manager-kpi/proof', {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: fd,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || t('common.error'));
+        if (data.aiStatus === 'REJECTED') toast.error(data.aiNote || t('today.rejected'));
+        else if (data.aiStatus === 'APPROVED') toast.success(data.aiNote || t('today.proofOk'));
+        else toast.success(t('today.submittedOk'));
+        setFiles((f) => ({ ...f, [row.key]: null }));
+        await loadDay();
+      } catch (e: any) {
+        toast.error(e.message);
+      } finally {
+        setBusyKey(null);
+      }
       return;
     }
+
     setBusyKey(row.key);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('branchId', branchId);
-      fd.append('nodeKey', row.key);
-      fd.append('date', date);
-      const val = draft[row.key];
-      if (val != null) fd.append('value', JSON.stringify(val));
-      const token = getToken();
-      const res = await fetch('/api/manager-kpi/proof', {
+      await api('/manager-kpi/complete', {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: fd,
+        body: JSON.stringify({
+          branchId,
+          date,
+          nodeKey: row.key,
+          value: draft[row.key] ?? true,
+        }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || t('common.error'));
-      if (data.aiStatus === 'REJECTED') toast.error(data.aiNote || t('today.rejected'));
-      else if (data.aiStatus === 'APPROVED') toast.success(data.aiNote || t('today.proofOk'));
-      else toast.success(t('today.submittedOk'));
-      setFiles((f) => ({ ...f, [row.key]: null }));
+      toast.success(t('today.markedDone'));
       await loadDay();
     } catch (e: any) {
       toast.error(e.message);
@@ -340,7 +363,7 @@ export default function TodayPage() {
               <th className="p-3 font-medium">{t('today.status')}</th>
               {mode === 'manager-todo' && (
                 <>
-                  <th className="p-3 font-medium">{t('today.pickFile')}</th>
+                  <th className="p-3 font-medium">{t('today.proofCol')}</th>
                   <th className="p-3 font-medium">{t('today.action')}</th>
                 </>
               )}
@@ -357,6 +380,11 @@ export default function TodayPage() {
                   <td className="p-3 text-xs text-ink-muted whitespace-nowrap">{section || '—'}</td>
                   <td className="p-3">
                     <p className="font-medium text-ink">{title}</p>
+                    {row.proofRequired && (
+                      <span className="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                        {t('today.needsProof')}
+                      </span>
+                    )}
                     {row.aiNote && (
                       <p className="text-xs text-ink-muted mt-1 leading-snug">{row.aiNote}</p>
                     )}
@@ -430,23 +458,27 @@ export default function TodayPage() {
                   {mode === 'manager-todo' && (
                     <>
                       <td className="p-3">
-                        <label className="inline-flex items-center gap-1.5 text-xs text-teal-800 cursor-pointer">
-                          <Upload className="w-3.5 h-3.5" />
-                          <span className="truncate max-w-[120px]">
-                            {files[row.key]?.name || t('today.pickFile')}
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) =>
-                              setFiles((f) => ({
-                                ...f,
-                                [row.key]: e.target.files?.[0] || null,
-                              }))
-                            }
-                          />
-                        </label>
+                        {row.proofRequired ? (
+                          <label className="inline-flex items-center gap-1.5 text-xs text-teal-800 cursor-pointer">
+                            <Upload className="w-3.5 h-3.5" />
+                            <span className="truncate max-w-[120px]">
+                              {files[row.key]?.name || t('today.pickFile')}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) =>
+                                setFiles((f) => ({
+                                  ...f,
+                                  [row.key]: e.target.files?.[0] || null,
+                                }))
+                              }
+                            />
+                          </label>
+                        ) : (
+                          <span className="text-xs text-ink-muted">{t('today.noProofNeeded')}</span>
+                        )}
                       </td>
                       <td className="p-3">
                         <button
@@ -455,7 +487,11 @@ export default function TodayPage() {
                           onClick={() => submitTask(row)}
                           className="h-8 px-3 rounded-lg text-xs font-semibold bg-teal-800 text-white disabled:opacity-50"
                         >
-                          {busyKey === row.key ? t('today.submitting') : t('today.submit')}
+                          {busyKey === row.key
+                            ? t('today.submitting')
+                            : row.proofRequired
+                              ? t('today.submitProof')
+                              : t('today.markDone')}
                         </button>
                       </td>
                     </>

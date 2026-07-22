@@ -121,6 +121,17 @@ export class ManagerKpiController {
     return this.kpi.reviewProof(user, dto);
   }
 
+  @Post('complete')
+  @Roles(Role.MANAGER)
+  complete(@CurrentUser() user: { id: string; role: Role }, @Body() dto: EntryDto) {
+    return this.kpi.completeTask(user, {
+      branchId: dto.branchId,
+      date: dto.date,
+      nodeKey: dto.nodeKey,
+      value: dto.value,
+    });
+  }
+
   @Post('proof')
   @Roles(Role.MANAGER)
   @UseInterceptors(
