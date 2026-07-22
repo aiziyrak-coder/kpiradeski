@@ -5,6 +5,7 @@ import { AppShell } from '@/components/AppShell';
 import { RoleGate } from '@/components/RoleGate';
 import { Button, SectionHeader } from '@/components/ui';
 import { useToast } from '@/components/Toast';
+import { useI18n } from '@/lib/i18n';
 import { api } from '@/lib/api';
 import { todayISO, weekStartISO } from '@/types';
 import { cn } from '@/lib/utils';
@@ -12,22 +13,9 @@ import { cn } from '@/lib/utils';
 type Period = 'DAY' | 'WEEK' | 'MONTH' | 'YEAR' | 'CUSTOM';
 type ReportType = 'KPI' | 'CALLS' | 'SERVICES';
 
-const PERIODS: { id: Period; label: string }[] = [
-  { id: 'DAY', label: 'Kunlik' },
-  { id: 'WEEK', label: 'Haftalik' },
-  { id: 'MONTH', label: 'Oylik' },
-  { id: 'YEAR', label: 'Yillik' },
-  { id: 'CUSTOM', label: 'Oraligʻ' },
-];
-
-const TYPES: { id: ReportType; label: string }[] = [
-  { id: 'KPI', label: 'KPI' },
-  { id: 'CALLS', label: 'Qoʻngʻiroqlar' },
-  { id: 'SERVICES', label: 'Xizmatlar' },
-];
-
 export default function AiPage() {
   const toast = useToast();
+  const { t } = useI18n();
   const [reports, setReports] = useState<any[]>([]);
   const [period, setPeriod] = useState<Period>('WEEK');
   const [type, setType] = useState<ReportType>('KPI');
@@ -36,6 +24,19 @@ export default function AiPage() {
   const [busy, setBusy] = useState(false);
   const [branches, setBranches] = useState<any[]>([]);
   const [branchId, setBranchId] = useState('');
+
+  const PERIODS: { id: Period; label: string }[] = [
+    { id: 'DAY', label: t('ai.day') },
+    { id: 'WEEK', label: t('ai.week') },
+    { id: 'MONTH', label: t('ai.month') },
+    { id: 'YEAR', label: t('ai.year') },
+    { id: 'CUSTOM', label: t('ai.custom') },
+  ];
+  const TYPES: { id: ReportType; label: string }[] = [
+    { id: 'KPI', label: t('ai.kpi') },
+    { id: 'CALLS', label: t('ai.calls') },
+    { id: 'SERVICES', label: t('ai.services') },
+  ];
 
   async function load() {
     try {
@@ -65,7 +66,7 @@ export default function AiPage() {
       });
       if (branchId) q.set('branchId', branchId);
       await api(`/kpi/ai-reports/${type}?${q}`, { method: 'POST' });
-      toast.success('Hisobot tayyor');
+      toast.success(t('ai.ready'));
       await load();
     } catch (e: any) {
       toast.error(e.message);
@@ -78,10 +79,10 @@ export default function AiPage() {
     <RoleGate allow={['MANAGER', 'ADMIN', 'SUPER_ADMIN']}>
       <AppShell>
         <SectionHeader
-          title="AI hisobot"
+          title={t('ai.title')}
           action={
             <Button disabled={busy} onClick={generate}>
-              {busy ? '...' : 'Yaratish'}
+              {busy ? '...' : t('ai.create')}
             </Button>
           }
         />
@@ -103,17 +104,17 @@ export default function AiPage() {
             ))}
           </div>
           <div className="flex flex-wrap gap-1">
-            {TYPES.map((t) => (
+            {TYPES.map((x) => (
               <button
-                key={t.id}
+                key={x.id}
                 type="button"
-                onClick={() => setType(t.id)}
+                onClick={() => setType(x.id)}
                 className={cn(
                   'rounded-xl px-3 py-1.5 text-sm font-medium',
-                  type === t.id ? 'bg-teal-800 text-white' : 'bg-black/[0.04] text-ink-muted',
+                  type === x.id ? 'bg-teal-800 text-white' : 'bg-black/[0.04] text-ink-muted',
                 )}
               >
-                {t.label}
+                {x.label}
               </button>
             ))}
           </div>
@@ -138,7 +139,7 @@ export default function AiPage() {
                 value={branchId}
                 onChange={(e) => setBranchId(e.target.value)}
               >
-                <option value="">Barcha filial</option>
+                <option value="">{t('ai.allBranches')}</option>
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
@@ -152,7 +153,7 @@ export default function AiPage() {
         <div className="space-y-3">
           {reports.length === 0 && (
             <div className="rounded-2xl border border-dashed border-black/10 p-8 text-center text-ink-muted">
-              —
+              {t('common.none')}
             </div>
           )}
           {reports.map((r) => (

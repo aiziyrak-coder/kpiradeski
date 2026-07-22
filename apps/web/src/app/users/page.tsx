@@ -117,7 +117,7 @@ export default function UsersPage() {
   }
 
   async function removeUser(u: any) {
-    if (!confirm(`${u.name} ni oʻchirish?`)) return;
+    if (!confirm(t('common.confirmDelete'))) return;
     try {
       await api(`/users/${u.id}`, { method: 'DELETE' });
       toast.success(t('common.deleted'));

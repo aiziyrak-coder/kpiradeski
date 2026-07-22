@@ -101,6 +101,21 @@ export class DashboardService {
       take: 2,
     });
 
+    // Incomplete KPI for admin alerts
+    const leaves = await this.prisma.kpiCatalogNode.findMany({
+      where: { active: true, frequency: 'DAILY', inputType: { not: 'GROUP' } },
+      select: { key: true, titleUz: true, titleRu: true },
+    });
+    const doneEntries = await this.prisma.kpiDayEntry.findMany({
+      where: { date, done: true },
+      select: { nodeKey: true, branchId: true },
+    });
+    const doneSet = new Set(doneEntries.map((e) => e.nodeKey));
+    const incompleteTasks = leaves
+      .filter((l) => !doneSet.has(l.key))
+      .slice(0, 12)
+      .map((l) => ({ key: l.key, titleUz: l.titleUz, titleRu: l.titleRu }));
+
     return {
       date: date.toISOString().slice(0, 10),
       today,
@@ -116,7 +131,12 @@ export class DashboardService {
       branches,
       latestAi,
       completion: (today as any)?.completion || null,
-      alerts: {},
+      alerts: {
+        incompleteCount: leaves.length - doneSet.size,
+        incompleteTasks,
+        leafTotal: leaves.length,
+        leafDone: Math.min(doneSet.size, leaves.length),
+      },
     };
   }
 }

@@ -92,31 +92,29 @@ export default function BranchesPage() {
   return (
     <AppShell>
       <RoleGate allow={['ADMIN', 'SUPER_ADMIN']}>
-        <SectionHeader
-          title="Filiallar"
-        />
+        <SectionHeader title={t('branches.title')} />
 
         <div className="grid lg:grid-cols-2 gap-5 mb-8">
           <form
             onSubmit={onCreate}
             className="rounded-3xl border border-teal-100 bg-white/90 p-5 shadow-soft space-y-3"
           >
-            <h3 className="font-display text-2xl">Yangi filial</h3>
+            <h3 className="font-display text-2xl">{t('branches.newBranch')}</h3>
             <Input
-              label="Nomi"
+              label={t('branches.name')}
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               required
               className="h-12"
             />
             <Input
-              label="Manzil"
+              label={t('branches.address')}
               value={form.address}
               onChange={(e) => setForm({ ...form, address: e.target.value })}
               className="h-12"
             />
             <Button type="submit" className="w-full min-h-12">
-              Qoʻshish
+              {t('common.add')}
             </Button>
           </form>
 
@@ -124,9 +122,9 @@ export default function BranchesPage() {
             onSubmit={onAssign}
             className="rounded-3xl border border-teal-100 bg-white/90 p-5 shadow-soft space-y-3"
           >
-            <h3 className="font-display text-2xl">Manager biriktirish</h3>
+            <h3 className="font-display text-2xl">{t('branches.assign')}</h3>
             <Select
-              label="Filial"
+              label={t('branches.branch')}
               value={assign.branchId}
               onChange={(e) => setAssign({ ...assign, branchId: e.target.value })}
             >
@@ -137,11 +135,11 @@ export default function BranchesPage() {
               ))}
             </Select>
             <Select
-              label="Manager"
+              label={t('branches.manager')}
               value={assign.userId}
               onChange={(e) => setAssign({ ...assign, userId: e.target.value })}
             >
-              <option value="">Tanlang...</option>
+              <option value="">{t('branches.select')}</option>
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name} · {m.email}
@@ -149,7 +147,7 @@ export default function BranchesPage() {
               ))}
             </Select>
             <Button type="submit" className="w-full min-h-12" disabled={!assign.userId}>
-              Biriktirish
+              {t('branches.assignBtn')}
             </Button>
           </form>
         </div>
@@ -174,13 +172,13 @@ export default function BranchesPage() {
                       : 'text-xs font-semibold text-rose-600'
                   }
                 >
-                  {b.active ? 'Faol' : 'Nofaol'}
+                  {b.active ? t('common.active') : t('common.inactive')}
                 </button>
               </div>
-              <p className="text-xs text-ink-muted mb-2">Managerlar:</p>
+              <p className="text-xs text-ink-muted mb-2">{t('branches.managers')}:</p>
               <div className="flex flex-wrap gap-2">
                 {(b.managers || []).length === 0 && (
-                  <span className="text-sm text-ink-muted">Biriktirilmagan</span>
+                  <span className="text-sm text-ink-muted">{t('branches.unassigned')}</span>
                 )}
                 {(b.managers || []).map((m: any) => (
                   <span

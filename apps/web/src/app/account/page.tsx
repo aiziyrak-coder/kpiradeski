@@ -8,10 +8,11 @@ import { useToast } from '@/components/Toast';
 import { useAuth } from '@/lib/auth';
 import { useTelegram } from '@/components/TelegramProvider';
 import { haptic } from '@/lib/telegram';
-import { ROLE_LABELS } from '@/types';
+import { useI18n } from '@/lib/i18n';
 
 export default function AccountPage() {
   const toast = useToast();
+  const { t, roleLabel } = useI18n();
   const { user, linkTelegram, refresh } = useAuth();
   const { isMiniApp, webApp, tgUser } = useTelegram();
   const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirm: '' });
@@ -21,7 +22,7 @@ export default function AccountPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (form.newPassword !== form.confirm) {
-      toast.error('Parollar mos emas');
+      toast.error(t('account.passwordMismatch'));
       return;
     }
     setBusy(true);
@@ -33,10 +34,10 @@ export default function AccountPage() {
           newPassword: form.newPassword,
         }),
       });
-      toast.success('Parol yangilandi');
+      toast.success(t('account.passwordUpdated'));
       setForm({ currentPassword: '', newPassword: '', confirm: '' });
     } catch (err: any) {
-      toast.error('Xatolik', err.message);
+      toast.error(t('common.error'), err.message);
     } finally {
       setBusy(false);
     }
@@ -44,7 +45,7 @@ export default function AccountPage() {
 
   async function onLinkTelegram() {
     if (!webApp?.initData) {
-      toast.error('Telegram Mini App ichidan oching');
+      toast.error(t('account.openInTelegram'));
       return;
     }
     setTgBusy(true);
@@ -52,10 +53,10 @@ export default function AccountPage() {
       await linkTelegram(webApp.initData);
       await refresh();
       haptic('success');
-      toast.success('Telegram akkaunt bogʻlandi');
+      toast.success(t('account.linkedOk'));
     } catch (err: any) {
       haptic('error');
-      toast.error('Bogʻlanmadi', err.message);
+      toast.error(t('account.linkFail'), err.message);
     } finally {
       setTgBusy(false);
     }
@@ -63,16 +64,14 @@ export default function AccountPage() {
 
   return (
     <AppShell>
-      <SectionHeader
-        title="Hisob sozlamalari"
-      />
+      <SectionHeader title={t('account.title')} />
 
       <div className="space-y-4 max-w-md">
         <div className="rounded-2xl border border-teal-100 bg-white/90 p-4 shadow-soft">
           <p className="font-display text-2xl text-teal-900">{user?.name}</p>
           <p className="text-sm text-ink-muted mt-1">{user?.email}</p>
           <p className="text-sm text-teal-800 mt-2 font-medium">
-            {user?.role ? ROLE_LABELS[user.role] : '—'}
+            {user?.role ? roleLabel(user.role) : t('common.none')}
           </p>
           {user?.telegramId && (
             <p className="text-xs text-ink-muted mt-2">Telegram ID: {user.telegramId}</p>
@@ -81,10 +80,10 @@ export default function AccountPage() {
 
         {(isMiniApp || user?.telegramId) && (
           <div className="rounded-2xl border border-teal-100 bg-white/90 p-4 shadow-soft space-y-3">
-            <p className="text-sm font-semibold text-ink">Telegram Mini App</p>
+            <p className="text-sm font-semibold text-ink">{t('account.telegramMini')}</p>
             {user?.telegramId ? (
               <p className="text-sm text-teal-800">
-                Bogʻlangan
+                {t('account.linked')}
                 {tgUser?.username ? ` · @${tgUser.username}` : ''}
               </p>
             ) : (
@@ -94,7 +93,7 @@ export default function AccountPage() {
                 disabled={tgBusy || !isMiniApp}
                 className="w-full min-h-12"
               >
-                {tgBusy ? '...' : 'Telegram'}
+                {tgBusy ? '...' : t('account.telegram')}
               </Button>
             )}
           </div>
@@ -104,9 +103,9 @@ export default function AccountPage() {
           onSubmit={onSubmit}
           className="rounded-2xl border border-teal-100 bg-white/90 p-4 sm:p-6 shadow-soft space-y-3"
         >
-          <p className="text-sm font-semibold text-ink mb-1">Parolni o‘zgartirish</p>
+          <p className="text-sm font-semibold text-ink mb-1">{t('account.changePassword')}</p>
           <Input
-            label="Joriy parol"
+            label={t('account.currentPassword')}
             type="password"
             value={form.currentPassword}
             onChange={(e) => setForm({ ...form, currentPassword: e.target.value })}
@@ -114,7 +113,7 @@ export default function AccountPage() {
             className="h-12"
           />
           <Input
-            label="Yangi parol"
+            label={t('account.newPassword')}
             type="password"
             value={form.newPassword}
             onChange={(e) => setForm({ ...form, newPassword: e.target.value })}
@@ -123,7 +122,7 @@ export default function AccountPage() {
             className="h-12"
           />
           <Input
-            label="Yangi parol (takror)"
+            label={t('account.confirmPassword')}
             type="password"
             value={form.confirm}
             onChange={(e) => setForm({ ...form, confirm: e.target.value })}
@@ -132,7 +131,7 @@ export default function AccountPage() {
             className="h-12"
           />
           <Button type="submit" disabled={busy} className="w-full min-h-12">
-            {busy ? 'Saqlanmoqda...' : 'Yangilash'}
+            {busy ? t('account.saving') : t('account.update')}
           </Button>
         </form>
       </div>

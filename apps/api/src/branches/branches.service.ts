@@ -35,7 +35,34 @@ export class BranchesService {
       include: { branch: true },
       orderBy: { createdAt: 'asc' },
     });
-    return links.map((l) => l.branch).filter((b) => b.active);
+    let branches = links.map((l) => l.branch).filter((b) => b.active);
+    if (branches.length) return branches;
+
+    // Auto-heal: managerga filial yoʻq boʻlsa — user.branchId yoki birinchi faol filial
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    let targetId = user?.branchId || null;
+    if (!targetId) {
+      const first = await this.prisma.branch.findFirst({
+        where: { active: true },
+        orderBy: { name: 'asc' },
+      });
+      targetId = first?.id || null;
+    }
+    if (!targetId) return [];
+
+    await this.prisma.branchManager.upsert({
+      where: { branchId_userId: { branchId: targetId, userId } },
+      create: { branchId: targetId, userId },
+      update: {},
+    });
+    if (user && !user.branchId) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { branchId: targetId },
+      });
+    }
+    const b = await this.prisma.branch.findUnique({ where: { id: targetId } });
+    return b && b.active ? [b] : [];
   }
 
   async get(id: string) {

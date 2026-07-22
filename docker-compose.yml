@@ -38,7 +38,9 @@ services:
       TZ: Asia/Tashkent
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      OPENAI_TTS_MODEL: ${OPENAI_TTS_MODEL:-tts-1-hd}
+      OPENAI_TTS_VOICE: ${OPENAI_TTS_VOICE:-onyx}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       SEED_ON_START: ${SEED_ON_START:-false}

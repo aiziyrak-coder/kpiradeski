@@ -9,7 +9,7 @@ import { useAuth } from '@/lib/auth';
 import { api, getToken } from '@/lib/api';
 import { todayISO } from '@/types';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronRight, Check, Upload, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Check, Upload, X, Minus } from 'lucide-react';
 
 type Freq = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
@@ -27,11 +27,7 @@ type TreeNode = {
   children: TreeNode[];
 };
 
-const FREQ_TABS: { id: Freq; uz: string; ru: string }[] = [
-  { id: 'DAILY', uz: 'Kunlik', ru: 'День' },
-  { id: 'WEEKLY', uz: 'Haftalik', ru: 'Неделя' },
-  { id: 'MONTHLY', uz: 'Oylik', ru: 'Месяц' },
-];
+const FREQ_IDS = ['DAILY', 'WEEKLY', 'MONTHLY'] as const;
 
 function countLeaves(n: TreeNode): { done: number; total: number } {
   if (!n.children?.length) {
@@ -46,12 +42,20 @@ function countLeaves(n: TreeNode): { done: number; total: number } {
   );
 }
 
+function collectLeafKeys(n: TreeNode): string[] {
+  if (!n.children?.length) {
+    return n.inputType === 'GROUP' ? [] : [n.key];
+  }
+  return n.children.flatMap(collectLeafKeys);
+}
+
 export default function TodayPage() {
   const toast = useToast();
-  const { lang } = useI18n();
+  const { lang, t } = useI18n();
   const { user } = useAuth();
   const isManager = user?.role === 'MANAGER';
   const canUploadProof = isManager;
+  const canEdit = true;
 
   const [branches, setBranches] = useState<any[]>([]);
   const [branchId, setBranchId] = useState('');
@@ -60,22 +64,34 @@ export default function TodayPage() {
   const [day, setDay] = useState<any>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const loadBranches = useCallback(async () => {
     const list = await api<any[]>('/branches/mine');
-    setBranches(list.filter((b) => b.active !== false));
-    if (!branchId && list[0]) setBranchId(list[0].id);
-  }, [branchId]);
+    const active = list.filter((b) => b.active !== false);
+    setBranches(active);
+    setBranchId((prev) => prev || active[0]?.id || '');
+  }, []);
 
   const loadDay = useCallback(async () => {
-    if (!branchId) return;
-    const d = await api(
-      `/manager-kpi/day?branchId=${branchId}&date=${date}&frequency=${freq}`,
-    );
-    setDay(d);
-    const init: Record<string, boolean> = {};
-    for (const n of d.tree || []) init[n.key] = true;
-    setOpen((o) => ({ ...init, ...o }));
+    if (!branchId) {
+      setDay(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const d = await api(
+        `/manager-kpi/day?branchId=${branchId}&date=${date}&frequency=${freq}`,
+      );
+      setDay(d);
+      const init: Record<string, boolean> = {};
+      for (const n of d.tree || []) init[n.key] = true;
+      setOpen((o) => ({ ...init, ...o }));
+    } finally {
+      setLoading(false);
+    }
   }, [branchId, date, freq]);
 
   useEffect(() => {
@@ -99,8 +115,10 @@ export default function TodayPage() {
     );
   }, [tree]);
 
+  const allLeafKeys = useMemo(() => tree.flatMap(collectLeafKeys), [tree]);
+
   async function toggleDone(node: TreeNode) {
-    if (busyKey) return;
+    if (!canEdit || busyKey || bulkBusy) return;
     setBusyKey(node.key);
     try {
       const next = !node.done;
@@ -125,6 +143,40 @@ export default function TodayPage() {
       toast.error(e.message);
     } finally {
       setBusyKey(null);
+    }
+  }
+
+  async function setGroupDone(node: TreeNode, done: boolean) {
+    if (!canEdit || bulkBusy) return;
+    const keys = collectLeafKeys(node);
+    if (!keys.length) return;
+    setBulkBusy(true);
+    try {
+      await api('/manager-kpi/entry-bulk', {
+        method: 'POST',
+        body: JSON.stringify({ branchId, date, nodeKeys: keys, done }),
+      });
+      await loadDay();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function setAllDone(done: boolean) {
+    if (!canEdit || bulkBusy || !allLeafKeys.length) return;
+    setBulkBusy(true);
+    try {
+      await api('/manager-kpi/entry-bulk', {
+        method: 'POST',
+        body: JSON.stringify({ branchId, date, nodeKeys: allLeafKeys, done }),
+      });
+      await loadDay();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -155,6 +207,43 @@ export default function TodayPage() {
     }
   }
 
+  function GroupCheck({
+    done,
+    total,
+    onToggle,
+  }: {
+    done: number;
+    total: number;
+    onToggle: (next: boolean) => void;
+  }) {
+    const all = total > 0 && done === total;
+    const some = done > 0 && done < total;
+    return (
+      <button
+        type="button"
+        disabled={bulkBusy || !total}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle(!all);
+        }}
+        className={cn(
+          'shrink-0 w-5 h-5 rounded-md border-2 grid place-items-center transition',
+          all && 'bg-teal-800 border-teal-800 text-white',
+          some && 'bg-teal-100 border-teal-700 text-teal-800',
+          !all && !some && 'border-teal-800/25 bg-white hover:border-teal-700',
+        )}
+        title={all ? t('today.uncheckGroup') : t('today.checkGroup')}
+        aria-label={all ? t('today.uncheckGroup') : t('today.checkGroup')}
+      >
+        {all ? (
+          <Check className="w-3 h-3" strokeWidth={3} />
+        ) : some ? (
+          <Minus className="w-3 h-3" strokeWidth={3} />
+        ) : null}
+      </button>
+    );
+  }
+
   function LeafRow({ node, depth }: { node: TreeNode; depth: number }) {
     const showProof = canUploadProof && node.proofRequired && node.inputType !== 'GROUP';
     const rejected = node.aiStatus === 'REJECTED';
@@ -170,7 +259,7 @@ export default function TodayPage() {
       >
         <button
           type="button"
-          disabled={!!busyKey}
+          disabled={!!busyKey || bulkBusy}
           onClick={() => toggleDone(node)}
           className={cn(
             'shrink-0 w-5 h-5 rounded-md border-2 grid place-items-center transition',
@@ -178,7 +267,7 @@ export default function TodayPage() {
               ? 'bg-teal-800 border-teal-800 text-white'
               : 'border-teal-800/25 bg-white hover:border-teal-700',
           )}
-          aria-label="belgilash"
+          aria-label={t('today.mark')}
         >
           {node.done && <Check className="w-3 h-3" strokeWidth={3} />}
         </button>
@@ -209,7 +298,7 @@ export default function TodayPage() {
             ) : (
               <Upload className="w-3.5 h-3.5" />
             )}
-            {approved ? 'OK' : rejected ? 'Qayta' : 'Dalil'}
+            {approved ? t('common.ok') : rejected ? t('common.retry') : t('common.proof')}
             <input
               type="file"
               accept="image/*,.pdf"
@@ -232,7 +321,11 @@ export default function TodayPage() {
               !approved && !rejected && 'bg-black/[0.04] text-ink-muted',
             )}
           >
-            {approved ? 'Dalil ✓' : rejected ? 'Rad' : '—'}
+            {approved
+              ? t('today.proofOk')
+              : rejected
+                ? t('today.rejected')
+                : t('common.none')}
           </span>
         )}
       </div>
@@ -255,32 +348,39 @@ export default function TodayPage() {
 
     return (
       <div className="rounded-xl border border-teal-900/10 bg-white overflow-hidden shadow-sm">
-        <button
-          type="button"
-          className="w-full flex items-center gap-3 px-3 sm:px-4 py-3 text-left bg-teal-950/[0.03] hover:bg-teal-950/[0.05] transition"
-          onClick={() => setOpen((o) => ({ ...o, [node.key]: !isOpen }))}
-        >
-          <span className="text-teal-800/70">
-            {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          </span>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-ink text-[15px] tracking-tight">{title(node)}</p>
-            <p className="text-xs text-ink-muted mt-0.5 tabular-nums">
-              {leaf.done}/{leaf.total}
-            </p>
-          </div>
-          <div className="shrink-0 flex items-center gap-2">
-            <div className="w-16 h-1.5 rounded-full bg-black/[0.06] overflow-hidden hidden sm:block">
-              <div
-                className="h-full rounded-full bg-teal-700 transition-all"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <span className="text-sm tabular-nums font-medium text-teal-900 w-10 text-right">
-              {pct}%
+        <div className="flex items-center gap-2 px-3 sm:px-4 py-3 bg-teal-950/[0.03] hover:bg-teal-950/[0.05] transition">
+          <GroupCheck
+            done={leaf.done}
+            total={leaf.total}
+            onToggle={(next) => setGroupDone(node, next)}
+          />
+          <button
+            type="button"
+            className="flex-1 flex items-center gap-3 text-left min-w-0"
+            onClick={() => setOpen((o) => ({ ...o, [node.key]: !isOpen }))}
+          >
+            <span className="text-teal-800/70 shrink-0">
+              {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </span>
-          </div>
-        </button>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-ink text-[15px] tracking-tight">{title(node)}</p>
+              <p className="text-xs text-ink-muted mt-0.5 tabular-nums">
+                {leaf.done}/{leaf.total}
+              </p>
+            </div>
+            <div className="shrink-0 flex items-center gap-2">
+              <div className="w-16 h-1.5 rounded-full bg-black/[0.06] overflow-hidden hidden sm:block">
+                <div
+                  className="h-full rounded-full bg-teal-700 transition-all"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <span className="text-sm tabular-nums font-medium text-teal-900 w-10 text-right">
+                {pct}%
+              </span>
+            </div>
+          </button>
+        </div>
 
         {isOpen && (
           <div>
@@ -303,22 +403,31 @@ export default function TodayPage() {
 
     return (
       <div className="border-t border-teal-900/[0.06]">
-        <button
-          type="button"
-          className="w-full flex items-center gap-2 py-2.5 text-left hover:bg-black/[0.02]"
+        <div
+          className="flex items-center gap-2 py-2.5 hover:bg-black/[0.02]"
           style={{ paddingLeft: 12 + depth * 14, paddingRight: 12 }}
-          onClick={() => setOpen((o) => ({ ...o, [node.key]: !isOpen }))}
         >
-          {isOpen ? (
-            <ChevronDown className="w-3.5 h-3.5 text-ink-muted" />
-          ) : (
-            <ChevronRight className="w-3.5 h-3.5 text-ink-muted" />
-          )}
-          <span className="flex-1 text-sm font-medium text-ink">{title(node)}</span>
-          <span className="text-xs tabular-nums text-ink-muted">
-            {leaf.done}/{leaf.total}
-          </span>
-        </button>
+          <GroupCheck
+            done={leaf.done}
+            total={leaf.total}
+            onToggle={(next) => setGroupDone(node, next)}
+          />
+          <button
+            type="button"
+            className="flex-1 flex items-center gap-2 text-left min-w-0"
+            onClick={() => setOpen((o) => ({ ...o, [node.key]: !isOpen }))}
+          >
+            {isOpen ? (
+              <ChevronDown className="w-3.5 h-3.5 text-ink-muted shrink-0" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5 text-ink-muted shrink-0" />
+            )}
+            <span className="flex-1 text-sm font-medium text-ink">{title(node)}</span>
+            <span className="text-xs tabular-nums text-ink-muted">
+              {leaf.done}/{leaf.total}
+            </span>
+          </button>
+        </div>
         {isOpen &&
           node.children.map((c) =>
             c.children?.length ? (
@@ -337,7 +446,9 @@ export default function TodayPage() {
         <div className="max-w-2xl mx-auto space-y-4 pb-24">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h1 className="font-display text-2xl sm:text-3xl text-ink tracking-tight">Ishlar</h1>
+              <h1 className="font-display text-2xl sm:text-3xl text-ink tracking-tight">
+                {t('today.title')}
+              </h1>
               <p className="text-sm tabular-nums text-ink-muted mt-0.5">
                 {totals.done}/{totals.total}
                 {day?.totalScore != null ? ` · ${day.totalScore}%` : ''}
@@ -345,10 +456,12 @@ export default function TodayPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <select
-                className="h-10 rounded-lg border border-teal-900/10 bg-white px-3 text-sm"
+                className="h-10 rounded-lg border border-teal-900/10 bg-white px-3 text-sm min-w-[10rem]"
                 value={branchId}
                 onChange={(e) => setBranchId(e.target.value)}
+                disabled={!branches.length}
               >
+                {!branches.length && <option value="">{t('today.noBranch')}</option>}
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
@@ -365,30 +478,59 @@ export default function TodayPage() {
           </div>
 
           <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-teal-950/[0.05]">
-            {FREQ_TABS.map((t) => (
+            {FREQ_IDS.map((id) => (
               <button
-                key={t.id}
+                key={id}
                 type="button"
-                onClick={() => setFreq(t.id)}
+                onClick={() => setFreq(id)}
                 className={cn(
                   'rounded-lg py-2 text-sm font-medium transition',
-                  freq === t.id
+                  freq === id
                     ? 'bg-white text-teal-950 shadow-sm'
                     : 'text-ink-muted hover:text-ink',
                 )}
               >
-                {lang === 'ru' ? t.ru : t.uz}
+                {id === 'DAILY'
+                  ? t('today.daily')
+                  : id === 'WEEKLY'
+                    ? t('today.weekly')
+                    : t('today.monthly')}
               </button>
             ))}
           </div>
 
+          {!!tree.length && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={() => setAllDone(true)}
+                className="h-9 px-3 rounded-lg text-sm font-medium bg-teal-800 text-white hover:bg-teal-900 disabled:opacity-50"
+              >
+                {t('today.checkAll')}
+              </button>
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={() => setAllDone(false)}
+                className="h-9 px-3 rounded-lg text-sm font-medium border border-teal-200 bg-white text-teal-900 hover:bg-teal-50 disabled:opacity-50"
+              >
+                {t('today.uncheckAll')}
+              </button>
+            </div>
+          )}
+
           <div className="space-y-2.5">
-            {tree.map((n) => (
-              <SectionCard key={n.key} node={n} />
-            ))}
-            {!tree.length && (
+            {loading && (
               <div className="rounded-xl border border-dashed border-teal-900/15 py-12 text-center text-ink-muted text-sm">
-                —
+                {t('common.loading')}
+              </div>
+            )}
+            {!loading &&
+              tree.map((n) => <SectionCard key={n.key} node={n} />)}
+            {!loading && !tree.length && (
+              <div className="rounded-xl border border-dashed border-teal-900/15 py-12 text-center text-ink-muted text-sm space-y-2 px-4">
+                <p>{branches.length ? t('today.emptyTasks') : t('today.noBranchHint')}</p>
               </div>
             )}
           </div>

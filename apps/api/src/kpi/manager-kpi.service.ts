@@ -69,15 +69,21 @@ export class ManagerKpiService implements OnModuleInit {
           data: { name: 'Radeski Dermatologiya', address: 'Toshkent' },
         });
       }
-      const manager = await this.prisma.user.findFirst({
+      const managers = await this.prisma.user.findMany({
         where: { role: Role.MANAGER, active: true },
       });
-      if (manager) {
+      for (const manager of managers) {
         await this.prisma.branchManager.upsert({
           where: { branchId_userId: { branchId: branch.id, userId: manager.id } },
           create: { branchId: branch.id, userId: manager.id },
           update: {},
         });
+        if (!manager.branchId) {
+          await this.prisma.user.update({
+            where: { id: manager.id },
+            data: { branchId: branch.id },
+          });
+        }
       }
     } catch (e) {
       this.logger.warn(`Catalog seed: ${e}`);
@@ -308,6 +314,63 @@ export class ManagerKpiService implements OnModuleInit {
     return { entry, dayScore };
   }
 
+  async saveEntryBulk(
+    user: { id: string; role: Role },
+    data: { branchId: string; date?: string; nodeKeys: string[]; done: boolean },
+  ) {
+    await this.branches.assertCanAccessBranch(user.id, user.role, data.branchId);
+    const keys = [...new Set(data.nodeKeys.filter(Boolean))];
+    const nodes = await this.prisma.kpiCatalogNode.findMany({
+      where: { key: { in: keys }, active: true },
+    });
+    let lastFreq: KpiFrequency = KpiFrequency.DAILY;
+    let lastDate = periodDate(KpiFrequency.DAILY, data.date);
+
+    for (const node of nodes) {
+      if (node.inputType === KpiInputType.GROUP) continue;
+      const date = periodDate(node.frequency, data.date);
+      lastFreq = node.frequency;
+      lastDate = date;
+      const value =
+        node.inputType === KpiInputType.CHECKBOX
+          ? data.done
+          : node.inputType === KpiInputType.NOTE_CHECK
+            ? { checked: data.done }
+            : data.done;
+      const leafScore = this.scoreLeaf(node.inputType, value, data.done);
+      await this.prisma.kpiDayEntry.upsert({
+        where: {
+          branchId_date_nodeKey: {
+            branchId: data.branchId,
+            date,
+            nodeKey: node.key,
+          },
+        },
+        create: {
+          branchId: data.branchId,
+          date,
+          nodeKey: node.key,
+          value: value as any,
+          done: data.done,
+          score: leafScore,
+          userId: user.id,
+        },
+        update: {
+          value: value as any,
+          done: data.done,
+          score: leafScore,
+          userId: user.id,
+        },
+      });
+      if (node.parentKey) {
+        await this.rollupParents(data.branchId, date, node.key, user.id);
+      }
+    }
+
+    const dayScore = await this.recalculate(data.branchId, lastDate, lastFreq);
+    return { ok: true, count: nodes.filter((n) => n.inputType !== KpiInputType.GROUP).length, dayScore };
+  }
+
   private inferDone(type: KpiInputType, value: any): boolean {
     if (value == null) return false;
     if (type === KpiInputType.CHECKBOX) return value === true || value?.checked === true;
@@ -413,6 +476,9 @@ export class ManagerKpiService implements OnModuleInit {
     let requiredFilled = 0;
     const incomplete: string[] = [];
 
+    const dashKey = (key: string) =>
+      key.replace(/_w$/, '').replace(/_m$/, '');
+
     for (const root of roots) {
       const w = root.weight || 0;
       if (w <= 0) continue;
@@ -431,11 +497,13 @@ export class ManagerKpiService implements OnModuleInit {
         }
       }
 
+      const dk = dashKey(root.key);
       blockScores[root.key] = score;
+      blockScores[dk] = score;
       weighted += score * w;
       totalWeight += w;
       if (entry?.done && proof?.aiStatus !== AiProofStatus.REJECTED) requiredFilled++;
-      else incomplete.push(root.key);
+      else incomplete.push(dk);
     }
 
     const totalScore = totalWeight

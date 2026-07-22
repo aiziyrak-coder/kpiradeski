@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { uz, type LocaleDict } from '@/locales/uz';
+import { uz } from '@/locales/uz';
 import { ru } from '@/locales/ru';
 
 export type Lang = 'uz' | 'ru';

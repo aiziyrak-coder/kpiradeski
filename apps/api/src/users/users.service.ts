@@ -97,6 +97,31 @@ export class UsersService {
       },
       select: USER_SELECT,
     });
+
+    if (data.role === Role.MANAGER) {
+      let branchId = data.branchId;
+      if (!branchId) {
+        const first = await this.prisma.branch.findFirst({
+          where: { active: true },
+          orderBy: { name: 'asc' },
+        });
+        branchId = first?.id;
+      }
+      if (branchId) {
+        await this.prisma.branchManager.upsert({
+          where: { branchId_userId: { branchId, userId: user.id } },
+          create: { branchId, userId: user.id },
+          update: {},
+        });
+        if (!data.branchId) {
+          await this.prisma.user.update({
+            where: { id: user.id },
+            data: { branchId },
+          });
+        }
+      }
+    }
+
     await this.prisma.auditLog.create({
       data: {
         userId: actor.id,
@@ -106,7 +131,9 @@ export class UsersService {
         meta: { email: user.email, role: user.role } as any,
       },
     });
-    return mapUserWithPosition(user);
+    return mapUserWithPosition(
+      await this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: USER_SELECT }),
+    );
   }
 
   async update(

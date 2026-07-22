@@ -7,6 +7,7 @@ import { Button, SectionHeader } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { useAuth } from '@/lib/auth';
+import { useI18n } from '@/lib/i18n';
 import { formatTashkent } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +29,7 @@ function linkForType(type?: string) {
 
 export default function NotificationsPage() {
   const toast = useToast();
+  const { t } = useI18n();
   const { user } = useAuth();
   const [items, setItems] = useState<any[]>([]);
   const canTest = user && ['SUPER_ADMIN', 'MANAGER'].includes(user.role);
@@ -37,7 +39,7 @@ export default function NotificationsPage() {
     try {
       setItems(await api('/notifications'));
     } catch (e: any) {
-      toast.error('Yuklash xatosi', e.message);
+      toast.error(t('notifications.loadError'), e.message);
     }
   }
 
@@ -66,8 +68,8 @@ export default function NotificationsPage() {
   async function testTelegram() {
     try {
       const res = await api('/notifications/telegram-test', { method: 'POST' });
-      if (res.ok) toast.success('Telegramga xabar yuborildi');
-      else toast.error('Telegram xato', res.error || "Noma'lum");
+      if (res.ok) toast.success(t('notifications.telegramSent'));
+      else toast.error(t('notifications.telegramError'), res.error || t('common.error'));
     } catch (e: any) {
       toast.error(e.message);
     }
@@ -76,23 +78,23 @@ export default function NotificationsPage() {
   return (
     <AppShell>
       <SectionHeader
-        title="Bildirishnomalar"
+        title={t('notifications.title')}
         action={
           <div className="flex flex-wrap gap-2">
             {canTest && (
               <Button variant="secondary" onClick={testTelegram}>
-                Telegram test
+                {t('notifications.telegramTest')}
               </Button>
             )}
             <Button variant="secondary" onClick={markAll} disabled={unread === 0}>
-              Barchasini oʻqilgan
+              {t('notifications.markAll')}
             </Button>
           </div>
         }
       />
 
       <div className="mb-5 rounded-2xl border border-teal-100 bg-white/80 p-4 text-sm text-ink-soft">
-        <p className="font-semibold text-teal-800 mb-2">Tezkor buyruqlar</p>
+        <p className="font-semibold text-teal-800 mb-2">{t('notifications.commands')}</p>
         <div className="flex flex-wrap gap-2">
           {['/bugun', '/holat', '/hafta', '/yordam'].map((c) => (
             <code key={c} className="text-xs bg-teal-50 px-2 py-1 rounded-lg">
@@ -105,7 +107,7 @@ export default function NotificationsPage() {
       <div className="space-y-2">
         {items.length === 0 && (
           <p className="text-ink-muted text-sm p-6 rounded-3xl border border-dashed border-teal-200 text-center">
-            Bildirishnoma yoʻq
+            {t('notifications.empty')}
           </p>
         )}
         {items.map((n) => {
@@ -135,8 +137,11 @@ export default function NotificationsPage() {
                 {!n.read && <span className="w-2.5 h-2.5 rounded-full bg-teal-600 mt-1.5 shrink-0" />}
               </div>
               {href && (
-                <Link href={href} className="inline-block mt-2 text-xs font-semibold text-teal-700 underline">
-                  Ochish →
+                <Link
+                  href={href}
+                  className="inline-block mt-2 text-xs font-semibold text-teal-700 underline"
+                >
+                  {t('notifications.open')}
                 </Link>
               )}
             </div>

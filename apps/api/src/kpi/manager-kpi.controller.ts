@@ -28,6 +28,13 @@ class EntryDto {
   @IsOptional() @IsBoolean() done?: boolean;
 }
 
+class BulkEntryDto {
+  @IsString() branchId: string;
+  @IsOptional() @IsString() date?: string;
+  @Allow() nodeKeys: string[];
+  @IsBoolean() done: boolean;
+}
+
 @Controller('manager-kpi')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN)
@@ -61,6 +68,19 @@ export class ManagerKpiController {
   @Post('entry')
   entry(@CurrentUser() user: { id: string; role: Role }, @Body() dto: EntryDto) {
     return this.kpi.saveEntry(user, dto);
+  }
+
+  @Post('entry-bulk')
+  entryBulk(@CurrentUser() user: { id: string; role: Role }, @Body() dto: BulkEntryDto) {
+    if (!Array.isArray(dto.nodeKeys) || !dto.nodeKeys.length) {
+      throw new BadRequestException('nodeKeys kerak');
+    }
+    return this.kpi.saveEntryBulk(user, {
+      branchId: dto.branchId,
+      date: dto.date,
+      nodeKeys: dto.nodeKeys,
+      done: dto.done,
+    });
   }
 
   @Post('proof')

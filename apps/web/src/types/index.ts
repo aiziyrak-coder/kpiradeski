@@ -69,6 +69,7 @@ export function weekStartISO(from = todayISO()) {
 }
 
 export function homeForRole(role: Role): string {
+  if (role === 'ADMIN' || role === 'SUPER_ADMIN') return '/dashboard';
   return '/today';
 }
 
