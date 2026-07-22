@@ -66,18 +66,23 @@ function group(
  */
 export const KPI_CATALOG_SEED: CatalogSeed[] = [
   // ═══════════════════════════════════════ DAILY ROOTS
-  group('clinic', null, 'Klinika', 'Клиника', 1, { weight: 16, frequency: 'DAILY' }),
-  group('reception', null, 'Administrator', 'Администратор', 2, {
+  group('clinic', null, 'Klinika · kunlik', 'Клиника · день', 1, {
+    weight: 16,
+    frequency: 'DAILY',
+    descriptionUz: 'Har kuni bajariladigan klinika ishlari',
+    descriptionRu: 'Ежедневные задачи клиники',
+  }),
+  group('reception', null, 'Administrator · kunlik', 'Администратор · день', 2, {
     weight: 22,
     frequency: 'DAILY',
     descriptionUz: 'Radeski Skin Clinic — kunlik chek-list',
     descriptionRu: 'Ежедневный чек-лист администратора Radeski Skin Clinic',
   }),
-  group('calls', null, "Qoʻngʻiroqlar", 'Звонки', 3, { weight: 16, frequency: 'DAILY' }),
-  group('reviews', null, 'Sharhlar', 'Отзывы', 4, { weight: 10, frequency: 'DAILY' }),
-  group('uniform', null, 'Uniforma', 'Униформа', 5, { weight: 6, frequency: 'DAILY' }),
-  group('smm', null, 'SMM / SEO', 'SMM / SEO', 6, { weight: 12, frequency: 'DAILY' }),
-  group('marketing', null, 'Marketing', 'Маркетинг', 7, { weight: 12, frequency: 'DAILY' }),
+  group('calls', null, "Qoʻngʻiroqlar · kunlik", 'Звонки · день', 3, { weight: 16, frequency: 'DAILY' }),
+  group('reviews', null, 'Sharhlar · kunlik', 'Отзывы · день', 4, { weight: 10, frequency: 'DAILY' }),
+  group('uniform', null, 'Uniforma · kunlik', 'Униформа · день', 5, { weight: 6, frequency: 'DAILY' }),
+  group('smm', null, 'SMM / SEO · kunlik', 'SMM / SEO · день', 6, { weight: 12, frequency: 'DAILY' }),
+  group('marketing', null, 'Marketing · kunlik', 'Маркетинг · день', 7, { weight: 12, frequency: 'DAILY' }),
 
   // —— Klinika daily
   group('clinic.clean', 'clinic', 'Tozalik', 'Чистота', 1),
@@ -584,37 +589,69 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   leaf('marketing.offline.partners', 'marketing.offline', 'Hamkorlar bilan aloqa', 'Связь с партнёрами', 2),
   leaf('marketing.offline.promo', 'marketing.offline', 'Aksiya eslatmasi', 'Напоминание об акции', 3),
 
-  // ═══════════════════════════════════════ WEEKLY ROOTS
-  group('clinic_w', null, 'Klinika', 'Клиника', 1, { weight: 15, frequency: 'WEEKLY' }),
-  group('reception_w', null, 'Administrator', 'Администратор', 2, { weight: 10, frequency: 'WEEKLY' }),
-  group('calls_w', null, "Qoʻngʻiroqlar", 'Звонки', 3, { weight: 15, frequency: 'WEEKLY' }),
-  group('reviews_w', null, 'Sharhlar', 'Отзывы', 4, { weight: 12, frequency: 'WEEKLY' }),
-  group('uniform_w', null, 'Uniforma', 'Униформа', 5, { weight: 8, frequency: 'WEEKLY' }),
-  group('smm_w', null, 'SMM / SEO', 'SMM / SEO', 6, { weight: 20, frequency: 'WEEKLY' }),
-  group('marketing_w', null, 'Marketing', 'Маркетинг', 7, { weight: 20, frequency: 'WEEKLY' }),
+  // ═══════════════════════════════════════ WEEKLY ROOTS (faqat haftalik — kunlikdan farq qiladi)
+  group('clinic_w', null, 'Klinika · haftalik', 'Клиника · неделя', 1, {
+    weight: 15,
+    frequency: 'WEEKLY',
+    descriptionUz: 'Haftada bir marta chuqur tekshiruv',
+    descriptionRu: 'Глубокая проверка раз в неделю',
+  }),
+  group('reception_w', null, 'Administrator · haftalik', 'Администратор · неделя', 2, {
+    weight: 18,
+    frequency: 'WEEKLY',
+    descriptionUz: 'Haftalik operatsiya va sifat',
+    descriptionRu: 'Недельные операции и качество',
+  }),
+  group('calls_w', null, "Qoʻngʻiroqlar · haftalik", 'Звонки · неделя', 3, {
+    weight: 15,
+    frequency: 'WEEKLY',
+  }),
+  group('reviews_w', null, 'Sharhlar · haftalik', 'Отзывы · неделя', 4, {
+    weight: 12,
+    frequency: 'WEEKLY',
+  }),
+  group('uniform_w', null, 'Uniforma · haftalik', 'Униформа · неделя', 5, {
+    weight: 8,
+    frequency: 'WEEKLY',
+  }),
+  group('smm_w', null, 'SMM / SEO · haftalik', 'SMM / SEO · неделя', 6, {
+    weight: 16,
+    frequency: 'WEEKLY',
+  }),
+  group('marketing_w', null, 'Marketing · haftalik', 'Маркетинг · неделя', 7, {
+    weight: 16,
+    frequency: 'WEEKLY',
+  }),
 
   group('clinic_w.deep', 'clinic_w', 'Chuqur tekshiruv', 'Глубокая проверка', 1, { frequency: 'WEEKLY' }),
   leaf('clinic_w.deep.inventory', 'clinic_w.deep', 'Ombor inventarizatsiyasi', 'Инвентаризация склада', 1, { frequency: 'WEEKLY' }),
   leaf('clinic_w.deep.equipment', 'clinic_w.deep', 'Uskunalar holati', 'Состояние оборудования', 2, { frequency: 'WEEKLY' }),
   leaf('clinic_w.deep.repair', 'clinic_w.deep', 'Taʼmir / nosozliklar', 'Ремонт / неисправности', 3, { frequency: 'WEEKLY' }),
   leaf('clinic_w.deep.photo', 'clinic_w.deep', 'Haftalik foto-audit', 'Еженедельный фото-аудит', 4, { frequency: 'WEEKLY' }),
+  leaf('clinic_w.deep.sterile', 'clinic_w.deep', 'Sterilizatsiya jurnalini tekshirish', 'Проверка журнала стерилизации', 5, { frequency: 'WEEKLY' }),
 
   group('reception_w.ops', 'reception_w', 'Operatsiyalar', 'Операции', 1, { frequency: 'WEEKLY' }),
   leaf('reception_w.ops.schedule', 'reception_w.ops', 'Grafik / smena tahlili', 'Анализ графика / смен', 1, { frequency: 'WEEKLY' }),
   leaf('reception_w.ops.training', 'reception_w.ops', 'Skript trening', 'Тренинг по скрипту', 2, { frequency: 'WEEKLY' }),
   leaf('reception_w.ops.complaints', 'reception_w.ops', 'Shikoyatlar tahlili', 'Анализ жалоб', 3, { frequency: 'WEEKLY' }),
   leaf('reception_w.ops.cash', 'reception_w.ops', 'Kassa / toʻlovlar tekshiruvi', 'Проверка кассы / оплат', 4, { frequency: 'WEEKLY' }),
+  leaf('reception_w.ops.waitlist', 'reception_w.ops', 'Kutish roʻyxatini yangilash', 'Обновить лист ожидания', 5, { frequency: 'WEEKLY' }),
+  leaf('reception_w.ops.noshow', 'reception_w.ops', 'No-show statistikasi', 'Статистика no-show', 6, { frequency: 'WEEKLY' }),
+  leaf('reception_w.ops.mystery', 'reception_w.ops', 'Mystery patient / sifat nazorati', 'Mystery patient / контроль качества', 7, { frequency: 'WEEKLY' }),
+  leaf('reception_w.ops.standards', 'reception_w.ops', 'Radeski standartlar audit (haftalik)', 'Аудит стандартов Radeski (неделя)', 8, { frequency: 'WEEKLY' }),
 
   group('calls_w.analytics', 'calls_w', 'Tahlil', 'Аналитика', 1, { frequency: 'WEEKLY' }),
   leaf('calls_w.analytics.conversion', 'calls_w.analytics', 'Konversiya hisobi', 'Расчёт конверсии', 1, { frequency: 'WEEKLY' }),
   leaf('calls_w.analytics.missed', 'calls_w.analytics', 'Missed trend', 'Тренд пропущенных', 2, { frequency: 'WEEKLY' }),
   leaf('calls_w.analytics.best', 'calls_w.analytics', 'Eng yaxshi qoʻngʻiroqlar', 'Лучшие звонки', 3, { frequency: 'WEEKLY' }),
   leaf('calls_w.analytics.script_upd', 'calls_w.analytics', 'Skript yangilandi', 'Скрипт обновлён', 4, { frequency: 'WEEKLY' }),
+  leaf('calls_w.analytics.report', 'calls_w.analytics', 'Haftalik qoʻngʻiroq hisoboti', 'Недельный отчёт по звонкам', 5, { frequency: 'WEEKLY' }),
 
   group('reviews_w.summary', 'reviews_w', 'Haftalik xulosa', 'Недельный итог', 1, { frequency: 'WEEKLY' }),
   leaf('reviews_w.summary.count', 'reviews_w.summary', 'Jami sharhlar hisobi', 'Итог по отзывам', 1, { frequency: 'WEEKLY' }),
   leaf('reviews_w.summary.rating', 'reviews_w.summary', 'Reyting oʻzgarishi', 'Изменение рейтинга', 2, { frequency: 'WEEKLY' }),
   leaf('reviews_w.summary.plan', 'reviews_w.summary', 'Yaxshilash rejasi', 'План улучшений', 3, { frequency: 'WEEKLY' }),
+  leaf('reviews_w.summary.reply_all', 'reviews_w.summary', 'Barcha platformalarda javoblar', 'Ответы на всех площадках', 4, { frequency: 'WEEKLY' }),
 
   group('uniform_w.stock', 'uniform_w', 'Forma zaxirasi', 'Запас формы', 1, { frequency: 'WEEKLY' }),
   leaf('uniform_w.stock.count', 'uniform_w.stock', 'Xalat / bedj soni', 'Кол-во халатов / бейджей', 1, { frequency: 'WEEKLY' }),
@@ -635,32 +672,61 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   leaf('marketing_w.growth.partners', 'marketing_w.growth', 'Hamkorlik kelishuvi', 'Партнёрские договорённости', 4, { frequency: 'WEEKLY' }),
   leaf('marketing_w.growth.flyers', 'marketing_w.growth', 'Tarqatma hisobi', 'Отчёт по раздаче', 5, { frequency: 'WEEKLY' }),
 
-  // ═══════════════════════════════════════ MONTHLY ROOTS
-  group('clinic_m', null, 'Klinika', 'Клиника', 1, { weight: 12, frequency: 'MONTHLY' }),
-  group('reception_m', null, 'Administrator', 'Администратор', 2, { weight: 10, frequency: 'MONTHLY' }),
-  group('calls_m', null, "Qoʻngʻiroqlar", 'Звонки', 3, { weight: 12, frequency: 'MONTHLY' }),
-  group('reviews_m', null, 'Sharhlar', 'Отзывы', 4, { weight: 12, frequency: 'MONTHLY' }),
-  group('uniform_m', null, 'Uniforma', 'Униформа', 5, { weight: 8, frequency: 'MONTHLY' }),
-  group('smm_m', null, 'SMM / SEO', 'SMM / SEO', 6, { weight: 20, frequency: 'MONTHLY' }),
-  group('marketing_m', null, 'Marketing', 'Маркетинг', 7, { weight: 26, frequency: 'MONTHLY' }),
+  // ═══════════════════════════════════════ MONTHLY ROOTS (faqat oylik — kunlik/haftalikdan farq qiladi)
+  group('clinic_m', null, 'Klinika · oylik', 'Клиника · месяц', 1, {
+    weight: 12,
+    frequency: 'MONTHLY',
+    descriptionUz: 'Oylik audit va strategiya',
+    descriptionRu: 'Месячный аудит и стратегия',
+  }),
+  group('reception_m', null, 'Administrator · oylik', 'Администратор · месяц', 2, {
+    weight: 14,
+    frequency: 'MONTHLY',
+  }),
+  group('calls_m', null, "Qoʻngʻiroqlar · oylik", 'Звонки · месяц', 3, {
+    weight: 12,
+    frequency: 'MONTHLY',
+  }),
+  group('reviews_m', null, 'Sharhlar · oylik', 'Отзывы · месяц', 4, {
+    weight: 12,
+    frequency: 'MONTHLY',
+  }),
+  group('uniform_m', null, 'Uniforma · oylik', 'Униформа · месяц', 5, {
+    weight: 8,
+    frequency: 'MONTHLY',
+  }),
+  group('smm_m', null, 'SMM / SEO · oylik', 'SMM / SEO · месяц', 6, {
+    weight: 18,
+    frequency: 'MONTHLY',
+  }),
+  group('marketing_m', null, 'Marketing · oylik', 'Маркетинг · месяц', 7, {
+    weight: 24,
+    frequency: 'MONTHLY',
+  }),
 
   group('clinic_m.audit', 'clinic_m', 'Oylik audit', 'Месячный аудит', 1, { frequency: 'MONTHLY' }),
   leaf('clinic_m.audit.full', 'clinic_m.audit', 'Toʻliq klinika auditi', 'Полный аудит клиники', 1, { frequency: 'MONTHLY' }),
   leaf('clinic_m.audit.licenses', 'clinic_m.audit', 'Litsenziya / hujjatlar', 'Лицензии / документы', 2, { frequency: 'MONTHLY' }),
   leaf('clinic_m.audit.vendor', 'clinic_m.audit', 'Yetkazib beruvchilar', 'Поставщики', 3, { frequency: 'MONTHLY' }),
+  leaf('clinic_m.audit.budget', 'clinic_m.audit', 'Ehtiyot material byudjeti', 'Бюджет расходников', 4, { frequency: 'MONTHLY' }),
 
-  group('reception_m.hr', 'reception_m', 'Jamoa', 'Команда', 1, { frequency: 'MONTHLY' }),
-  leaf('reception_m.hr.kpi', 'reception_m.hr', 'Retsepshn KPI bahosi', 'Оценка KPI ресепшена', 1, { frequency: 'MONTHLY' }),
+  group('reception_m.hr', 'reception_m', 'Jamoa va sifat', 'Команда и качество', 1, { frequency: 'MONTHLY' }),
+  leaf('reception_m.hr.kpi', 'reception_m.hr', 'Administrator KPI bahosi', 'Оценка KPI администратора', 1, { frequency: 'MONTHLY' }),
   leaf('reception_m.hr.feedback', 'reception_m.hr', 'Xodim feedback', 'Обратная связь сотрудникам', 2, { frequency: 'MONTHLY' }),
   leaf('reception_m.hr.hire', 'reception_m.hr', 'Yangi xodim / ehtiyoj', 'Нужна ли новая ставка', 3, { frequency: 'MONTHLY' }),
+  leaf('reception_m.hr.training', 'reception_m.hr', 'Oylik trening rejasi', 'План месячного тренинга', 4, { frequency: 'MONTHLY' }),
+  leaf('reception_m.hr.standards', 'reception_m.hr', 'Radeski standartlar oylik audit', 'Месячный аудит стандартов Radeski', 5, { frequency: 'MONTHLY' }),
+  leaf('reception_m.hr.cash_month', 'reception_m.hr', 'Oylik kassa yakuni', 'Итог кассы за месяц', 6, { frequency: 'MONTHLY' }),
 
   group('calls_m.month', 'calls_m', 'Oylik funnell', 'Месячная воронка', 1, { frequency: 'MONTHLY' }),
   leaf('calls_m.month.report', 'calls_m.month', 'Toʻliq qoʻngʻiroq hisoboti', 'Полный отчёт по звонкам', 1, { frequency: 'MONTHLY' }),
   leaf('calls_m.month.target', 'calls_m.month', 'Keyingi oy target', 'Цель на следующий месяц', 2, { frequency: 'MONTHLY' }),
+  leaf('calls_m.month.script', 'calls_m.month', 'Skript yangilanishi', 'Обновление скрипта', 3, { frequency: 'MONTHLY' }),
 
   group('reviews_m.reputation', 'reviews_m', 'Obroʻ', 'Репутация', 1, { frequency: 'MONTHLY' }),
   leaf('reviews_m.reputation.platforms', 'reviews_m.reputation', 'Barcha platformalar tekshiruvi', 'Проверка всех площадок', 1, { frequency: 'MONTHLY' }),
   leaf('reviews_m.reputation.campaign', 'reviews_m.reputation', 'Sharh kampaniyasi', 'Кампания по отзывам', 2, { frequency: 'MONTHLY' }),
+  leaf('reviews_m.reputation.nps', 'reviews_m.reputation', 'NPS / qoniqish bahosi', 'NPS / оценка удовлетворённости', 3, { frequency: 'MONTHLY' }),
 
   group('uniform_m.brand', 'uniform_m', 'Brend', 'Бренд', 1, { frequency: 'MONTHLY' }),
   leaf('uniform_m.brand.refresh', 'uniform_m.brand', 'Forma yangilash rejasi', 'План обновления формы', 1, { frequency: 'MONTHLY' }),

@@ -248,6 +248,20 @@ export class ManagerKpiService implements OnModuleInit {
       date: date.toISOString().slice(0, 10),
       branchId,
       frequency,
+      period: {
+        frequency,
+        from: date.toISOString().slice(0, 10),
+        to:
+          frequency === KpiFrequency.WEEKLY
+            ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 6))
+                .toISOString()
+                .slice(0, 10)
+            : frequency === KpiFrequency.MONTHLY
+              ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0))
+                  .toISOString()
+                  .slice(0, 10)
+              : date.toISOString().slice(0, 10),
+      },
       columns: tasks,
       tasks,
       tree: buildTree(null),

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { RoleGate } from '@/components/RoleGate';
@@ -7,9 +8,18 @@ import { useToast } from '@/components/Toast';
 import { useI18n } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import { api, getToken } from '@/lib/api';
-import { todayISO } from '@/types';
+import { todayISO, weekStartISO } from '@/types';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronRight, Check, Upload, X, Minus } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Check,
+  Upload,
+  X,
+  Minus,
+  Sparkles,
+  Search,
+} from 'lucide-react';
 
 type Freq = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
@@ -49,13 +59,40 @@ function collectLeafKeys(n: TreeNode): string[] {
   return n.children.flatMap(collectLeafKeys);
 }
 
+function collectIncomplete(n: TreeNode, lang: string): string[] {
+  if (!n.children?.length) {
+    if (n.inputType === 'GROUP' || n.done) return [];
+    return [lang === 'ru' ? n.titleRu : n.titleUz];
+  }
+  return n.children.flatMap((c) => collectIncomplete(c, lang));
+}
+
+function filterTree(nodes: TreeNode[], q: string, lang: string): TreeNode[] {
+  if (!q.trim()) return nodes;
+  const s = q.toLowerCase();
+  const match = (n: TreeNode) => {
+    const t = (lang === 'ru' ? n.titleRu : n.titleUz).toLowerCase();
+    return t.includes(s);
+  };
+  const walk = (n: TreeNode): TreeNode | null => {
+    const kids = (n.children || []).map(walk).filter(Boolean) as TreeNode[];
+    if (match(n) || kids.length) return { ...n, children: kids };
+    return null;
+  };
+  return nodes.map(walk).filter(Boolean) as TreeNode[];
+}
+
+function monthEndISO(from: string) {
+  const [y, m] = from.split('-').map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+}
+
 export default function TodayPage() {
   const toast = useToast();
   const { lang, t } = useI18n();
   const { user } = useAuth();
   const isManager = user?.role === 'MANAGER';
   const canUploadProof = isManager;
-  const canEdit = true;
 
   const [branches, setBranches] = useState<any[]>([]);
   const [branchId, setBranchId] = useState('');
@@ -66,6 +103,9 @@ export default function TodayPage() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [aiTip, setAiTip] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
 
   const loadBranches = useCallback(async () => {
     const list = await api<any[]>('/branches/mine');
@@ -103,22 +143,49 @@ export default function TodayPage() {
   }, [branchId, freq, date]);
 
   const title = (n: TreeNode) => (lang === 'ru' ? n.titleRu : n.titleUz);
-  const tree: TreeNode[] = day?.tree || [];
+  const rawTree: TreeNode[] = day?.tree || [];
+  const tree = useMemo(() => filterTree(rawTree, q, lang), [rawTree, q, lang]);
 
   const totals = useMemo(() => {
-    return tree.reduce(
+    return rawTree.reduce(
       (acc, n) => {
         const x = countLeaves(n);
         return { done: acc.done + x.done, total: acc.total + x.total };
       },
       { done: 0, total: 0 },
     );
-  }, [tree]);
+  }, [rawTree]);
 
-  const allLeafKeys = useMemo(() => tree.flatMap(collectLeafKeys), [tree]);
+  const incompleteTitles = useMemo(
+    () => rawTree.flatMap((n) => collectIncomplete(n, lang)).slice(0, 8),
+    [rawTree, lang],
+  );
+
+  const allLeafKeys = useMemo(() => rawTree.flatMap(collectLeafKeys), [rawTree]);
+  const pct = totals.total ? Math.round((totals.done / totals.total) * 100) : 0;
+
+  const periodFrom = day?.period?.from || (freq === 'WEEKLY' ? weekStartISO(date) : date);
+  const periodTo =
+    day?.period?.to ||
+    (freq === 'WEEKLY'
+      ? (() => {
+          const [y, m, d] = weekStartISO(date).split('-').map(Number);
+          return new Date(Date.UTC(y, m - 1, d + 6)).toISOString().slice(0, 10);
+        })()
+      : freq === 'MONTHLY'
+        ? monthEndISO(date)
+        : date);
+
+  const freqHint =
+    freq === 'DAILY'
+      ? t('today.hintDaily')
+      : freq === 'WEEKLY'
+        ? t('today.hintWeekly')
+        : t('today.hintMonthly');
 
   async function toggleDone(node: TreeNode) {
-    if (!canEdit || busyKey || bulkBusy) return;
+    if (busyKey || bulkBusy) return;
+    if (node.inputType === 'RATIO' || node.inputType === 'NUMBER') return;
     setBusyKey(node.key);
     try {
       const next = !node.done;
@@ -146,8 +213,24 @@ export default function TodayPage() {
     }
   }
 
+  async function saveValue(node: TreeNode, value: any, done: boolean) {
+    if (busyKey || bulkBusy) return;
+    setBusyKey(node.key);
+    try {
+      await api('/manager-kpi/entry', {
+        method: 'POST',
+        body: JSON.stringify({ branchId, date, nodeKey: node.key, value, done }),
+      });
+      await loadDay();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   async function setGroupDone(node: TreeNode, done: boolean) {
-    if (!canEdit || bulkBusy) return;
+    if (bulkBusy) return;
     const keys = collectLeafKeys(node);
     if (!keys.length) return;
     setBulkBusy(true);
@@ -165,7 +248,7 @@ export default function TodayPage() {
   }
 
   async function setAllDone(done: boolean) {
-    if (!canEdit || bulkBusy || !allLeafKeys.length) return;
+    if (bulkBusy || !allLeafKeys.length) return;
     setBulkBusy(true);
     try {
       await api('/manager-kpi/entry-bulk', {
@@ -177,6 +260,29 @@ export default function TodayPage() {
       toast.error(e.message);
     } finally {
       setBulkBusy(false);
+    }
+  }
+
+  async function askAi() {
+    if (aiBusy) return;
+    setAiBusy(true);
+    try {
+      const list = incompleteTitles.length
+        ? incompleteTitles.join('; ')
+        : t('today.aiAllDone');
+      const prompt =
+        lang === 'ru'
+          ? `Период: ${freq}. Незавершённые задачи: ${list}. Дай 3 коротких практических совета администратору клиники Radeski, как закрыть эти задачи сегодня. Без воды.`
+          : `Davr: ${freq}. Bajarilmagan ishlar: ${list}. Radeski administratoriga shu ishlarni yopish uchun 3 ta qisqa amaliy maslahat ber. Ortiga gap yoʻq.`;
+      const res = await api<any>('/assistant/chat', {
+        method: 'POST',
+        body: JSON.stringify({ message: prompt, wantAudio: false }),
+      });
+      setAiTip(res.reply || '');
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setAiBusy(false);
     }
   }
 
@@ -233,7 +339,6 @@ export default function TodayPage() {
           !all && !some && 'border-teal-800/25 bg-white hover:border-teal-700',
         )}
         title={all ? t('today.uncheckGroup') : t('today.checkGroup')}
-        aria-label={all ? t('today.uncheckGroup') : t('today.checkGroup')}
       >
         {all ? (
           <Check className="w-3 h-3" strokeWidth={3} />
@@ -248,31 +353,49 @@ export default function TodayPage() {
     const showProof = canUploadProof && node.proofRequired && node.inputType !== 'GROUP';
     const rejected = node.aiStatus === 'REJECTED';
     const approved = node.aiStatus === 'APPROVED';
+    const isRatio = node.inputType === 'RATIO';
+    const isNumber = node.inputType === 'NUMBER';
+    const calls = Number(node.value?.calls ?? node.value?.a ?? 0);
+    const booked = Number(node.value?.booked ?? node.value?.b ?? 0);
+    const count = Number(node.value?.count ?? (typeof node.value === 'number' ? node.value : 0));
 
     return (
       <div
         className={cn(
-          'flex items-center gap-3 px-3 sm:px-4 py-2.5 border-t border-teal-900/[0.06]',
+          'flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 border-t border-teal-900/[0.06]',
           node.done && 'bg-teal-50/50',
         )}
         style={{ paddingLeft: 12 + depth * 14 }}
       >
-        <button
-          type="button"
-          disabled={!!busyKey || bulkBusy}
-          onClick={() => toggleDone(node)}
-          className={cn(
-            'shrink-0 w-5 h-5 rounded-md border-2 grid place-items-center transition',
-            node.done
-              ? 'bg-teal-800 border-teal-800 text-white'
-              : 'border-teal-800/25 bg-white hover:border-teal-700',
-          )}
-          aria-label={t('today.mark')}
-        >
-          {node.done && <Check className="w-3 h-3" strokeWidth={3} />}
-        </button>
+        {!isRatio && !isNumber ? (
+          <button
+            type="button"
+            disabled={!!busyKey || bulkBusy}
+            onClick={() => toggleDone(node)}
+            className={cn(
+              'shrink-0 w-5 h-5 rounded-md border-2 grid place-items-center transition',
+              node.done
+                ? 'bg-teal-800 border-teal-800 text-white'
+                : 'border-teal-800/25 bg-white hover:border-teal-700',
+            )}
+            aria-label={t('today.mark')}
+          >
+            {node.done && <Check className="w-3 h-3" strokeWidth={3} />}
+          </button>
+        ) : (
+          <span
+            className={cn(
+              'shrink-0 w-5 h-5 rounded-md border-2 grid place-items-center text-[10px] font-bold',
+              node.done
+                ? 'bg-teal-800 border-teal-800 text-white'
+                : 'border-teal-800/25 text-ink-muted',
+            )}
+          >
+            {isRatio ? '%' : '#'}
+          </span>
+        )}
 
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-[10rem]">
           <p className={cn('text-sm leading-snug', node.done && 'text-teal-900')}>
             {title(node)}
           </p>
@@ -280,6 +403,59 @@ export default function TodayPage() {
             <p className="text-[11px] text-rose-600 mt-0.5 truncate">{node.aiNote}</p>
           )}
         </div>
+
+        {isRatio && (
+          <div className="flex items-center gap-1.5">
+            <input
+              key={`c-${node.key}-${calls}`}
+              type="number"
+              min={0}
+              placeholder={t('today.calls')}
+              defaultValue={calls || ''}
+              className="w-16 h-8 rounded-lg border border-teal-200 px-2 text-sm"
+              onBlur={(e) => {
+                const c = Number(e.target.value) || 0;
+                const bEl = (e.target.parentElement?.querySelector(
+                  'input[data-booked]',
+                ) as HTMLInputElement) || null;
+                const b = bEl ? Number(bEl.value) || 0 : booked;
+                saveValue(node, { calls: c, booked: b }, c > 0);
+              }}
+            />
+            <span className="text-ink-muted text-xs">/</span>
+            <input
+              key={`b-${node.key}-${booked}`}
+              data-booked
+              type="number"
+              min={0}
+              placeholder={t('today.booked')}
+              defaultValue={booked || ''}
+              className="w-16 h-8 rounded-lg border border-teal-200 px-2 text-sm"
+              onBlur={(e) => {
+                const b = Number(e.target.value) || 0;
+                const cEl = (e.target.parentElement?.querySelector(
+                  'input:not([data-booked])',
+                ) as HTMLInputElement) || null;
+                const c = cEl ? Number(cEl.value) || 0 : calls;
+                saveValue(node, { calls: c, booked: b }, c > 0);
+              }}
+            />
+          </div>
+        )}
+
+        {isNumber && (
+          <input
+            type="number"
+            min={0}
+            placeholder={t('today.count')}
+            defaultValue={count || ''}
+            className="w-20 h-8 rounded-lg border border-teal-200 px-2 text-sm"
+            onBlur={(e) => {
+              const n = Number(e.target.value) || 0;
+              saveValue(node, { count: n }, n > 0);
+            }}
+          />
+        )}
 
         {showProof && (
           <label
@@ -336,7 +512,7 @@ export default function TodayPage() {
     const hasKids = !!node.children?.length;
     const isOpen = open[node.key] !== false;
     const leaf = countLeaves(node);
-    const pct = leaf.total ? Math.round((leaf.done / leaf.total) * 100) : 0;
+    const p = leaf.total ? Math.round((leaf.done / leaf.total) * 100) : 0;
 
     if (!hasKids) {
       return (
@@ -372,11 +548,11 @@ export default function TodayPage() {
               <div className="w-16 h-1.5 rounded-full bg-black/[0.06] overflow-hidden hidden sm:block">
                 <div
                   className="h-full rounded-full bg-teal-700 transition-all"
-                  style={{ width: `${pct}%` }}
+                  style={{ width: `${p}%` }}
                 />
               </div>
               <span className="text-sm tabular-nums font-medium text-teal-900 w-10 text-right">
-                {pct}%
+                {p}%
               </span>
             </div>
           </button>
@@ -482,11 +658,19 @@ export default function TodayPage() {
               <button
                 key={id}
                 type="button"
-                onClick={() => setFreq(id)}
+                onClick={() => {
+                  setFreq(id);
+                  setAiTip('');
+                  setQ('');
+                }}
                 className={cn(
-                  'rounded-lg py-2 text-sm font-medium transition',
+                  'rounded-lg py-2.5 text-sm font-semibold transition',
                   freq === id
-                    ? 'bg-white text-teal-950 shadow-sm'
+                    ? id === 'DAILY'
+                      ? 'bg-teal-800 text-white shadow-sm'
+                      : id === 'WEEKLY'
+                        ? 'bg-amber-700 text-white shadow-sm'
+                        : 'bg-indigo-800 text-white shadow-sm'
                     : 'text-ink-muted hover:text-ink',
                 )}
               >
@@ -499,7 +683,83 @@ export default function TodayPage() {
             ))}
           </div>
 
-          {!!tree.length && (
+          <div
+            className={cn(
+              'rounded-2xl border p-4',
+              freq === 'DAILY' && 'border-teal-200 bg-teal-50/60',
+              freq === 'WEEKLY' && 'border-amber-200 bg-amber-50/60',
+              freq === 'MONTHLY' && 'border-indigo-200 bg-indigo-50/60',
+            )}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-ink">
+                  {freq === 'DAILY'
+                    ? t('today.daily')
+                    : freq === 'WEEKLY'
+                      ? t('today.weekly')
+                      : t('today.monthly')}
+                </p>
+                <p className="text-xs text-ink-muted mt-0.5 tabular-nums">
+                  {periodFrom === periodTo ? periodFrom : `${periodFrom} — ${periodTo}`}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="font-display text-3xl tabular-nums text-teal-900">{pct}%</p>
+                <p className="text-[11px] text-ink-muted">
+                  {totals.done}/{totals.total}
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-ink-soft mt-2 leading-relaxed">{freqHint}</p>
+          </div>
+
+          <div className="rounded-2xl border border-teal-100 bg-white p-3.5 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-ink flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-teal-700" />
+                {t('today.aiHelp')}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={aiBusy || loading}
+                  onClick={askAi}
+                  className="h-8 px-3 rounded-lg text-xs font-semibold bg-teal-800 text-white disabled:opacity-50"
+                >
+                  {aiBusy ? '...' : t('today.aiAsk')}
+                </button>
+                <Link
+                  href="/assistant"
+                  className="h-8 px-3 rounded-lg text-xs font-semibold border border-teal-200 grid place-items-center text-teal-900"
+                >
+                  Jarvis
+                </Link>
+              </div>
+            </div>
+            {incompleteTitles.length > 0 && !aiTip && (
+              <ul className="text-xs text-ink-muted space-y-0.5">
+                {incompleteTitles.slice(0, 4).map((x) => (
+                  <li key={x}>· {x}</li>
+                ))}
+              </ul>
+            )}
+            {aiTip && (
+              <p className="text-sm text-ink-soft whitespace-pre-wrap leading-relaxed">{aiTip}</p>
+            )}
+          </div>
+
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={t('today.search')}
+              className="w-full h-10 rounded-xl border border-teal-900/10 bg-white pl-9 pr-3 text-sm"
+            />
+          </div>
+
+          {!!rawTree.length && (
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -526,11 +786,16 @@ export default function TodayPage() {
                 {t('common.loading')}
               </div>
             )}
-            {!loading &&
-              tree.map((n) => <SectionCard key={n.key} node={n} />)}
+            {!loading && tree.map((n) => <SectionCard key={n.key} node={n} />)}
             {!loading && !tree.length && (
               <div className="rounded-xl border border-dashed border-teal-900/15 py-12 text-center text-ink-muted text-sm space-y-2 px-4">
-                <p>{branches.length ? t('today.emptyTasks') : t('today.noBranchHint')}</p>
+                <p>
+                  {branches.length
+                    ? q
+                      ? t('today.noSearch')
+                      : t('today.emptyTasks')
+                    : t('today.noBranchHint')}
+                </p>
               </div>
             )}
           </div>
