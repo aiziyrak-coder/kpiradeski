@@ -24,6 +24,9 @@ const sans = Outfit({
 export const metadata: Metadata = {
   title: 'Radeski KPI',
   description: 'Radeski KPI menejer tizimi / система управления KPI',
+  icons: {
+    icon: '/favicon.svg',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
