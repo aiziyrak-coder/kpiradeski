@@ -37,6 +37,61 @@ type CatalogNode = {
   children?: CatalogNode[];
 };
 
+function slugifyKey(raw: string): string {
+  const map: Record<string, string> = {
+    oʻ: 'o',
+    gʻ: 'g',
+   ʼ: '',
+    "'": '',
+    '‘': '',
+    '’': '',
+    а: 'a',
+    б: 'b',
+    в: 'v',
+    г: 'g',
+    д: 'd',
+    е: 'e',
+    ё: 'yo',
+    ж: 'j',
+    з: 'z',
+    и: 'i',
+    й: 'y',
+    к: 'k',
+    л: 'l',
+    м: 'm',
+    н: 'n',
+    о: 'o',
+    п: 'p',
+    р: 'r',
+    с: 's',
+    т: 't',
+    у: 'u',
+    ф: 'f',
+    х: 'x',
+    ц: 'ts',
+    ч: 'ch',
+    ш: 'sh',
+    щ: 'sh',
+    ъ: '',
+    ы: 'y',
+    ь: '',
+    э: 'e',
+    ю: 'yu',
+    я: 'ya',
+  };
+  let s = raw.trim().toLowerCase();
+  for (const [from, to] of Object.entries(map)) {
+    s = s.split(from).join(to);
+  }
+  s = s
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+  return s || `task_${Date.now().toString(36)}`;
+}
+
 function periodDate(freq: KpiFrequency, dateStr?: string): Date {
   const d = toDateOnly(dateStr);
   if (freq === KpiFrequency.WEEKLY) {
@@ -980,6 +1035,151 @@ export class ManagerKpiService implements OnModuleInit {
       count: validKeys.length,
       frequency: data.frequency,
       persistent: true,
+    };
+  }
+
+  /** Kategoriya (root) va sub-kategoriyalar — yangi vazifa qoʻshish uchun */
+  async listCatalogParents(frequency: KpiFrequency) {
+    const groups = await this.prisma.kpiCatalogNode.findMany({
+      where: { active: true, frequency, inputType: KpiInputType.GROUP },
+      orderBy: [{ sortOrder: 'asc' }, { key: 'asc' }],
+      select: {
+        key: true,
+        parentKey: true,
+        titleUz: true,
+        titleRu: true,
+        sortOrder: true,
+      },
+    });
+    const byKey = Object.fromEntries(groups.map((g) => [g.key, g]));
+    const pathOf = (key: string, lang: 'uz' | 'ru') => {
+      const parts: string[] = [];
+      let cur = byKey[key];
+      const seen = new Set<string>();
+      while (cur && !seen.has(cur.key)) {
+        seen.add(cur.key);
+        parts.unshift(lang === 'ru' ? cur.titleRu : cur.titleUz);
+        cur = cur.parentKey ? byKey[cur.parentKey] : undefined;
+      }
+      return parts.join(' › ');
+    };
+    const roots = groups.filter((g) => !g.parentKey);
+    const underRoot = (rootKey: string) => {
+      const out: typeof groups = [];
+      const walk = (pk: string) => {
+        for (const g of groups.filter((x) => x.parentKey === pk)) {
+          out.push(g);
+          walk(g.key);
+        }
+      };
+      walk(rootKey);
+      return out;
+    };
+    return roots.map((root) => ({
+      key: root.key,
+      titleUz: root.titleUz,
+      titleRu: root.titleRu,
+      pathUz: pathOf(root.key, 'uz'),
+      pathRu: pathOf(root.key, 'ru'),
+      subs: underRoot(root.key).map((s) => ({
+        key: s.key,
+        parentKey: s.parentKey,
+        titleUz: s.titleUz,
+        titleRu: s.titleRu,
+        pathUz: pathOf(s.key, 'uz'),
+        pathRu: pathOf(s.key, 'ru'),
+      })),
+    }));
+  }
+
+  async createCatalogTask(
+    user: { id: string; role: Role },
+    data: {
+      titleUz: string;
+      titleRu?: string;
+      descriptionUz?: string;
+      descriptionRu?: string;
+      frequency: KpiFrequency;
+      parentKey: string;
+      proofRequired?: boolean;
+      inputType?: string;
+    },
+  ) {
+    if (user.role === Role.MANAGER) {
+      throw new ForbiddenException('Faqat admin vazifa qoʻsha oladi');
+    }
+    const titleUz = (data.titleUz || '').trim();
+    if (titleUz.length < 2) {
+      throw new BadRequestException('Vazifa nomi kerak');
+    }
+    const parent = await this.prisma.kpiCatalogNode.findUnique({
+      where: { key: data.parentKey },
+    });
+    if (!parent || !parent.active) {
+      throw new NotFoundException('Kategoriya topilmadi');
+    }
+    if (parent.inputType !== KpiInputType.GROUP) {
+      throw new BadRequestException('Faqat kategoriya / sub-kategoriyaga qoʻshiladi');
+    }
+    if (parent.frequency !== data.frequency) {
+      throw new BadRequestException('Kategoriya chastotasi mos kelmaydi');
+    }
+
+    const titleRu = (data.titleRu || '').trim() || titleUz;
+    const descriptionUz = (data.descriptionUz || '').trim() || null;
+    const descriptionRu = (data.descriptionRu || '').trim() || descriptionUz;
+    const inputType =
+      data.inputType === 'NUMBER'
+        ? KpiInputType.NUMBER
+        : data.inputType === 'RATIO'
+          ? KpiInputType.RATIO
+          : data.inputType === 'NOTE_CHECK'
+            ? KpiInputType.NOTE_CHECK
+            : KpiInputType.CHECKBOX;
+
+    const slug = slugifyKey(titleUz);
+    let key = `${parent.key}.${slug}`;
+    let n = 0;
+    while (await this.prisma.kpiCatalogNode.findUnique({ where: { key } })) {
+      n += 1;
+      key = `${parent.key}.${slug}_${n}`;
+      if (n > 50) throw new BadRequestException('Kalit yaratib boʻlmadi');
+    }
+
+    const siblings = await this.prisma.kpiCatalogNode.count({
+      where: { parentKey: parent.key },
+    });
+
+    const node = await this.prisma.kpiCatalogNode.create({
+      data: {
+        key,
+        parentKey: parent.key,
+        titleUz,
+        titleRu,
+        descriptionUz,
+        descriptionRu,
+        inputType,
+        frequency: data.frequency,
+        sortOrder: siblings + 1,
+        proofRequired: !!data.proofRequired,
+        weight: 0,
+        active: true,
+      },
+    });
+
+    return {
+      ok: true,
+      node: {
+        key: node.key,
+        parentKey: node.parentKey,
+        titleUz: node.titleUz,
+        titleRu: node.titleRu,
+        descriptionUz: node.descriptionUz,
+        descriptionRu: node.descriptionRu,
+        frequency: node.frequency,
+        inputType: node.inputType,
+        proofRequired: node.proofRequired,
+      },
     };
   }
 

@@ -48,6 +48,17 @@ class ReviewDto {
   @IsOptional() @IsString() note?: string;
 }
 
+class CreateCatalogTaskDto {
+  @IsString() titleUz: string;
+  @IsOptional() @IsString() titleRu?: string;
+  @IsOptional() @IsString() descriptionUz?: string;
+  @IsOptional() @IsString() descriptionRu?: string;
+  @IsString() frequency: string;
+  @IsString() parentKey: string;
+  @IsOptional() @IsBoolean() proofRequired?: boolean;
+  @IsOptional() @IsString() inputType?: string;
+}
+
 @Controller('manager-kpi')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN)
@@ -60,6 +71,40 @@ export class ManagerKpiController {
       ? (String(frequency).toUpperCase() as KpiFrequency)
       : undefined;
     return this.kpi.catalog(lang === 'ru' ? 'ru' : 'uz', freq);
+  }
+
+  @Get('catalog-parents')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  catalogParents(@Query('frequency') frequency?: string) {
+    const freq = ['DAILY', 'WEEKLY', 'MONTHLY'].includes(
+      String(frequency || 'DAILY').toUpperCase(),
+    )
+      ? (String(frequency || 'DAILY').toUpperCase() as KpiFrequency)
+      : KpiFrequency.DAILY;
+    return this.kpi.listCatalogParents(freq);
+  }
+
+  @Post('catalog-task')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  createCatalogTask(
+    @CurrentUser() user: { id: string; role: Role },
+    @Body() dto: CreateCatalogTaskDto,
+  ) {
+    const frequency = ['DAILY', 'WEEKLY', 'MONTHLY'].includes(
+      String(dto.frequency || 'DAILY').toUpperCase(),
+    )
+      ? (String(dto.frequency || 'DAILY').toUpperCase() as KpiFrequency)
+      : KpiFrequency.DAILY;
+    return this.kpi.createCatalogTask(user, {
+      titleUz: dto.titleUz,
+      titleRu: dto.titleRu,
+      descriptionUz: dto.descriptionUz,
+      descriptionRu: dto.descriptionRu,
+      frequency,
+      parentKey: dto.parentKey,
+      proofRequired: dto.proofRequired,
+      inputType: dto.inputType,
+    });
   }
 
   @Get('day')

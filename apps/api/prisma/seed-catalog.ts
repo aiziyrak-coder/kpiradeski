@@ -2,8 +2,6 @@ import { PrismaClient, KpiFrequency } from '@prisma/client';
 import { KPI_CATALOG_SEED } from './kpi-catalog.seed';
 
 export async function seedKpiCatalog(client: PrismaClient) {
-  const keys = KPI_CATALOG_SEED.map((n) => n.key);
-
   for (const n of KPI_CATALOG_SEED) {
     const frequency = (n.frequency as KpiFrequency) || KpiFrequency.DAILY;
     await client.kpiCatalogNode.upsert({
@@ -36,11 +34,5 @@ export async function seedKpiCatalog(client: PrismaClient) {
       },
     });
   }
-
-  if (keys.length) {
-    await client.kpiCatalogNode.updateMany({
-      where: { key: { notIn: keys } },
-      data: { active: false },
-    });
-  }
+  // Admin qoʻshgan custom vazifalarni o‘chirmaymiz (notIn deactivate yoʻq)
 }

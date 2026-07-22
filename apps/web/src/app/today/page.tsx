@@ -38,6 +38,21 @@ type TreeNode = {
   children: TreeNode[];
 };
 
+type CatalogParent = {
+  key: string;
+  titleUz: string;
+  titleRu: string;
+  pathUz?: string;
+  pathRu?: string;
+  subs: {
+    key: string;
+    titleUz: string;
+    titleRu: string;
+    pathUz?: string;
+    pathRu?: string;
+  }[];
+};
+
 const FREQ_IDS = ['DAILY', 'WEEKLY', 'MONTHLY'] as const;
 
 function monthEndISO(from: string) {
@@ -73,6 +88,16 @@ export default function TodayPage() {
   const [assignOpen, setAssignOpen] = useState(true);
   const [treeOpen, setTreeOpen] = useState<Record<string, boolean>>({});
   const [adminTab, setAdminTab] = useState<'assign' | 'results'>('assign');
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [catalogParents, setCatalogParents] = useState<CatalogParent[]>([]);
+  const [newTask, setNewTask] = useState({
+    titleUz: '',
+    titleRu: '',
+    descriptionUz: '',
+    categoryKey: '',
+    subKey: '',
+    proofRequired: false,
+  });
 
   const loadBranches = useCallback(async () => {
     const list = await api<any[]>('/branches/mine');
@@ -117,6 +142,27 @@ export default function TodayPage() {
   useEffect(() => {
     loadDay();
   }, [loadDay]);
+
+  const loadParents = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const list = await api<CatalogParent[]>(
+        `/manager-kpi/catalog-parents?frequency=${freq}`,
+      );
+      setCatalogParents(list || []);
+      setNewTask((s) => ({
+        ...s,
+        categoryKey: list?.[0]?.key || '',
+        subKey: '',
+      }));
+    } catch {
+      setCatalogParents([]);
+    }
+  }, [freq, isAdmin]);
+
+  useEffect(() => {
+    loadParents();
+  }, [loadParents]);
 
   const periodFrom = day?.period?.from || (freq === 'WEEKLY' ? weekStartISO(date) : date);
   const periodTo =
@@ -247,6 +293,50 @@ export default function TodayPage() {
       toast.success(t('today.savedAssign'));
       await loadDay();
       setAdminTab('assign');
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function createTask() {
+    if (!newTask.titleUz.trim()) {
+      toast.error(t('today.taskName'));
+      return;
+    }
+    if (!newTask.categoryKey) {
+      toast.error(t('today.pickCategory'));
+      return;
+    }
+    const parentKey = newTask.subKey || newTask.categoryKey;
+    setBusyKey('create-task');
+    try {
+      const res = await api<{ ok: boolean; node: { key: string } }>('/manager-kpi/catalog-task', {
+        method: 'POST',
+        body: JSON.stringify({
+          titleUz: newTask.titleUz.trim(),
+          titleRu: newTask.titleRu.trim() || undefined,
+          descriptionUz: newTask.descriptionUz.trim() || undefined,
+          frequency: freq,
+          parentKey,
+          proofRequired: newTask.proofRequired,
+        }),
+      });
+      toast.success(t('today.taskAdded'));
+      setNewTask((s) => ({
+        ...s,
+        titleUz: '',
+        titleRu: '',
+        descriptionUz: '',
+        proofRequired: false,
+      }));
+      setShowAddTask(false);
+      await loadDay();
+      await loadParents();
+      if (res?.node?.key) {
+        setAssignSel((s) => ({ ...s, [res.node.key]: true }));
+      }
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -777,12 +867,134 @@ export default function TodayPage() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => setShowAddTask((v) => !v)}
+                      className={cn(
+                        'h-9 px-3 rounded-lg text-sm font-medium border',
+                        showAddTask
+                          ? 'bg-amber-700 text-white border-amber-700'
+                          : 'border-amber-300 bg-amber-50 text-amber-900',
+                      )}
+                    >
+                      {t('today.addTask')}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setAssignOpen((v) => !v)}
                       className="h-9 px-3 rounded-lg text-sm text-ink-muted"
                     >
                       {assignOpen ? '−' : '+'}
                     </button>
                   </div>
+
+                  {showAddTask && (
+                    <div className="rounded-2xl border border-amber-200/80 bg-amber-50/40 p-4 space-y-3">
+                      <h3 className="text-sm font-semibold text-ink">{t('today.addTaskTitle')}</h3>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        <label className="block space-y-1">
+                          <span className="text-xs text-ink-muted">{t('today.category')}</span>
+                          <select
+                            className="w-full h-10 rounded-lg border border-teal-900/10 bg-white px-3 text-sm"
+                            value={newTask.categoryKey}
+                            onChange={(e) =>
+                              setNewTask((s) => ({
+                                ...s,
+                                categoryKey: e.target.value,
+                                subKey: '',
+                              }))
+                            }
+                          >
+                            {!catalogParents.length && (
+                              <option value="">{t('today.pickCategory')}</option>
+                            )}
+                            {catalogParents.map((p) => (
+                              <option key={p.key} value={p.key}>
+                                {lang === 'ru' ? p.titleRu : p.titleUz}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="block space-y-1">
+                          <span className="text-xs text-ink-muted">{t('today.subcategory')}</span>
+                          <select
+                            className="w-full h-10 rounded-lg border border-teal-900/10 bg-white px-3 text-sm"
+                            value={newTask.subKey}
+                            onChange={(e) =>
+                              setNewTask((s) => ({ ...s, subKey: e.target.value }))
+                            }
+                          >
+                            <option value="">{t('today.noSub')}</option>
+                            {(
+                              catalogParents.find((p) => p.key === newTask.categoryKey)?.subs ||
+                              []
+                            ).map((s) => (
+                              <option key={s.key} value={s.key}>
+                                {lang === 'ru' ? s.pathRu || s.titleRu : s.pathUz || s.titleUz}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="block space-y-1 sm:col-span-2">
+                          <span className="text-xs text-ink-muted">{t('today.taskName')}</span>
+                          <input
+                            className="w-full h-10 rounded-lg border border-teal-900/10 bg-white px-3 text-sm"
+                            value={newTask.titleUz}
+                            onChange={(e) =>
+                              setNewTask((s) => ({ ...s, titleUz: e.target.value }))
+                            }
+                            placeholder={t('today.taskName')}
+                          />
+                        </label>
+                        <label className="block space-y-1 sm:col-span-2">
+                          <span className="text-xs text-ink-muted">{t('today.taskNameRu')}</span>
+                          <input
+                            className="w-full h-10 rounded-lg border border-teal-900/10 bg-white px-3 text-sm"
+                            value={newTask.titleRu}
+                            onChange={(e) =>
+                              setNewTask((s) => ({ ...s, titleRu: e.target.value }))
+                            }
+                          />
+                        </label>
+                        <label className="block space-y-1 sm:col-span-2">
+                          <span className="text-xs text-ink-muted">{t('today.taskPurpose')}</span>
+                          <textarea
+                            className="w-full min-h-[72px] rounded-lg border border-teal-900/10 bg-white px-3 py-2 text-sm"
+                            value={newTask.descriptionUz}
+                            onChange={(e) =>
+                              setNewTask((s) => ({ ...s, descriptionUz: e.target.value }))
+                            }
+                            placeholder={t('today.taskPurpose')}
+                          />
+                        </label>
+                      </div>
+                      <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 accent-teal-800"
+                          checked={newTask.proofRequired}
+                          onChange={(e) =>
+                            setNewTask((s) => ({ ...s, proofRequired: e.target.checked }))
+                          }
+                        />
+                        {t('today.proofNeeded')}
+                      </label>
+                      <p className="text-xs text-ink-muted">
+                        {freq === 'DAILY'
+                          ? t('today.daily')
+                          : freq === 'WEEKLY'
+                            ? t('today.weekly')
+                            : t('today.monthly')}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={busyKey === 'create-task'}
+                        onClick={createTask}
+                        className="h-10 px-4 rounded-lg text-sm font-semibold bg-amber-700 text-white disabled:opacity-50"
+                      >
+                        {t('today.addTaskBtn')}
+                      </button>
+                    </div>
+                  )}
+
                   {assignOpen &&
                     (day?.tree || []).map((n: TreeNode) => renderAssignTree(n))}
                 </div>
