@@ -269,7 +269,7 @@ export class KpiController {
   }
 
   @Post('ai-reports/:type')
-  @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   aiReport(
     @Param('type') type: string,
     @Query('weekStart') weekStart?: string,
@@ -286,7 +286,7 @@ export class KpiController {
   }
 
   @Get('ai-reports')
-  @Roles(Role.MANAGER, Role.ADMIN, Role.DIRECTOR, Role.SUPER_ADMIN)
+  @Roles(Role.ADMIN, Role.DIRECTOR, Role.SUPER_ADMIN)
   listAi() {
     return this.kpi.listAiReports();
   }

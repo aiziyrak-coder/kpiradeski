@@ -11,14 +11,14 @@ import { useI18n } from '@/lib/i18n';
 import { formatTashkent } from '@/types';
 import { cn } from '@/lib/utils';
 
-function linkForType(type?: string) {
+function linkForType(type?: string, role?: string) {
   switch (type) {
     case 'AI_REPORT':
-      return '/ai';
+      return role === 'MANAGER' ? '/assistant' : '/ai';
     case 'SCORE':
     case 'ALERT':
     case 'STOCK':
-      return '/dashboard';
+      return role === 'MANAGER' ? '/today' : '/dashboard';
     case 'REMINDER':
     case 'MYSTERY':
       return '/today';
@@ -111,7 +111,7 @@ export default function NotificationsPage() {
           </p>
         )}
         {items.map((n) => {
-          const href = linkForType(n.type);
+          const href = linkForType(n.type, user?.role);
           return (
             <div
               key={n.id}

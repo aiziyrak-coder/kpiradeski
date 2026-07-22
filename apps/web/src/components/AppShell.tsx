@@ -40,7 +40,7 @@ const NAV: Array<{
     roles: ['ADMIN', 'SUPER_ADMIN'],
   },
   { href: '/today', labelKey: 'nav.today', icon: ClipboardList, roles: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
-  { href: '/ai', labelKey: 'nav.ai', icon: Sparkles, roles: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
+  { href: '/ai', labelKey: 'nav.ai', icon: Sparkles, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { href: '/assistant', labelKey: 'nav.assistant', icon: Bot, roles: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
   { href: '/branches', labelKey: 'nav.branches', icon: Building2, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { href: '/users', labelKey: 'nav.users', icon: Users, roles: ['ADMIN', 'SUPER_ADMIN'] },

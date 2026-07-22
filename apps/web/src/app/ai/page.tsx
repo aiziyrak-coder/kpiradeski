@@ -76,7 +76,7 @@ export default function AiPage() {
   }
 
   return (
-    <RoleGate allow={['MANAGER', 'ADMIN', 'SUPER_ADMIN']}>
+    <RoleGate allow={['ADMIN', 'SUPER_ADMIN']}>
       <AppShell>
         <SectionHeader
           title={t('ai.title')}
