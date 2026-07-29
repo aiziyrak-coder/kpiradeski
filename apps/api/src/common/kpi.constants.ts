@@ -35,13 +35,12 @@ export const WAREHOUSE_ITEMS = [
 ] as const;
 
 export const DEFAULT_WEIGHTS = [
-  { blockKey: 'clinic', blockName: "Klinika ko'rigi", weight: 20, frequency: 'daily' },
-  { blockKey: 'reception', blockName: 'Retsepshn', weight: 15, frequency: 'daily' },
-  { blockKey: 'calls', blockName: "Qo'ng'iroqlar", weight: 25, frequency: 'daily' },
+  { blockKey: 'clinic', blockName: "Klinika ko'rigi", weight: 25, frequency: 'daily' },
+  { blockKey: 'reception', blockName: 'Retsepshn', weight: 25, frequency: 'daily' },
   { blockKey: 'reviews', blockName: 'Sharhlar', weight: 10, frequency: 'daily' },
-  { blockKey: 'uniform', blockName: 'Uniforma', weight: 10, frequency: 'daily' },
-  { blockKey: 'smm', blockName: 'SMM va sayt', weight: 15, frequency: 'daily' },
-  { blockKey: 'marketing', blockName: 'Reklama va marketing', weight: 5, frequency: 'daily' },
+  { blockKey: 'uniform', blockName: 'Uniforma', weight: 8, frequency: 'daily' },
+  { blockKey: 'smm', blockName: 'SMM va sayt', weight: 17, frequency: 'daily' },
+  { blockKey: 'marketing', blockName: 'Reklama va marketing', weight: 15, frequency: 'daily' },
 ] as const;
 
 export const BUSINESS_TZ = 'Asia/Tashkent';

@@ -61,7 +61,7 @@ export class KpiService {
           where: { date },
           include: { doctor: { select: { id: true, name: true } } },
         }),
-        this.prisma.dailyScore.findFirst({ where: { date } }),
+        this.prisma.dailyScore.findFirst({ where: { date, frequency: 'LEGACY' } }),
       ]);
 
     return {
@@ -385,6 +385,7 @@ export class KpiService {
     const scores = await this.prisma.dailyScore.findMany({
       where: {
         date: { gte: start, lte: end },
+        frequency: 'DAILY',
         ...(opts?.branchId ? { branchId: opts.branchId } : {}),
       },
       orderBy: { date: 'asc' },

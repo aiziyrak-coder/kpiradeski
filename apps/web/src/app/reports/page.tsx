@@ -3,9 +3,17 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
   Line,
   LineChart,
-  CartesianGrid,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -13,7 +21,7 @@ import {
 } from 'recharts';
 import { AppShell } from '@/components/AppShell';
 import { RoleGate } from '@/components/RoleGate';
-import { Button, Input, SectionHeader } from '@/components/ui';
+import { Button, Input, SectionHeader, Select } from '@/components/ui';
 import { useToast } from '@/components/Toast';
 import { useI18n } from '@/lib/i18n';
 import { api, downloadReport } from '@/lib/api';
@@ -27,7 +35,20 @@ function daysBefore(n: number) {
   return utc.toISOString().slice(0, 10);
 }
 
-type Tab = 'scores' | 'audit';
+type Tab = 'analytics' | 'audit';
+
+const PIE_COLORS = ['#0F766E', '#D97706', '#E11D48'];
+const LINE_COLORS = ['#0F766E', '#2563EB', '#C026D3', '#EA580C', '#0891B2'];
+
+const CAT_LABEL: Record<string, { uz: string; ru: string }> = {
+  clinic: { uz: 'Klinika', ru: 'Клиника' },
+  reception: { uz: 'Administrator', ru: 'Администратор' },
+  calls: { uz: 'Qoʻngʻiroqlar', ru: 'Звонки' },
+  reviews: { uz: 'Sharhlar', ru: 'Отзывы' },
+  uniform: { uz: 'Uniforma', ru: 'Униформа' },
+  smm: { uz: 'SMM / SEO', ru: 'SMM / SEO' },
+  marketing: { uz: 'Marketing', ru: 'Маркетинг' },
+};
 
 export default function ReportsPage() {
   return (
@@ -39,15 +60,19 @@ export default function ReportsPage() {
 
 function ReportsInner() {
   const toast = useToast();
-  const { t, roleLabel } = useI18n();
+  const { t, lang, roleLabel } = useI18n();
   const search = useSearchParams();
   const router = useRouter();
-  const initialTab = (search.get('tab') === 'audit' ? 'audit' : 'scores') as Tab;
+  const initialTab = (search.get('tab') === 'audit' ? 'audit' : 'analytics') as Tab;
   const [tab, setTab] = useState<Tab>(initialTab);
 
   const [from, setFrom] = useState(daysBefore(30));
   const [to, setTo] = useState(todayISO());
+  const [branchId, setBranchId] = useState('');
+  const [frequency, setFrequency] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY');
+  const [branches, setBranches] = useState<any[]>([]);
   const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [audit, setAudit] = useState<any>(null);
@@ -59,20 +84,30 @@ function ReportsInner() {
   const [openMeta, setOpenMeta] = useState<string | null>(null);
 
   useEffect(() => {
-    const next = search.get('tab') === 'audit' ? 'audit' : 'scores';
-    setTab(next);
+    setTab(search.get('tab') === 'audit' ? 'audit' : 'analytics');
   }, [search]);
+
+  useEffect(() => {
+    api<any[]>('/branches/mine')
+      .then((list) => setBranches(Array.isArray(list) ? list : []))
+      .catch(() => setBranches([]));
+  }, []);
 
   function switchTab(next: Tab) {
     setTab(next);
     router.replace(next === 'audit' ? '/reports?tab=audit' : '/reports');
   }
 
-  async function loadScores() {
+  async function loadAnalytics() {
+    setLoading(true);
     try {
-      setData(await api(`/reports?from=${from}&to=${to}`));
+      const params = new URLSearchParams({ from, to, frequency });
+      if (branchId) params.set('branchId', branchId);
+      setData(await api(`/reports/analytics?${params}`));
     } catch (e: any) {
       toast.error(t('reports.loadFail'), e.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -90,8 +125,8 @@ function ReportsInner() {
   }
 
   useEffect(() => {
-    if (tab === 'scores') loadScores();
-  }, [from, to, tab]);
+    if (tab === 'analytics') loadAnalytics();
+  }, [from, to, branchId, frequency, tab]);
 
   useEffect(() => {
     if (tab === 'audit') loadAudit(page);
@@ -109,14 +144,63 @@ function ReportsInner() {
     }
   }
 
-  const chart = useMemo(
+  const s = data?.summary;
+  const catLabel = (key: string) => {
+    const L = CAT_LABEL[key];
+    if (!L) return key;
+    return lang === 'ru' ? L.ru : L.uz;
+  };
+
+  const branchBars = useMemo(
     () =>
-      (data?.scores || []).map((s: any) => ({
-        date: String(s.date).slice(5, 10),
-        score: s.totalScore,
+      (data?.byBranch || []).map((b: any) => ({
+        name: b.name.length > 14 ? b.name.slice(0, 12) + '…' : b.name,
+        full: b.name,
+        score: b.avgScore,
+        completion: b.completionPct,
       })),
     [data],
   );
+
+  const managerBars = useMemo(
+    () =>
+      (data?.byManager || []).slice(0, 10).map((m: any) => ({
+        name: m.name.length > 12 ? m.name.slice(0, 10) + '…' : m.name,
+        full: m.name,
+        completion: m.completionPct,
+        done: m.done,
+        score: m.avgTaskScore,
+      })),
+    [data],
+  );
+
+  const categoryBars = useMemo(
+    () =>
+      (data?.byCategory || []).map((c: any) => ({
+        name: catLabel(c.key),
+        score: c.avgScore,
+        completion: c.completionPct,
+      })),
+    [data, lang],
+  );
+
+  const multiTrend = useMemo(() => {
+    const bt = data?.branchTrend || {};
+    const names = Object.keys(bt);
+    const dateSet = new Set<string>();
+    for (const n of names) for (const p of bt[n] || []) dateSet.add(p.date);
+    const dates = [...dateSet].sort();
+    return dates.map((date) => {
+      const row: Record<string, string | number> = { date: date.slice(5) };
+      for (const n of names) {
+        const hit = (bt[n] || []).find((x: any) => x.date === date);
+        if (hit) row[n] = hit.score;
+      }
+      return row;
+    });
+  }, [data]);
+
+  const branchTrendNames = Object.keys(data?.branchTrend || {});
 
   function statusLabel(color: string) {
     if (color === 'green') return t('reports.good');
@@ -131,13 +215,18 @@ function ReportsInner() {
       : a;
   }
 
+  const pieData = (data?.statusPie || []).map((x: any) => ({
+    ...x,
+    label: statusLabel(x.name),
+  }));
+
   return (
     <AppShell>
       <RoleGate allow={['ADMIN', 'SUPER_ADMIN', 'MANAGER']}>
         <SectionHeader
           title={t('reports.title')}
           action={
-            tab === 'scores' ? (
+            tab === 'analytics' ? (
               <div className="flex flex-wrap gap-2">
                 <Button variant="secondary" disabled={busy} onClick={() => exportFile('pdf')}>
                   {t('reports.pdf')}
@@ -150,22 +239,22 @@ function ReportsInner() {
           }
         />
 
-        <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-teal-950/[0.05] mb-5 max-w-sm">
+        <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-teal-950/[0.05] mb-5 w-full sm:max-w-sm">
           <button
             type="button"
-            onClick={() => switchTab('scores')}
+            onClick={() => switchTab('analytics')}
             className={cn(
-              'rounded-lg py-2 text-sm font-medium',
-              tab === 'scores' ? 'bg-white text-teal-950 shadow-sm' : 'text-ink-muted',
+              'rounded-lg py-2.5 min-h-11 text-sm font-medium',
+              tab === 'analytics' ? 'bg-white text-teal-950 shadow-sm' : 'text-ink-muted',
             )}
           >
-            {t('reports.tabScores')}
+            {t('reports.tabAnalytics')}
           </button>
           <button
             type="button"
             onClick={() => switchTab('audit')}
             className={cn(
-              'rounded-lg py-2 text-sm font-medium',
+              'rounded-lg py-2.5 min-h-11 text-sm font-medium',
               tab === 'audit' ? 'bg-white text-teal-950 shadow-sm' : 'text-ink-muted',
             )}
           >
@@ -173,28 +262,53 @@ function ReportsInner() {
           </button>
         </div>
 
-        {tab === 'scores' && (
+        {tab === 'analytics' && (
           <>
-            <div className="flex flex-wrap gap-3 mb-5">
-              <label className="text-sm">
+            <div className="rounded-2xl border border-teal-100 bg-white/90 p-4 mb-5 grid grid-cols-1 sm:flex sm:flex-wrap gap-3 items-end">
+              <label className="text-sm w-full sm:w-auto">
                 <span className="text-ink-muted block mb-1">{t('common.from')}</span>
                 <input
                   type="date"
                   value={from}
                   onChange={(e) => setFrom(e.target.value)}
-                  className="h-11 px-3 rounded-xl border border-teal-200 bg-white"
+                  className="h-11 w-full sm:w-auto px-3 rounded-xl border border-teal-200 bg-white"
                 />
               </label>
-              <label className="text-sm">
+              <label className="text-sm w-full sm:w-auto">
                 <span className="text-ink-muted block mb-1">{t('common.to')}</span>
                 <input
                   type="date"
                   value={to}
                   onChange={(e) => setTo(e.target.value)}
-                  className="h-11 px-3 rounded-xl border border-teal-200 bg-white"
+                  className="h-11 w-full sm:w-auto px-3 rounded-xl border border-teal-200 bg-white"
                 />
               </label>
-              <div className="flex items-end gap-2">
+              <div className="w-full sm:min-w-[160px] sm:w-auto">
+                <Select
+                  label={t('branches.branch')}
+                  value={branchId}
+                  onChange={(e) => setBranchId(e.target.value)}
+                >
+                  <option value="">{t('reports.allBranches')}</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="w-full sm:min-w-[140px] sm:w-auto">
+                <Select
+                  label={t('reports.frequency')}
+                  value={frequency}
+                  onChange={(e) => setFrequency(e.target.value as any)}
+                >
+                  <option value="DAILY">{t('today.daily')}</option>
+                  <option value="WEEKLY">{t('today.weekly')}</option>
+                  <option value="MONTHLY">{t('today.monthly')}</option>
+                </Select>
+              </div>
+              <div className="flex gap-2 w-full sm:w-auto overflow-x-auto">
                 {[7, 30, 90].map((n) => (
                   <Button key={n} variant="ghost" size="sm" onClick={() => setFrom(daysBefore(n))}>
                     {t('reports.days', { n })}
@@ -203,69 +317,381 @@ function ReportsInner() {
               </div>
             </div>
 
-            <div className="grid lg:grid-cols-3 gap-4 mb-5">
-              <div className="rounded-2xl bg-gradient-to-br from-teal-800 to-teal-900 text-white p-5">
-                <p className="text-teal-100/80 text-sm">{t('reports.avg')}</p>
-                <p className="font-display text-5xl mt-1 tabular-nums">{data?.avg ?? 0}%</p>
-              </div>
-              <div className="lg:col-span-2 rounded-2xl border border-teal-100 bg-white p-4">
-                <p className="text-sm font-semibold mb-3">{t('reports.trend')}</p>
-                <div className="h-40">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chart}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#D5EBE6" />
-                      <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                      <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="score" stroke="#0F5F54" strokeWidth={2} dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
+            {loading && (
+              <div className="py-16 text-center text-ink-muted">{t('common.loading')}</div>
+            )}
+
+            {!loading && data && (
+              <div className="space-y-5">
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <StatCard
+                    label={t('reports.avg')}
+                    value={`${s?.avgScore ?? 0}%`}
+                    tone="teal"
+                  />
+                  <StatCard
+                    label={t('reports.completion')}
+                    value={`${s?.completionPct ?? 0}%`}
+                    hint={`${s?.entriesDone ?? 0}/${s?.entriesTotal ?? 0}`}
+                  />
+                  <StatCard
+                    label={t('reports.proofRate')}
+                    value={`${s?.proofs?.approveRate ?? 0}%`}
+                    hint={`${s?.proofs?.approved ?? 0}✓ / ${s?.proofs?.rejected ?? 0}✗`}
+                  />
+                  <StatCard
+                    label={t('reports.tracked')}
+                    value={String(s?.daysTracked ?? 0)}
+                    hint={`${s?.branches ?? 0} ${t('reports.branchesUnit')} · ${s?.managers ?? 0} ${t('reports.managersUnit')}`}
+                  />
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+                    <p className="text-xs font-semibold text-emerald-900 uppercase tracking-wide">
+                      {t('reports.bestDay')}
+                    </p>
+                    <p className="font-display text-3xl mt-1 tabular-nums text-emerald-950">
+                      {s?.bestScore != null ? `${s.bestScore}%` : '—'}
+                    </p>
+                    <p className="text-xs text-emerald-800/80 mt-1">
+                      {[s?.bestDate, s?.bestBranch].filter(Boolean).join(' · ') || '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-rose-100 bg-rose-50/60 p-4">
+                    <p className="text-xs font-semibold text-rose-900 uppercase tracking-wide">
+                      {t('reports.worstDay')}
+                    </p>
+                    <p className="font-display text-3xl mt-1 tabular-nums text-rose-950">
+                      {s?.worstScore != null ? `${s.worstScore}%` : '—'}
+                    </p>
+                    <p className="text-xs text-rose-800/80 mt-1">
+                      {[s?.worstDate, s?.worstBranch].filter(Boolean).join(' · ') || '—'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid lg:grid-cols-3 gap-4">
+                  <div className="lg:col-span-2 rounded-2xl border border-teal-100 bg-white p-4">
+                    <p className="text-sm font-semibold mb-3">{t('reports.trend')}</p>
+                    <div className="h-56">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={data.trend || []}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#D5EBE6" />
+                          <XAxis
+                            dataKey="date"
+                            tick={{ fontSize: 11 }}
+                            tickFormatter={(v) => String(v).slice(5)}
+                          />
+                          <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                          <Tooltip />
+                          <Area
+                            type="monotone"
+                            dataKey="score"
+                            name={t('reports.score')}
+                            stroke="#0F5F54"
+                            fill="#99F6E4"
+                            fillOpacity={0.35}
+                            strokeWidth={2}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-teal-100 bg-white p-4">
+                    <p className="text-sm font-semibold mb-3">{t('reports.statusSplit')}</p>
+                    <div className="h-56">
+                      {pieData.length === 0 ? (
+                        <div className="h-full grid place-items-center text-ink-muted text-sm">
+                          {t('reports.noData')}
+                        </div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={pieData}
+                              dataKey="value"
+                              nameKey="label"
+                              innerRadius={48}
+                              outerRadius={78}
+                              paddingAngle={2}
+                            >
+                              {pieData.map((_: any, i: number) => (
+                                <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+                    <div className="flex justify-around text-xs mt-1 text-ink-muted">
+                      <span>🟢 {s?.statusCount?.green ?? 0}</span>
+                      <span>🟡 {s?.statusCount?.yellow ?? 0}</span>
+                      <span>🔴 {s?.statusCount?.red ?? 0}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {multiTrend.length > 0 && branchTrendNames.length > 1 && (
+                  <div className="rounded-2xl border border-teal-100 bg-white p-4">
+                    <p className="text-sm font-semibold mb-3">{t('reports.branchTrend')}</p>
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={multiTrend}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#D5EBE6" />
+                          <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                          <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                          <Tooltip />
+                          <Legend />
+                          {branchTrendNames.map((name, i) => (
+                            <Line
+                              key={name}
+                              type="monotone"
+                              dataKey={name}
+                              stroke={LINE_COLORS[i % LINE_COLORS.length]}
+                              strokeWidth={2}
+                              dot={false}
+                            />
+                          ))}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid lg:grid-cols-2 gap-4">
+                  <div className="rounded-2xl border border-teal-100 bg-white p-4">
+                    <p className="text-sm font-semibold mb-3">{t('reports.byBranch')}</p>
+                    <div className="h-64">
+                      {branchBars.length === 0 ? (
+                        <Empty />
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={branchBars} layout="vertical" margin={{ left: 8 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#D5EBE6" />
+                            <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} />
+                            <YAxis
+                              type="category"
+                              dataKey="name"
+                              width={90}
+                              tick={{ fontSize: 11 }}
+                            />
+                            <Tooltip
+                              formatter={(v: any, _n: any, p: any) => [
+                                `${v}%`,
+                                p?.payload?.full || '',
+                              ]}
+                            />
+                            <Bar dataKey="score" name={t('reports.score')} fill="#0F766E" radius={4} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-teal-100 bg-white p-4">
+                    <p className="text-sm font-semibold mb-3">{t('reports.byManager')}</p>
+                    <div className="h-64">
+                      {managerBars.length === 0 ? (
+                        <Empty />
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={managerBars}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#D5EBE6" />
+                            <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
+                            <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                            <Tooltip
+                              formatter={(v: any, name: any, p: any) => [
+                                `${v}${name === 'done' ? '' : '%'}`,
+                                p?.payload?.full || name,
+                              ]}
+                            />
+                            <Bar
+                              dataKey="completion"
+                              name={t('reports.completion')}
+                              fill="#2563EB"
+                              radius={4}
+                            />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-teal-100 bg-white p-4">
+                  <p className="text-sm font-semibold mb-3">{t('reports.byCategory')}</p>
+                  <div className="h-56">
+                    {categoryBars.length === 0 ? (
+                      <Empty />
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={categoryBars}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#D5EBE6" />
+                          <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                          <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                          <Tooltip />
+                          <Legend />
+                          <Bar dataKey="score" name={t('reports.score')} fill="#0F766E" radius={4} />
+                          <Bar
+                            dataKey="completion"
+                            name={t('reports.completion')}
+                            fill="#99F6E4"
+                            radius={4}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-teal-100 bg-white overflow-hidden">
+                  <div className="px-4 py-3 border-b border-teal-50 flex items-center justify-between">
+                    <p className="text-sm font-semibold">{t('reports.incompleteTitle')}</p>
+                    <span className="text-xs text-ink-muted">
+                      {(data.incompleteTasks || []).length} {t('reports.tasksUnit')}
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[640px]">
+                      <thead>
+                        <tr className="text-left text-ink-muted border-b border-teal-50">
+                          <th className="p-3">#</th>
+                          <th className="p-3">{t('reports.task')}</th>
+                          <th className="p-3">{t('reports.missPct')}</th>
+                          <th className="p-3">{t('reports.missed')}</th>
+                          <th className="p-3">{t('branches.branch')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(data.incompleteTasks || []).length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="py-10 text-center text-ink-muted">
+                              {t('reports.noIncomplete')}
+                            </td>
+                          </tr>
+                        )}
+                        {(data.incompleteTasks || []).map((row: any, i: number) => (
+                          <tr key={row.nodeKey} className="border-b border-teal-50/80">
+                            <td className="px-3 py-2.5 text-ink-muted">{i + 1}</td>
+                            <td className="px-3 py-2.5 font-medium">
+                              {lang === 'ru' ? row.titleRu : row.titleUz}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <span
+                                className={cn(
+                                  'tabular-nums font-semibold',
+                                  row.missPct >= 70
+                                    ? 'text-rose-700'
+                                    : row.missPct >= 40
+                                      ? 'text-amber-700'
+                                      : 'text-teal-800',
+                                )}
+                              >
+                                {row.missPct}%
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 tabular-nums">
+                              {row.missed}/{row.opportunities}
+                            </td>
+                            <td className="px-3 py-2.5 text-xs text-ink-muted">
+                              {(row.branches || []).slice(0, 3).join(', ')}
+                              {(row.branches || []).length > 3 ? '…' : ''}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="grid lg:grid-cols-2 gap-4">
+                  <div className="rounded-2xl border border-teal-100 bg-white overflow-hidden">
+                    <div className="px-4 py-3 border-b border-teal-50">
+                      <p className="text-sm font-semibold">{t('reports.branchTable')}</p>
+                    </div>
+                    <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-white">
+                          <tr className="text-left text-ink-muted border-b border-teal-50">
+                            <th className="p-3">{t('branches.branch')}</th>
+                            <th className="p-3">{t('reports.score')}</th>
+                            <th className="p-3">{t('reports.completion')}</th>
+                            <th className="p-3">{t('reports.managersUnit')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(data.byBranch || []).map((b: any) => (
+                            <tr key={b.branchId} className="border-b border-teal-50/80">
+                              <td className="px-3 py-2.5 font-medium">{b.name}</td>
+                              <td className="px-3 py-2.5 tabular-nums font-semibold">
+                                {b.avgScore}%
+                              </td>
+                              <td className="px-3 py-2.5 tabular-nums">{b.completionPct}%</td>
+                              <td className="px-3 py-2.5 text-xs text-ink-muted">
+                                {(b.managers || []).map((m: any) => m.name).join(', ') || '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-teal-100 bg-white overflow-hidden">
+                    <div className="px-4 py-3 border-b border-teal-50">
+                      <p className="text-sm font-semibold">{t('reports.managerTable')}</p>
+                    </div>
+                    <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-white">
+                          <tr className="text-left text-ink-muted border-b border-teal-50">
+                            <th className="p-3">{t('branches.manager')}</th>
+                            <th className="p-3">{t('reports.completion')}</th>
+                            <th className="p-3">{t('reports.done')}</th>
+                            <th className="p-3">{t('reports.proofs')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(data.byManager || []).map((m: any) => (
+                            <tr key={m.id} className="border-b border-teal-50/80">
+                              <td className="px-3 py-2.5">
+                                <p className="font-medium">{m.name}</p>
+                                <p className="text-[11px] text-ink-muted">
+                                  {(m.branches || []).join(', ')}
+                                </p>
+                              </td>
+                              <td className="px-3 py-2.5 tabular-nums font-semibold">
+                                {m.completionPct}%
+                              </td>
+                              <td className="px-3 py-2.5 tabular-nums">
+                                {m.done}/{m.total}
+                              </td>
+                              <td className="px-3 py-2.5 text-xs">
+                                <span className="text-teal-800">{m.proofsApproved}✓</span>
+                                {' · '}
+                                <span className="text-amber-700">{m.proofsPending}…</span>
+                                {' · '}
+                                <span className="text-rose-700">{m.proofsRejected}✗</span>
+                              </td>
+                            </tr>
+                          ))}
+                          {(data.byManager || []).length === 0 && (
+                            <tr>
+                              <td colSpan={4} className="py-8 text-center text-ink-muted">
+                                {t('reports.noData')}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <div className="rounded-2xl border border-teal-100 bg-white overflow-x-auto">
-              <table className="w-full text-sm min-w-[720px]">
-                <thead>
-                  <tr className="text-left text-ink-muted border-b border-teal-50">
-                    <th className="p-3">{t('common.date')}</th>
-                    <th className="p-3">{t('reports.score')}</th>
-                    <th className="p-3">{t('reports.status')}</th>
-                    <th className="p-3">{t('reports.clinic')}</th>
-                    <th className="p-3">{t('reports.reception')}</th>
-                    <th className="p-3">{t('reports.calls')}</th>
-                    <th className="p-3">{t('reports.uniform')}</th>
-                    <th className="p-3">{t('reports.smm')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(data?.scores || []).length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="py-10 text-center text-ink-muted">
-                        {t('reports.noData')}
-                      </td>
-                    </tr>
-                  )}
-                  {(data?.scores || []).map((s: any) => {
-                    const b = s.blockScores || {};
-                    return (
-                      <tr key={s.id || s.date} className="border-b border-teal-50/80">
-                        <td className="px-3 py-2.5">{String(s.date).slice(0, 10)}</td>
-                        <td className="px-3 py-2.5 font-semibold tabular-nums">{s.totalScore}%</td>
-                        <td className="px-3 py-2.5">{statusLabel(s.colorStatus)}</td>
-                        <td className="px-3 py-2.5">{b.clinic ?? b.clinic_inspection ?? '—'}</td>
-                        <td className="px-3 py-2.5">{b.reception ?? '—'}</td>
-                        <td className="px-3 py-2.5">
-                          {b.calls ?? b.calls_new ?? '—'}
-                        </td>
-                        <td className="px-3 py-2.5">{b.uniform ?? '—'}</td>
-                        <td className="px-3 py-2.5">{b.smm ?? b.seo ?? '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            )}
           </>
         )}
 
@@ -380,4 +806,47 @@ function ReportsInner() {
       </RoleGate>
     </AppShell>
   );
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: 'teal';
+}) {
+  return (
+    <div
+      className={cn(
+        'rounded-2xl border p-4',
+        tone === 'teal'
+          ? 'border-teal-800/20 bg-gradient-to-br from-teal-800 to-teal-900 text-white'
+          : 'border-teal-100 bg-white',
+      )}
+    >
+      <p
+        className={cn(
+          'text-xs font-semibold uppercase tracking-wide',
+          tone === 'teal' ? 'text-teal-100/80' : 'text-ink-muted',
+        )}
+      >
+        {label}
+      </p>
+      <p className="font-display text-3xl mt-1 tabular-nums">{value}</p>
+      {hint && (
+        <p className={cn('text-xs mt-1', tone === 'teal' ? 'text-teal-100/70' : 'text-ink-muted')}>
+          {hint}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Empty() {
+  const { t } = useI18n();
+  return <div className="h-full grid place-items-center text-ink-muted text-sm">{t('reports.noData')}</div>;
 }

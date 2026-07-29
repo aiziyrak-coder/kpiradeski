@@ -99,27 +99,16 @@ export class UsersService {
     });
 
     if (data.role === Role.MANAGER) {
-      let branchId = data.branchId;
-      if (!branchId) {
-        const first = await this.prisma.branch.findFirst({
-          where: { active: true },
-          orderBy: { name: 'asc' },
-        });
-        branchId = first?.id;
+      if (!data.branchId) {
+        throw new BadRequestException(
+          'Manager uchun filial (branchId) majburiy — avtomatik bogʻlanmaydi',
+        );
       }
-      if (branchId) {
-        await this.prisma.branchManager.upsert({
-          where: { branchId_userId: { branchId, userId: user.id } },
-          create: { branchId, userId: user.id },
-          update: {},
-        });
-        if (!data.branchId) {
-          await this.prisma.user.update({
-            where: { id: user.id },
-            data: { branchId },
-          });
-        }
-      }
+      await this.prisma.branchManager.upsert({
+        where: { branchId_userId: { branchId: data.branchId, userId: user.id } },
+        create: { branchId: data.branchId, userId: user.id },
+        update: {},
+      });
     }
 
     await this.prisma.auditLog.create({

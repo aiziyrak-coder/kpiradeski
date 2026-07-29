@@ -26,7 +26,11 @@ export class DashboardService {
       : { branchId: { not: null } };
 
     const todayScores = await this.prisma.dailyScore.findMany({
-      where: { date, ...branchWhere },
+      where: {
+        date,
+        frequency: 'DAILY',
+        ...branchWhere,
+      },
       include: { branch: { select: { id: true, name: true } } },
     });
 
@@ -55,7 +59,7 @@ export class DashboardService {
     from30.setUTCDate(from30.getUTCDate() - 29);
 
     const historyRaw = await this.prisma.dailyScore.findMany({
-      where: { date: { gte: from30, lte: date }, ...branchWhere },
+      where: { date: { gte: from30, lte: date }, frequency: 'DAILY', ...branchWhere },
       orderBy: { date: 'asc' },
     });
 
@@ -74,7 +78,11 @@ export class DashboardService {
     const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
     const monthEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0));
     const monthScores = await this.prisma.dailyScore.findMany({
-      where: { date: { gte: monthStart, lte: monthEnd }, ...branchWhere },
+      where: {
+        date: { gte: monthStart, lte: monthEnd },
+        frequency: 'DAILY',
+        ...branchWhere,
+      },
       orderBy: { date: 'asc' },
     });
 

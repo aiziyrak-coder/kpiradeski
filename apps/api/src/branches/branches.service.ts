@@ -35,34 +35,9 @@ export class BranchesService {
       include: { branch: true },
       orderBy: { createdAt: 'asc' },
     });
-    let branches = links.map((l) => l.branch).filter((b) => b.active);
-    if (branches.length) return branches;
-
-    // Auto-heal: managerga filial yoʻq boʻlsa — user.branchId yoki birinchi faol filial
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    let targetId = user?.branchId || null;
-    if (!targetId) {
-      const first = await this.prisma.branch.findFirst({
-        where: { active: true },
-        orderBy: { name: 'asc' },
-      });
-      targetId = first?.id || null;
-    }
-    if (!targetId) return [];
-
-    await this.prisma.branchManager.upsert({
-      where: { branchId_userId: { branchId: targetId, userId } },
-      create: { branchId: targetId, userId },
-      update: {},
-    });
-    if (user && !user.branchId) {
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: { branchId: targetId },
-      });
-    }
-    const b = await this.prisma.branch.findUnique({ where: { id: targetId } });
-    return b && b.active ? [b] : [];
+    const branches = links.map((l) => l.branch).filter((b) => b.active);
+    // Filial bogʻlanishi faqat admin tomonidan — birinchi filialga avto-bogʻlash yoʻq
+    return branches;
   }
 
   async get(id: string) {
@@ -97,12 +72,25 @@ export class BranchesService {
     data: { name?: string; address?: string; active?: boolean },
   ) {
     await this.get(id);
+    const patch: { name?: string; address?: string | null; active?: boolean } = {};
+    if (data.name !== undefined) {
+      const name = data.name.trim();
+      if (!name) throw new BadRequestException('Filial nomi kerak');
+      patch.name = name;
+    }
+    if (data.address !== undefined) {
+      patch.address = data.address.trim() || null;
+    }
+    if (data.active !== undefined) patch.active = data.active;
     return this.prisma.branch.update({
       where: { id },
-      data: {
-        name: data.name?.trim(),
-        address: data.address === undefined ? undefined : data.address?.trim() || null,
-        active: data.active,
+      data: patch,
+      include: {
+        managers: {
+          include: {
+            user: { select: { id: true, name: true, email: true, role: true, active: true } },
+          },
+        },
       },
     });
   }

@@ -562,6 +562,8 @@ model DailyScore {
   id          String   @id @default(cuid())
   branchId    String?
   date        DateTime @db.Date
+  /// DAILY | WEEKLY | MONTHLY | LEGACY — prevents multi-frequency / dual-writer collisions
+  frequency   String   @default("DAILY")
   totalScore  Float
   blockScores Json
   completion  Json?
@@ -571,9 +573,10 @@ model DailyScore {
 
   branch Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
 
-  @@unique([branchId, date])
+  @@unique([branchId, date, frequency])
   @@index([date])
   @@index([branchId, date])
+  @@index([branchId, date, frequency])
 }
 
 model Notification {

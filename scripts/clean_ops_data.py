@@ -1,10 +1,22 @@
-"""Production: wipe mock/demo operational data; keep users, branches, catalog."""
+"""Production wipe for go-live: zero stats/analytics, keep structure.
+
+KEEP:
+  User, Branch, BranchManager, Position,
+  KpiCatalogNode, KpiAssignmentTemplate, KpiWeight,
+  AppSetting, Holiday, Doctor, WarehouseProduct, TaskTemplate
+
+WIPE:
+  All KPI day entries / proofs / scores / date assignments,
+  marketing & clinic check logs, AI reports, notifications,
+  audit logs, daily tasks / proofs, monthly scores.
+"""
+import os
 import paramiko
 import sys
 import time
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-P = "qazxsw123@!"
+P = os.environ.get("DEPLOY_SSH_PASSWORD") or os.environ.get("KPI_DEPLOY_PASS") or "qazxsw123@!"
 APP = "/home/admin_root/kpiradeski"
 compose = (
     f"cd {APP} && docker compose -f docker-compose.yml "
@@ -14,13 +26,13 @@ compose = (
 SQL = r"""
 BEGIN;
 
--- KPI ish oqimi (demo / test yozuvlar)
+-- KPI ish natijalari / ballar (shablon biriktirishlar saqlanadi)
 DELETE FROM "KpiProof";
 DELETE FROM "KpiDayEntry";
 DELETE FROM "KpiTaskAssignment";
 DELETE FROM "DailyScore";
 
--- Eski KPI / marketing demo
+-- Marketing / klinik demo yozuvlar
 DELETE FROM "AiWeeklyReport";
 DELETE FROM "MysteryPatientTest";
 DELETE FROM "DoctorReferral";
@@ -37,7 +49,7 @@ DELETE FROM "UniformCheck";
 DELETE FROM "ReceptionCheck";
 DELETE FROM "DailyClinicCheck";
 
--- Vazifa / xabar / audit demo
+-- Vazifa / xabar / audit
 DELETE FROM "TaskProof";
 DELETE FROM "DailyTask";
 DELETE FROM "MonthlyEmployeeScore";
@@ -45,14 +57,22 @@ DELETE FROM "StaffMonthlyReport";
 DELETE FROM "Notification";
 DELETE FROM "AuditLog";
 
+-- Eski uydirma integratsiya auditi (65/100 va h.k.)
+DELETE FROM "AppSetting" WHERE key = 'integrations_last_audit';
+
 COMMIT;
 
 SELECT
   (SELECT COUNT(*) FROM "KpiDayEntry") AS entries,
   (SELECT COUNT(*) FROM "KpiProof") AS proofs,
-  (SELECT COUNT(*) FROM "KpiTaskAssignment") AS assigns,
   (SELECT COUNT(*) FROM "DailyScore") AS scores,
+  (SELECT COUNT(*) FROM "KpiTaskAssignment") AS date_assigns,
+  (SELECT COUNT(*) FROM "Notification") AS notifications,
+  (SELECT COUNT(*) FROM "AiWeeklyReport") AS ai_reports,
   (SELECT COUNT(*) FROM "User") AS users,
+  (SELECT COUNT(*) FROM "Branch") AS branches,
+  (SELECT COUNT(*) FROM "BranchManager") AS branch_managers,
+  (SELECT COUNT(*) FROM "KpiAssignmentTemplate" WHERE active) AS templates,
   (SELECT COUNT(*) FROM "KpiCatalogNode" WHERE active) AS catalog;
 """
 
@@ -74,20 +94,21 @@ def run(cmd, t=300):
     out = o.read().decode(errors="replace")
     err = e.read().decode(errors="replace")
     if out.strip():
-        print(out[-2500:])
+        print(out[-3000:])
     err = "\n".join(ln for ln in err.splitlines() if "password for" not in ln.lower())
     if err.strip():
         print("ERR", err[-800:])
     return code
 
 
+# Wipe uploaded proof files on disk (DB rows already deleted)
+run(f"rm -rf {APP}/uploads/* 2>/dev/null; mkdir -p {APP}/uploads; true")
+
 run(f"{compose} cp /tmp/clean_ops.sql db:/tmp/clean_ops.sql")
 code = run(f"{compose} exec -T db psql -U klinikpi -d klinikpi -f /tmp/clean_ops.sql")
 if code != 0:
+    c.close()
     sys.exit(code)
 
-run(f"{compose} up -d --force-recreate api web")
-time.sleep(20)
-run(f"{compose} ps")
 c.close()
 print("OPS CLEAN DONE")

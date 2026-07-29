@@ -22,7 +22,7 @@ import { api } from '@/lib/api';
 import { todayISO } from '@/types';
 import { cn, statusDot } from '@/lib/utils';
 
-const BLOCK_KEYS = ['clinic', 'reception', 'calls', 'reviews', 'uniform', 'smm', 'marketing'] as const;
+const BLOCK_KEYS = ['clinic', 'reception', 'reviews', 'uniform', 'smm', 'marketing'] as const;
 
 const BLOCK_LINKS: Record<string, string> = {
   marketing: '/marketing',
@@ -36,11 +36,10 @@ const BLOCK_LINKS: Record<string, string> = {
 
 export default function DashboardPage() {
   const toast = useToast();
-  const { t, lang } = useI18n();
+  const { t } = useI18n();
   const [date, setDate] = useState(todayISO());
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [aiItems, setAiItems] = useState<any[]>([]);
 
   const blockLabel = (key: string) => {
     const map: Record<string, string> = {
@@ -61,9 +60,6 @@ export default function DashboardPage() {
       .then(setData)
       .catch((e) => toast.error(t('dashboard.loadError'), e.message))
       .finally(() => setLoading(false));
-    api('/assistant/suggestions')
-      .then((r) => setAiItems(r.items || []))
-      .catch(() => {});
   }, [date]);
 
   const score = data?.today;
@@ -155,66 +151,6 @@ export default function DashboardPage() {
                   <p className="text-xs text-ink-muted">{completion.requiredPct}%</p>
                 </Link>
               )}
-            </div>
-
-            <div className="rounded-[28px] border border-teal-200 bg-gradient-to-br from-teal-50 to-white p-5 shadow-soft">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <p className="text-sm font-semibold text-teal-950">{t('assistant.suggestions')}</p>
-                <Link
-                  href="/assistant"
-                  className="text-xs font-semibold text-teal-700 underline"
-                >
-                  {t('assistant.openAssistant')} →
-                </Link>
-              </div>
-              {data?.alerts?.incompleteTasks?.length > 0 && (
-                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50/80 p-3">
-                  <p className="text-xs font-semibold text-amber-950 mb-1.5">
-                    {t('assistant.alerts')} · {data.alerts.incompleteCount} {t('assistant.incomplete')}
-                  </p>
-                  <ul className="text-xs text-amber-900 space-y-0.5">
-                    {data.alerts.incompleteTasks.slice(0, 6).map((x: any) => (
-                      <li key={x.key}>
-                        · {lang === 'ru' ? x.titleRu : x.titleUz}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              <div className="space-y-2">
-                {aiItems.length === 0 && (
-                  <p className="text-sm text-ink-muted">{t('dashboard.empty')}</p>
-                )}
-                {aiItems.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="rounded-xl border border-teal-100 bg-white/90 p-3 flex gap-3"
-                  >
-                    <span
-                      className={cn(
-                        'shrink-0 w-1.5 rounded-full',
-                        item.priority === 'high' && 'bg-rose-500',
-                        item.priority === 'mid' && 'bg-amber-400',
-                        (!item.priority || item.priority === 'low') && 'bg-teal-500',
-                      )}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-ink">{item.title}</p>
-                      <p className="text-xs text-ink-soft mt-0.5 whitespace-pre-wrap">
-                        {item.detail}
-                      </p>
-                      {item.navigate && (
-                        <Link
-                          href={item.navigate}
-                          className="inline-block mt-1 text-[11px] font-semibold text-teal-700 underline"
-                        >
-                          →
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
 
             {weakBlocks.length > 0 && (

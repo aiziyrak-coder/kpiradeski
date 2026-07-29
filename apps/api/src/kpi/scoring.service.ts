@@ -78,12 +78,7 @@ export class ScoringService {
         allFilledKeys: [],
       };
       const existing = await this.prisma.dailyScore.findFirst({
-        where: {
-          OR: [
-            { branchId: branch.id, date },
-            { branchId: null, date },
-          ],
-        },
+        where: { branchId: branch.id, date, frequency: 'LEGACY' },
         orderBy: { updatedAt: 'desc' },
       });
       if (existing) {
@@ -91,6 +86,7 @@ export class ScoringService {
           where: { id: existing.id },
           data: {
             branchId: branch.id,
+            frequency: 'LEGACY',
             totalScore: 0,
             blockScores: {},
             completion: restCompletion,
@@ -102,6 +98,7 @@ export class ScoringService {
         data: {
           branchId: branch.id,
           date,
+          frequency: 'LEGACY',
           totalScore: 0,
           blockScores: {},
           completion: restCompletion,
@@ -303,12 +300,7 @@ export class ScoringService {
     }
 
     const existing = await this.prisma.dailyScore.findFirst({
-      where: {
-        OR: [
-          { branchId: branch.id, date },
-          { branchId: null, date },
-        ],
-      },
+      where: { branchId: branch.id, date, frequency: 'LEGACY' },
       orderBy: { updatedAt: 'desc' },
     });
     if (existing) {
@@ -316,6 +308,7 @@ export class ScoringService {
         where: { id: existing.id },
         data: {
           branchId: branch.id,
+          frequency: 'LEGACY',
           totalScore,
           blockScores: blockScores as Prisma.InputJsonValue,
           completion: completion as Prisma.InputJsonValue,
@@ -327,6 +320,7 @@ export class ScoringService {
         data: {
           branchId: branch.id,
           date,
+          frequency: 'LEGACY',
           totalScore,
           blockScores: blockScores as Prisma.InputJsonValue,
           completion: completion as Prisma.InputJsonValue,

@@ -31,6 +31,13 @@ const PAGES: Record<string, string> = {
   'ai assistant': '/assistant',
   notifications: '/notifications',
   account: '/account',
+  settings: '/settings',
+  sozlamalar: '/settings',
+  настройки: '/settings',
+  integrations: '/settings',
+  интеграц: '/settings',
+  marketing: '/marketing',
+  маркетинг: '/marketing',
 };
 
 export type AssistantReply = {
@@ -62,16 +69,24 @@ export class AssistantService {
 
     const [scores, weekScores, monthScores, entries] = await Promise.all([
       this.prisma.dailyScore.findMany({
-        where: { date, branchId: { not: null } },
+        where: { date, frequency: 'DAILY', branchId: { not: null } },
         include: { branch: { select: { name: true } } },
       }),
       this.prisma.dailyScore.findMany({
-        where: { date: { gte: weekAgo, lte: date }, branchId: { not: null } },
+        where: {
+          date: { gte: weekAgo, lte: date },
+          frequency: 'DAILY',
+          branchId: { not: null },
+        },
         orderBy: { date: 'asc' },
         include: { branch: { select: { name: true } } },
       }),
       this.prisma.dailyScore.findMany({
-        where: { date: { gte: monthStart, lte: date }, branchId: { not: null } },
+        where: {
+          date: { gte: monthStart, lte: date },
+          frequency: 'DAILY',
+          branchId: { not: null },
+        },
         include: { branch: { select: { name: true } } },
       }),
       this.prisma.kpiDayEntry.findMany({
@@ -116,12 +131,39 @@ export class AssistantService {
         ? Math.round((list.reduce((s, x) => s + x.totalScore, 0) / list.length) * 10) / 10
         : null;
 
+    const [integrationsRow, auditRow, recentProofs, social] = await Promise.all([
+      this.prisma.appSetting.findUnique({ where: { key: 'integrations' } }),
+      this.prisma.appSetting.findUnique({ where: { key: 'integrations_last_audit' } }),
+      this.prisma.kpiProof.findMany({
+        where: { createdAt: { gte: weekAgo } },
+        orderBy: { createdAt: 'desc' },
+        take: 15,
+        select: {
+          aiStatus: true,
+          aiNote: true,
+          aiFeedback: true,
+          createdAt: true,
+          entry: { select: { nodeKey: true, branchId: true } },
+        },
+      }),
+      this.prisma.socialStats.findMany({
+        where: { date: { gte: weekAgo } },
+        orderBy: { date: 'desc' },
+        take: 20,
+      }),
+    ]);
+
+    const integrations = (integrationsRow?.value as any) || null;
+    const lastAudit = (auditRow?.value as any) || null;
+
     return {
       now: new Date().toISOString(),
       date: date.toISOString().slice(0, 10),
       user: { name: user.name, role: user.role },
       platform: 'Radeski KPI manager system',
       clinic: 'Radeski Skin Clinic / dermatologiya',
+      mission:
+        'Klinika sifatini oshirish, menejerlarni coaching qilish, marketing kanallarini nazorat qilish, KPI ni real biznes natijaga bogʻlash',
       pages: Object.values(PAGES),
       blocks: catalog.map((c) => ({
         key: c.key.replace(/_w$|_m$/, ''),
@@ -157,6 +199,39 @@ export class AssistantService {
       completionPct: leaves.length
         ? Math.round((leaves.filter((l) => doneKeys.has(l.key)).length / leaves.length) * 100)
         : 0,
+      integrations: integrations
+        ? {
+            telegram: {
+              enabled: !!integrations?.telegram?.enabled,
+              channelUrl: integrations?.telegram?.channelUrl || null,
+            },
+            instagram: {
+              enabled: !!integrations?.instagram?.enabled,
+              username: integrations?.instagram?.username || null,
+            },
+            websites: (integrations?.websites || []).map((w: any) => ({
+              name: w.name,
+              url: w.url,
+              enabled: w.enabled !== false,
+            })),
+          }
+        : null,
+      integrationsAudit: lastAudit?.hasOperationalData
+        ? {
+            at: lastAudit.at,
+            score: lastAudit.score,
+            overview: lastAudit.overview,
+            priorities: lastAudit.priorities,
+            topIssues: (lastAudit.items || []).slice(0, 8),
+          }
+        : null,
+      recentProofReviews: recentProofs.map((p) => ({
+        status: p.aiStatus,
+        note: p.aiNote,
+        feedback: p.aiFeedback,
+        nodeKey: p.entry?.nodeKey,
+      })),
+      socialWeek: social,
     };
   }
 
@@ -165,12 +240,14 @@ export class AssistantService {
     const isAdmin = user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN;
 
     const system = isAdmin
-      ? `Ты — AI assistant Radeski: элитный бизнес-помощник владельца клиники.
-Дай 5–7 коротких, жёстких и практичных рекомендаций по развитию на русском.
-Учитывай незавершённые задачи, тренд недели/месяца и простои менеджеров.
+      ? `Ты — AI assistant Radeski: элитный CEO/COO-советник владельца клиники.
+Дай 6–8 жёстких, приоритетных рекомендаций на русском.
+Учитывай: незакрытые KPI, простой менеджеров, тренд, интеграции (Telegram/Instagram/сайт) и последний AI-аудит каналов.
+Каждая рекомендация = конкретное действие + ожидаемый эффект.
 Ответ JSON: {"items":[{"title":"...","detail":"...","priority":"high|mid|low","navigate":"/path или null"}]}`
-      : `Siz Radeski klinikasi uchun kuchli AI assistant biznes yordamchisisiz.
-Bugungi KPI, ishlar va biznes holatiga asoslanib 5 ta aniq amaliy tavsiya bering.
+      : `Siz Radeski klinikasi uchun kuchli AI murabbiy va biznes yordamchisisiz.
+Bugungi KPI, bajarilmagan ishlar, dalillar sifatiga asoslanib 5–6 ta aniq tavsiya bering.
+Menejerni ragʻbatlantiring, lekin kamchilikni ochiq ayting. Keyingi 3 ustuvor ishni ajrating.
 Javob JSON: {"items":[{"title":"...","detail":"...","priority":"high|mid|low","navigate":"/today"}]}`;
 
     const raw = await openaiChatMessages(
@@ -182,6 +259,21 @@ Javob JSON: {"items":[{"title":"...","detail":"...","priority":"high|mid|low","n
     );
 
     if (!raw) {
+      if (!ctx.incompleteSample?.length && !ctx.managersIdle?.length) {
+        return {
+          items: [
+            {
+              title: isAdmin ? 'Данных ещё нет' : 'Maʼlumot hali yoʻq',
+              detail: isAdmin
+                ? 'Реальная работа не начата — рекомендации появятся после первых KPI.'
+                : 'Ish hali boshlanmagan — birinchi topshiriqlardan keyin tavsiyalar chiqadi.',
+              priority: 'mid' as const,
+              navigate: '/today',
+            },
+          ],
+          context: ctx,
+        };
+      }
       const fallback = ctx.incompleteSample.slice(0, 5).map((t) => ({
         title: isAdmin ? 'Незавершённая задача' : 'Bajarilmagan ish',
         detail: t,
@@ -221,6 +313,8 @@ Javob JSON: {"items":[{"title":"...","detail":"...","priority":"high|mid|low","n
     if (/открой|och|open/.test(lower) && /филиал|branch/.test(lower)) return '/branches';
     if (/открой|och|open/.test(lower) && /dashboard|дашборд|holat/.test(lower))
       return '/dashboard';
+    if (/открой|och|open|sozlama|настрой|integrat/.test(lower) && /setting|sozlama|настрой|integrat|telegram|instagram|сайт|sayt/.test(lower))
+      return '/settings';
     return null;
   }
 
@@ -251,34 +345,36 @@ Javob JSON: {"items":[{"title":"...","detail":"...","priority":"high|mid|low","n
     }
 
     const system = isAdmin
-      ? `Ты — AI assistant Radeski: фантастически сильный бизнес-помощник владельца/админа клиники.
-Говори ТОЛЬКО по-русски. Имя продукта: «AI assistant» (не Jarvis).
-Ты видишь реальное состояние платформы из CONTEXT (KPI дня, тренд недели/месяца, незакрытые задачи, простаивающие менеджеры).
+      ? `Ты — AI assistant Radeski: фантастически сильный бизнес-партнёр владельца (CEO + COO + CMO в одном).
+Говори ТОЛЬКО по-русски. Имя продукта: «AI assistant».
+CONTEXT содержит реальное состояние: KPI, тренды, незакрытые задачи, менеджеры, интеграции (Telegram/Instagram/сайты), AI-аудит каналов, доказательства.
 
 Твои сверхспособности:
-1) Операционный контроль — что не сделано сегодня, кто отстаёт, какой блок тянет балл вниз
-2) Стратегия роста — маркетинг, SMM/SEO, конверсия звонков, сервис, HR, касса, бренд
-3) Финансово-операционный совет — приоритеты на день/неделю/месяц с конкретными шагами
-4) Навигация платформы — открывай разделы через navigate из pages
-5) Честные жёсткие выводы без воды — как топ-консультант + операционный директор клиники
+1) Операционный контроль — что не сделано, кто отстаёт, качество доказательств
+2) Коучинг менеджеров — как говорить с командой, что требовать сегодня
+3) Маркетинг/бренд — Instagram, Telegram, сайт: контент, SEO, CTA, ритм публикаций
+4) Стратегия роста — конверсия звонков, сервис, HR, выручка, репутация
+5) Навигация — открывай /settings, /today, /reports, /marketing, /assistant и др.
+6) Честные жёсткие выводы без воды — как топ-консультант сети клиник
 
-Формат ответа строго JSON:
+Формат строго JSON:
 {"reply":"развёрнутый полезный ответ","navigate":"/path или null","suggestions":["следующий вопрос 1","..."]}
-Структурируй reply: вывод → цифры из CONTEXT → 2–4 действия. Не выдумывай данные вне CONTEXT.`
-      : `Siz Radeski Skin Clinic uchun kuchli AI assistant biznes yordamchisisiz.
-Mahsulot nomi: «AI assistant» (Jarvis emas).
-Foydalanuvchi qaysi tilda yozsa/gapirsa — SHU tilda javob bering (uz yoki ru).
+Структура reply: вердикт → цифры из CONTEXT → 2–4 действия. Не выдумывай данные вне CONTEXT.`
+      : `Siz Radeski Skin Clinic uchun kuchli AI murabbiy + biznes sheriksiz.
+Mahsulot nomi: «AI assistant».
+Foydalanuvchi qaysi tilda yozsa — SHU tilda javob bering (uz/ru).
 
-CONTEXT dagi real KPI, bajarilmagan ishlar, haftalik/oylik trend va filial holatidan foydalaning.
-Qila olasiz:
-- bugungi/haftalik/oylik ishlarni tahlil qilish va nima qilishni aytish
-- qoʻngʻiroq konversiyasi, sharhlar, SMM, marketing boʻyicha amaliy maslahat
-- menejer kunini prioritetlash (eng muhim 3 ish)
-- platforma boʻlimlarini ochish (navigate)
+CONTEXT dagi real KPI, bajarilmagan ishlar, dalillar, haftalik trend, (agar boʻlsa) marketing kanallari holatidan foydalaning.
+Siz:
+- ish yuborilganda sifatni baholaysiz va kamchilikni ochiq aytasiz
+- qilinmagan ishlarni prioritetlab, nima qilishni aniq buyurasiz
+- SMM/SEO/Telegram/sayt boʻyicha amaliy maslahat berasiz
+- menejerni ragʻbatlantirasiz, lekin yumshoq yolgʻon gapirmaysiz
+- platforma boʻlimlarini ochasiz (navigate)
 
 Javob faqat JSON:
 {"reply":"...","navigate":"/path yoki null","suggestions":["..."]}
-Aniq, qisqa, amaliy boʻling. CONTEXT dan tashqari raqam uydirmang.`;
+Aniq, qisqa, amaliy. CONTEXT dan tashqari raqam uydirmang.`;
 
     const history = (opts?.history || [])
       .slice(-8)

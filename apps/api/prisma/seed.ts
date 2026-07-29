@@ -58,8 +58,8 @@ async function main() {
 
   if (wipe) await wipeAllData();
 
-  // Katalog har doim upsert (tayyor vazifalar)
-  await seedKpiCatalog(prisma);
+  // Katalog: wipe/force da mavjud tugun matnini sync; oddiy seed — faqat yangi
+  await seedKpiCatalog(prisma, { syncExisting: wipe || forceCatalog });
   console.log(`KPI katalog: ${KPI_CATALOG_SEED.length} tugun`);
 
   const existing = await prisma.user.count();
@@ -71,15 +71,7 @@ async function main() {
         data: { name: 'Radeski Dermatologiya', address: 'Toshkent' },
       });
     }
-    const manager = await prisma.user.findFirst({ where: { role: Role.MANAGER } });
-    if (manager) {
-      // Faqat mavjud managerni filialga bogʻlash — yangi demo yaratilmaydi
-      await prisma.branchManager.upsert({
-        where: { branchId_userId: { branchId: branch.id, userId: manager.id } },
-        create: { branchId: branch.id, userId: manager.id },
-        update: {},
-      });
-    }
+    // Managerlarni avtomatik filialga bogʻlamaymiz — admin o‘zi tayinlaydi
     console.log(`Seed skip users (${existing}), katalog yangilandi`);
     return;
   }

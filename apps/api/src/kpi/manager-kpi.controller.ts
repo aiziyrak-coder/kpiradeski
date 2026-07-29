@@ -7,11 +7,11 @@ import {
   Post,
   Query,
   Res,
-  UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { KpiFrequency, Role } from '@prisma/client';
 import { Allow, IsArray, IsBoolean, IsOptional, IsString } from 'class-validator';
@@ -180,32 +180,33 @@ export class ManagerKpiController {
   @Post('proof')
   @Roles(Role.MANAGER)
   @UseInterceptors(
-    FileInterceptor('file', {
+    FilesInterceptor('files', 8, {
       storage: memoryStorage(),
       limits: { fileSize: 8 * 1024 * 1024 },
     }),
   )
   async proof(
     @CurrentUser() user: { id: string; role: Role },
-    @UploadedFile() file: Express.Multer.File | undefined,
+    @UploadedFiles() uploaded: Express.Multer.File[] | undefined,
     @Body('branchId') branchId: string,
     @Body('nodeKey') nodeKey: string,
     @Body('date') date?: string,
     @Body('value') value?: string,
   ) {
-    if (!file) throw new BadRequestException('Fayl yuklanmadi');
+    const list = uploaded || [];
+    if (!list.length) throw new BadRequestException('Fayl yuklanmadi');
     if (!branchId || !nodeKey) throw new BadRequestException('branchId va nodeKey kerak');
     return this.kpi.saveProof(user, {
       branchId,
       nodeKey,
       date,
       value,
-      file: {
+      files: list.map((file) => ({
         originalname: file.originalname,
         mimetype: file.mimetype,
         size: file.size,
         buffer: file.buffer,
-      },
+      })),
     });
   }
 
@@ -216,8 +217,17 @@ export class ManagerKpiController {
     @Res() res: Response,
   ) {
     const { proof, full } = await this.kpi.getProofFile(id, user);
-    res.setHeader('Content-Type', proof.mimeType);
+    const mime = proof.mimeType || 'application/octet-stream';
+    const isImage = mime.startsWith('image/') && mime !== 'image/svg+xml';
+    res.setHeader('Content-Type', isImage ? mime : 'application/octet-stream');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, no-store');
+    if (!isImage) {
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${encodeURIComponent(proof.fileName || 'proof')}"`,
+      );
+    }
     res.sendFile(full);
   }
 }

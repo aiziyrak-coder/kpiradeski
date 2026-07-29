@@ -67,36 +67,29 @@ function group(
 export const KPI_CATALOG_SEED: CatalogSeed[] = [
   // ═══════════════════════════════════════ DAILY ROOTS
   group('clinic', null, 'Klinika · kunlik', 'Клиника · день', 1, {
-    weight: 16,
+    weight: 25,
     frequency: 'DAILY',
     descriptionUz: 'Har kuni bajariladigan klinika ishlari',
     descriptionRu: 'Ежедневные задачи клиники',
   }),
   group('reception', null, 'Administrator · kunlik', 'Администратор · день', 2, {
-    weight: 22,
+    weight: 25,
     frequency: 'DAILY',
     descriptionUz: 'Radeski Skin Clinic — kunlik chek-list',
     descriptionRu: 'Ежедневный чек-лист администратора Radeski Skin Clinic',
   }),
-  group('calls', null, "Qoʻngʻiroqlar · kunlik", 'Звонки · день', 3, { weight: 16, frequency: 'DAILY' }),
   group('reviews', null, 'Sharhlar · kunlik', 'Отзывы · день', 4, { weight: 10, frequency: 'DAILY' }),
-  group('uniform', null, 'Uniforma · kunlik', 'Униформа · день', 5, { weight: 6, frequency: 'DAILY' }),
-  group('smm', null, 'SMM / SEO · kunlik', 'SMM / SEO · день', 6, { weight: 12, frequency: 'DAILY' }),
-  group('marketing', null, 'Marketing · kunlik', 'Маркетинг · день', 7, { weight: 12, frequency: 'DAILY' }),
+  group('uniform', null, 'Uniforma · kunlik', 'Униформа · день', 5, { weight: 8, frequency: 'DAILY' }),
+  group('smm', null, 'SMM / SEO · kunlik', 'SMM / SEO · день', 6, { weight: 17, frequency: 'DAILY' }),
+  group('marketing', null, 'Marketing · kunlik', 'Маркетинг · день', 7, { weight: 15, frequency: 'DAILY' }),
 
   // —— Klinika daily
   group('clinic.clean', 'clinic', 'Tozalik', 'Чистота', 1),
-  group('clinic.clean.floors', 'clinic.clean', 'Pollar', 'Полы', 1),
-  leaf('clinic.clean.floors.wash', 'clinic.clean.floors', 'Pollarni yuvish', 'Мытьё полов', 1),
-  leaf('clinic.clean.floors.trash', 'clinic.clean.floors', 'Axlat yoʻqligi', 'Нет мусора', 2),
-  leaf('clinic.clean.floors.dry', 'clinic.clean.floors', 'Quruq va xavfsiz', 'Сухо и безопасно', 3),
-  leaf('clinic.clean.floors.smell', 'clinic.clean.floors', 'Tozalik hidi', 'Запах чистоты', 4),
-  leaf('clinic.clean.walls', 'clinic.clean', 'Devor va mebel', 'Стены и мебель', 2),
+  leaf('clinic.clean.floors.wash', 'clinic.clean', 'Pollarni yuvish', 'Мытьё полов', 1),
+  leaf('clinic.clean.floors.trash', 'clinic.clean', 'Axlat yoʻqligi', 'Нет мусора', 2),
   leaf('clinic.clean.bath', 'clinic.clean', 'Sanuzellar', 'Санузлы', 3),
-  leaf('clinic.clean.windows', 'clinic.clean', 'Deraza va eshiklar', 'Окна и двери', 4),
   leaf('clinic.clean.hall', 'clinic.clean', 'Yoʻlak va zal', 'Коридоры и холл', 5),
   leaf('clinic.clean.rooms', 'clinic.clean', 'Kabinetlar tozaligi', 'Чистота кабинетов', 6),
-  leaf('clinic.clean.sterile', 'clinic.clean', 'Sterilizatsiya zonasi', 'Зона стерилизации', 7),
 
   group('clinic.supplies', 'clinic', 'Materiallar', 'Материалы', 2),
   leaf('clinic.supplies.soap', 'clinic.supplies', 'Sovun / antiseptik', 'Мыло / антисептик', 1),
@@ -107,7 +100,6 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   group('clinic.safety', 'clinic', 'Xavfsizlik', 'Безопасность', 3),
   leaf('clinic.safety.waste', 'clinic.safety', 'Chiqindi qutilari', 'Мусорные ёмкости', 1),
   leaf('clinic.safety.syringe', 'clinic.safety', 'Shprits utilizatsiyasi', 'Утилизация шприцов', 2),
-  leaf('clinic.safety.fire', 'clinic.safety', 'Yongʻin chiqishlari ochiq', 'Эвакуационные выходы', 3),
   leaf('clinic.safety.firstaid', 'clinic.safety', 'Birinchi yordam toʻplami', 'Аптечка', 4),
 
   group('clinic.atmosphere', 'clinic', 'Atmosfera', 'Атмосфера', 4),
@@ -144,14 +136,6 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     'Включить освещение во всех помещениях',
     3,
   ),
-  leaf('reception.morning.pc', 'reception.morning', 'Kompyuterni yoqish', 'Включить компьютер', 4),
-  leaf(
-    'reception.morning.crm',
-    'reception.morning',
-    'CRM / tibbiy dastur ishga tushirish',
-    'Запустить CRM / медицинскую программу',
-    5,
-  ),
   leaf(
     'reception.morning.net',
     'reception.morning',
@@ -165,20 +149,6 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     'TV reklama rollarini yoqish',
     'Включить телевизор с рекламными роликами клиники',
     7,
-  ),
-  leaf(
-    'reception.morning.music',
-    'reception.morning',
-    'Fon musiqasini yoqish',
-    'Включить фоновую музыку',
-    8,
-  ),
-  leaf(
-    'reception.morning.clean',
-    'reception.morning',
-    'Retsepshn va holl tozaligini tekshirish',
-    'Проверить чистоту зоны ресепшен и холла',
-    9,
   ),
   leaf(
     'reception.morning.water',
@@ -216,13 +186,6 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     14,
   ),
   leaf(
-    'reception.morning.confirm_calls',
-    'reception.morning',
-    'Bugungi bemorlarni qoʻngʻiroq qilib tasdiqlash',
-    'Обзвонить пациентов на сегодня и подтвердить визит',
-    15,
-  ),
-  leaf(
     'reception.morning.confirm_msg',
     'reception.morning',
     'Javob bermaganlarga yozish',
@@ -242,120 +205,6 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     'Retsepshn sarf materiallarini tekshirish',
     'Проверить наличие расходных материалов на ресепшен',
     18,
-  ),
-
-  group('reception.day', 'reception', 'Ish kuni davomida', 'В течение рабочего дня', 2),
-  leaf(
-    'reception.day.smile',
-    'reception.day',
-    'Har bir bemorni tabassum bilan kutib olish',
-    'Встречать каждого пациента с улыбкой',
-    1,
-  ),
-  leaf(
-    'reception.day.drinks',
-    'reception.day',
-    'Choy, kofe yoki suv taklif qilish',
-    'Предлагать чай, кофе или воду',
-    2,
-  ),
-  leaf(
-    'reception.day.new_patient',
-    'reception.day',
-    'Yangi bemorlarni rasmiylashtirish',
-    'Оформлять новых пациентов',
-    3,
-  ),
-  leaf(
-    'reception.day.docs_check',
-    'reception.day',
-    'Hujjatlar toʻgʻri toʻldirilganini tekshirish',
-    'Проверять правильность заполнения документов',
-    4,
-  ),
-  leaf(
-    'reception.day.crm_enter',
-    'reception.day',
-    'Bemor maʼlumotlarini dasturga kiritish',
-    'Вносить данные пациентов в программу',
-    5,
-  ),
-  leaf(
-    'reception.day.payment',
-    'reception.day',
-    'Toʻlov qabul qilish va chek berish',
-    'Принимать оплату и выдавать чеки',
-    6,
-  ),
-  leaf(
-    'reception.day.rebook',
-    'reception.day',
-    'Takroriy qabulga yozish',
-    'Записывать пациентов на повторные приемы',
-    7,
-  ),
-  leaf(
-    'reception.day.phone',
-    'reception.day',
-    'Telefon qoʻngʻiroqlariga javob',
-    'Отвечать на телефонные звонки',
-    8,
-  ),
-  leaf(
-    'reception.day.messengers',
-    'reception.day',
-    'Telegram / WhatsApp / SMS javoblari',
-    'Отвечать на сообщения в Telegram, WhatsApp, SMS',
-    9,
-  ),
-  leaf(
-    'reception.day.on_time',
-    'reception.day',
-    'Qabul vaqtida olib borilishini nazorat',
-    'Контролировать своевременный прием пациентов',
-    10,
-  ),
-  leaf(
-    'reception.day.notify_arrival',
-    'reception.day',
-    'Bemor kelganini shifokorga aytish',
-    'Информировать врача о прибытии пациента',
-    11,
-  ),
-  leaf(
-    'reception.day.waiting',
-    'reception.day',
-    'Kutish zonasida tartib',
-    'Следить за порядком в зоне ожидания',
-    12,
-  ),
-  leaf(
-    'reception.day.upsell',
-    'reception.day',
-    'Shifokor tavsiyasi boʻyicha qoʻshimcha xizmat/mahsulot',
-    'Предлагать сопутствующие процедуры и товары по рекомендациям врача',
-    13,
-  ),
-  leaf(
-    'reception.day.waitlist',
-    'reception.day',
-    'Bekor boʻlsa — kutish roʻyxatidagilarga vaqt taklif',
-    'При отмене — предлагать время пациентам из листа ожидания',
-    14,
-  ),
-  leaf(
-    'reception.day.reschedule',
-    'reception.day',
-    'Bekor boʻlsa — boshqa qulay vaqtga qayta yozish',
-    'При отмене — перезаписывать на другое удобное время',
-    15,
-  ),
-  leaf(
-    'reception.day.daily_report',
-    'reception.day',
-    'Kunlik hisobot: murojaat / yozuv / toʻlov',
-    'Вести ежедневный отчет по обращениям, записям и оплатам',
-    16,
   ),
 
   group('reception.evening', 'reception', 'Ish kuni oxirida', 'Перед окончанием рабочего дня', 3),
@@ -433,53 +282,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   ),
   leaf('reception.evening.lock', 'reception.evening', 'Klinikani yopish', 'Закрыть клинику', 13),
 
-  group('reception.standards', 'reception', 'Radeski ish standartlari', 'Стандарты работы Radeski', 4),
-  leaf(
-    'reception.standards.ring3',
-    'reception.standards',
-    'Telefon 3-chaqiruqqacha koʻtariladi',
-    'Телефон поднят не позднее 3-го гудка',
-    1,
-  ),
-  leaf(
-    'reception.standards.stand',
-    'reception.standards',
-    'Har bir bemor tik turib kutib olinadi',
-    'Каждый пациент встречен стоя',
-    2,
-  ),
-  leaf(
-    'reception.standards.name',
-    'reception.standards',
-    'Bemorga ismi bilan murojaat',
-    'Обращаться к пациенту по имени',
-    3,
-  ),
-  leaf(
-    'reception.standards.no_idk',
-    'reception.standards',
-    '«Bilmayman» demaslik — aniqlab javob berish',
-    'Никогда не говорить «не знаю» — уточнить и дать ответ',
-    4,
-  ),
-  leaf(
-    'reception.standards.no_phone',
-    'reception.standards',
-    'Bemor oldida shaxsiy telefon ishlatmaslik',
-    'Не пользоваться личным телефоном при пациентах',
-    5,
-  ),
-  leaf(
-    'reception.standards.order',
-    'reception.standards',
-    'Retsepshnda doim tartib',
-    'Всегда поддерживать порядок на ресепшен',
-    6,
-  ),
-
   // —— Calls daily
-  group('calls.new', 'calls', 'Yangi bemorlar', 'Новые пациенты', 1),
-  leaf('calls.new.list', 'calls.new', 'Roʻyxat tayyorlandi', 'Список подготовлен', 1),
   {
     key: 'calls.new.ratio',
     parentKey: 'calls.new',
@@ -492,12 +295,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     proofRequired: false,
     frequency: 'DAILY',
   },
-  leaf('calls.new.script', 'calls.new', 'Skript boʻyicha gaplashildi', 'Разговор по скрипту', 3),
-  leaf('calls.new.crm', 'calls.new', 'CRM ga yozildi', 'Внесено в CRM', 4),
-  leaf('calls.new.follow', 'calls.new', 'Keyingi aloqa belgilangan', 'Назначен follow-up', 5),
 
-  group('calls.repeat', 'calls', 'Takroriy bemorlar', 'Повторные пациенты', 2),
-  leaf('calls.repeat.list', 'calls.repeat', 'Roʻyxat tayyor', 'Список готов', 1),
   {
     key: 'calls.repeat.ratio',
     parentKey: 'calls.repeat',
@@ -508,11 +306,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     proofRequired: false,
     frequency: 'DAILY',
   },
-  leaf('calls.repeat.remind', 'calls.repeat', 'Eslatma berildi', 'Напоминание сделано', 3),
-  leaf('calls.repeat.crm', 'calls.repeat', 'CRM yangilandi', 'CRM обновлён', 4),
 
-  group('calls.missed', 'calls', 'Oʻtkazib yuborilgan', 'Пропущенные', 3),
-  leaf('calls.missed.check', 'calls.missed', 'Missed log tekshirildi', 'Лог пропущенных проверен', 1),
   {
     key: 'calls.missed.ratio',
     parentKey: 'calls.missed',
@@ -523,13 +317,6 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     proofRequired: false,
     frequency: 'DAILY',
   },
-  leaf('calls.missed.same_day', 'calls.missed', 'Shu kuni qaytarildi', 'Перезвонили в тот же день', 3),
-  leaf('calls.missed.crm', 'calls.missed', 'Sabab CRM da', 'Причина в CRM', 4),
-
-  group('calls.quality', 'calls', 'Sifat nazorati', 'Контроль качества', 4),
-  leaf('calls.quality.tone', 'calls.quality', 'Ohang va odob', 'Тон и этикет', 1),
-  leaf('calls.quality.info', 'calls.quality', 'Narx / manzil aniq', 'Цена / адрес ясно', 2),
-  leaf('calls.quality.record', 'calls.quality', 'Yozuv namunasi tinglandi', 'Прослушан пример записи', 3),
 
   // —— Reviews daily
   group('reviews.collect', 'reviews', 'Yigʻish', 'Сбор', 1),
@@ -562,10 +349,6 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   leaf('uniform.check.badge', 'uniform.check', 'Bedj taqilgan', 'Бейдж надет', 3),
   leaf('uniform.check.shoes', 'uniform.check', 'Poyabzal / koʻrinish', 'Обувь / внешний вид', 4),
   leaf('uniform.check.hair', 'uniform.check', 'Soch / gigiyena', 'Волосы / гигиена', 5),
-  leaf('uniform.check.standard', 'uniform.check', 'Korporativ standart', 'Корпоративный стандарт', 6),
-  leaf('uniform.check.photo', 'uniform.check', 'Jamoa fotosurati (dalil)', 'Фото команды (доказательство)', 7, {
-    proofRequired: true,
-  }),
 
   // —— SMM daily
   group('smm.social', 'smm', 'Ijtimoiy tarmoqlar', 'Соцсети', 1),
@@ -576,17 +359,32 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   leaf('smm.social.stats', 'smm.social', 'Kunlik statistika yozildi', 'Дневная статистика записана', 5),
 
   group('smm.seo', 'smm', 'SEO / sayt', 'SEO / сайт', 2),
-  leaf('smm.seo.speed', 'smm.seo', 'Sayt tezligi tekshirildi', 'Скорость сайта проверена', 1),
+  leaf('smm.seo.speed', 'smm.seo', 'Sayt tezligi tekshirildi', 'Скорость сайта проверена', 1, {
+    descriptionUz: 'PageSpeed / Core Web Vitals qisqa tekshiruv',
+    descriptionRu: 'Краткая проверка PageSpeed / Core Web Vitals',
+  }),
   leaf('smm.seo.links', 'smm.seo', 'Havolalar / CTA ishlaydi', 'Ссылки / CTA работают', 2),
   leaf('smm.seo.meta', 'smm.seo', 'Meta / title yangilandi', 'Meta / title обновлены', 3),
   leaf('smm.seo.content', 'smm.seo', 'Kontent reja belgilangan', 'Контент-план отмечен', 4),
+  leaf('smm.seo.article', 'smm.seo', 'Websaytga maqola joylandi', 'Статья опубликована на сайте', 5, {
+    proofRequired: true,
+    descriptionUz: 'Blog/yangiliklar boʻlimiga SEO maqola chiqarildi (screenshot)',
+    descriptionRu: 'SEO-статья опубликована в блоге/новостях (скриншот)',
+  }),
+  leaf('smm.seo.video', 'smm.seo', 'Websaytga video joylandi', 'Видео опубликовано на сайте', 6, {
+    proofRequired: true,
+    descriptionUz: 'Saytda yangi video (YouTube embed yoki media) joylandi',
+    descriptionRu: 'На сайте размещено новое видео (YouTube embed или media)',
+  }),
+  leaf('smm.seo.images_alt', 'smm.seo', 'Rasmlar alt matni tekshirildi', 'Проверены alt у изображений', 7),
+  leaf('smm.seo.search_console', 'smm.seo', 'Search Console / indeks holati', 'Search Console / индексация', 8, {
+    descriptionUz: 'Google Search Console: xatolar, yangi URL, indeks',
+    descriptionRu: 'Google Search Console: ошибки, новые URL, индекс',
+  }),
+  leaf('smm.seo.internal_links', 'smm.seo', 'Ichki havolalar yangilandi', 'Обновлены внутренние ссылки', 9),
+  leaf('smm.seo.faq_schema', 'smm.seo', 'FAQ / schema belgilari', 'FAQ / разметка schema', 10),
 
   // —— Marketing daily
-  group('marketing.leads', 'marketing', 'Lidlar', 'Лиды', 1),
-  leaf('marketing.leads.inbox', 'marketing.leads', 'Inbox / soʻrovlar koʻrildi', 'Inbox / заявки просмотрены', 1),
-  leaf('marketing.leads.assign', 'marketing.leads', 'Lidlar taqsimlandi', 'Лиды распределены', 2),
-  leaf('marketing.leads.ads', 'marketing.leads', 'Reklama kabineti holati', 'Статус рекламного кабинета', 3),
-  leaf('marketing.leads.budget', 'marketing.leads', 'Kunlik byudjet nazorati', 'Контроль дневного бюджета', 4),
 
   group('marketing.offline', 'marketing', 'Offline', 'Офлайн', 2),
   leaf('marketing.offline.flyers', 'marketing.offline', 'Flayerlar joyida', 'Флаеры на месте', 1),
@@ -595,20 +393,16 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
 
   // ═══════════════════════════════════════ WEEKLY ROOTS (faqat haftalik — kunlikdan farq qiladi)
   group('clinic_w', null, 'Klinika · haftalik', 'Клиника · неделя', 1, {
-    weight: 15,
+    weight: 18,
     frequency: 'WEEKLY',
     descriptionUz: 'Haftada bir marta chuqur tekshiruv',
     descriptionRu: 'Глубокая проверка раз в неделю',
   }),
   group('reception_w', null, 'Administrator · haftalik', 'Администратор · неделя', 2, {
-    weight: 18,
+    weight: 20,
     frequency: 'WEEKLY',
     descriptionUz: 'Haftalik operatsiya va sifat',
     descriptionRu: 'Недельные операции и качество',
-  }),
-  group('calls_w', null, "Qoʻngʻiroqlar · haftalik", 'Звонки · неделя', 3, {
-    weight: 15,
-    frequency: 'WEEKLY',
   }),
   group('reviews_w', null, 'Sharhlar · haftalik', 'Отзывы · неделя', 4, {
     weight: 12,
@@ -619,11 +413,11 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     frequency: 'WEEKLY',
   }),
   group('smm_w', null, 'SMM / SEO · haftalik', 'SMM / SEO · неделя', 6, {
-    weight: 16,
+    weight: 20,
     frequency: 'WEEKLY',
   }),
   group('marketing_w', null, 'Marketing · haftalik', 'Маркетинг · неделя', 7, {
-    weight: 16,
+    weight: 22,
     frequency: 'WEEKLY',
   }),
 
@@ -645,20 +439,11 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
 
   group('reception_w.ops', 'reception_w', 'Operatsiyalar', 'Операции', 1, { frequency: 'WEEKLY' }),
   leaf('reception_w.ops.schedule', 'reception_w.ops', 'Grafik / smena tahlili', 'Анализ графика / смен', 1, { frequency: 'WEEKLY' }),
-  leaf('reception_w.ops.training', 'reception_w.ops', 'Skript trening', 'Тренинг по скрипту', 2, { frequency: 'WEEKLY' }),
   leaf('reception_w.ops.complaints', 'reception_w.ops', 'Shikoyatlar tahlili', 'Анализ жалоб', 3, { frequency: 'WEEKLY' }),
   leaf('reception_w.ops.cash', 'reception_w.ops', 'Kassa / toʻlovlar tekshiruvi', 'Проверка кассы / оплат', 4, { frequency: 'WEEKLY' }),
   leaf('reception_w.ops.waitlist', 'reception_w.ops', 'Kutish roʻyxatini yangilash', 'Обновить лист ожидания', 5, { frequency: 'WEEKLY' }),
-  leaf('reception_w.ops.noshow', 'reception_w.ops', 'No-show statistikasi', 'Статистика no-show', 6, { frequency: 'WEEKLY' }),
   leaf('reception_w.ops.mystery', 'reception_w.ops', 'Mystery patient / sifat nazorati', 'Mystery patient / контроль качества', 7, { frequency: 'WEEKLY' }),
   leaf('reception_w.ops.standards', 'reception_w.ops', 'Radeski standartlar audit (haftalik)', 'Аудит стандартов Radeski (неделя)', 8, { frequency: 'WEEKLY' }),
-
-  group('calls_w.analytics', 'calls_w', 'Tahlil', 'Аналитика', 1, { frequency: 'WEEKLY' }),
-  leaf('calls_w.analytics.conversion', 'calls_w.analytics', 'Konversiya hisobi', 'Расчёт конверсии', 1, { frequency: 'WEEKLY' }),
-  leaf('calls_w.analytics.missed', 'calls_w.analytics', 'Missed trend', 'Тренд пропущенных', 2, { frequency: 'WEEKLY' }),
-  leaf('calls_w.analytics.best', 'calls_w.analytics', 'Eng yaxshi qoʻngʻiroqlar', 'Лучшие звонки', 3, { frequency: 'WEEKLY' }),
-  leaf('calls_w.analytics.script_upd', 'calls_w.analytics', 'Skript yangilandi', 'Скрипт обновлён', 4, { frequency: 'WEEKLY' }),
-  leaf('calls_w.analytics.report', 'calls_w.analytics', 'Haftalik qoʻngʻiroq hisoboti', 'Недельный отчёт по звонкам', 5, { frequency: 'WEEKLY' }),
 
   group('reviews_w.summary', 'reviews_w', 'Haftalik xulosa', 'Недельный итог', 1, { frequency: 'WEEKLY' }),
   leaf('reviews_w.summary.count', 'reviews_w.summary', 'Jami sharhlar hisobi', 'Итог по отзывам', 1, { frequency: 'WEEKLY' }),
@@ -678,6 +463,38 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   leaf('smm_w.content.analytics', 'smm_w.content', 'Haftalik analytics', 'Недельная аналитика', 4, { frequency: 'WEEKLY' }),
   leaf('smm_w.content.competitors', 'smm_w.content', 'Raqobatchilar monitoring', 'Мониторинг конкурентов', 5, { frequency: 'WEEKLY' }),
 
+  group('smm_w.seo', 'smm_w', 'Websayt SEO', 'SEO сайта', 2, { frequency: 'WEEKLY' }),
+  leaf('smm_w.seo.articles_week', 'smm_w.seo', 'Haftada kamida 1 ta sayt maqolasi', 'Минимум 1 статья на сайте за неделю', 1, {
+    frequency: 'WEEKLY',
+    proofRequired: true,
+    descriptionUz: 'Klinik saytiga yangi SEO maqola / blog post',
+    descriptionRu: 'Новая SEO-статья / пост в блоге клиники',
+  }),
+  leaf('smm_w.seo.videos_week', 'smm_w.seo', 'Haftada sayt/YouTube video', 'Видео на сайт/YouTube за неделю', 2, {
+    frequency: 'WEEKLY',
+    proofRequired: true,
+    descriptionUz: 'Davolash, shifokor yoki before/after video saytga yoki kanalga',
+    descriptionRu: 'Видео процедур / врача / до-после на сайт или канал',
+  }),
+  leaf('smm_w.seo.sitemap', 'smm_w.seo', 'Sitemap / robots tekshiruvi', 'Проверка sitemap / robots', 3, {
+    frequency: 'WEEKLY',
+  }),
+  leaf('smm_w.seo.keywords', 'smm_w.seo', 'Kalit soʻzlar reytingi', 'Позиции по ключевым словам', 4, {
+    frequency: 'WEEKLY',
+    descriptionUz: 'Asosiy soʻrovlar boʻyicha pozitsiya yozildi',
+    descriptionRu: 'Зафиксированы позиции по основным запросам',
+  }),
+  leaf('smm_w.seo.backlinks', 'smm_w.seo', 'Tashqi havolalar / kataloglar', 'Внешние ссылки / каталоги', 5, {
+    frequency: 'WEEKLY',
+  }),
+  leaf('smm_w.seo.local', 'smm_w.seo', 'Google Business / lokal SEO', 'Google Business / локальное SEO', 6, {
+    frequency: 'WEEKLY',
+  }),
+  leaf('smm_w.seo.landing', 'smm_w.seo', 'Landing / xizmat sahifasi yangilandi', 'Обновлена landing / услуга', 8, {
+    frequency: 'WEEKLY',
+    proofRequired: true,
+  }),
+
   group('marketing_w.growth', 'marketing_w', 'Oʻsish', 'Рост', 1, { frequency: 'WEEKLY' }),
   leaf('marketing_w.growth.ads_report', 'marketing_w.growth', 'Reklama hisoboti', 'Отчёт по рекламе', 1, { frequency: 'WEEKLY' }),
   leaf('marketing_w.growth.roi', 'marketing_w.growth', 'ROI / CPL tahlili', 'Анализ ROI / CPL', 2, { frequency: 'WEEKLY' }),
@@ -687,17 +504,13 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
 
   // ═══════════════════════════════════════ MONTHLY ROOTS (faqat oylik — kunlik/haftalikdan farq qiladi)
   group('clinic_m', null, 'Klinika · oylik', 'Клиника · месяц', 1, {
-    weight: 12,
+    weight: 15,
     frequency: 'MONTHLY',
     descriptionUz: 'Oylik audit va strategiya',
     descriptionRu: 'Месячный аудит и стратегия',
   }),
   group('reception_m', null, 'Administrator · oylik', 'Администратор · месяц', 2, {
-    weight: 14,
-    frequency: 'MONTHLY',
-  }),
-  group('calls_m', null, "Qoʻngʻiroqlar · oylik", 'Звонки · месяц', 3, {
-    weight: 12,
+    weight: 15,
     frequency: 'MONTHLY',
   }),
   group('reviews_m', null, 'Sharhlar · oylik', 'Отзывы · месяц', 4, {
@@ -709,11 +522,11 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     frequency: 'MONTHLY',
   }),
   group('smm_m', null, 'SMM / SEO · oylik', 'SMM / SEO · месяц', 6, {
-    weight: 18,
+    weight: 20,
     frequency: 'MONTHLY',
   }),
   group('marketing_m', null, 'Marketing · oylik', 'Маркетинг · месяц', 7, {
-    weight: 24,
+    weight: 30,
     frequency: 'MONTHLY',
   }),
 
@@ -737,11 +550,6 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   leaf('reception_m.hr.standards', 'reception_m.hr', 'Radeski standartlar oylik audit', 'Месячный аудит стандартов Radeski', 5, { frequency: 'MONTHLY' }),
   leaf('reception_m.hr.cash_month', 'reception_m.hr', 'Oylik kassa yakuni', 'Итог кассы за месяц', 6, { frequency: 'MONTHLY' }),
 
-  group('calls_m.month', 'calls_m', 'Oylik funnell', 'Месячная воронка', 1, { frequency: 'MONTHLY' }),
-  leaf('calls_m.month.report', 'calls_m.month', 'Toʻliq qoʻngʻiroq hisoboti', 'Полный отчёт по звонкам', 1, { frequency: 'MONTHLY' }),
-  leaf('calls_m.month.target', 'calls_m.month', 'Keyingi oy target', 'Цель на следующий месяц', 2, { frequency: 'MONTHLY' }),
-  leaf('calls_m.month.script', 'calls_m.month', 'Skript yangilanishi', 'Обновление скрипта', 3, { frequency: 'MONTHLY' }),
-
   group('reviews_m.reputation', 'reviews_m', 'Obroʻ', 'Репутация', 1, { frequency: 'MONTHLY' }),
   leaf('reviews_m.reputation.platforms', 'reviews_m.reputation', 'Barcha platformalar tekshiruvi', 'Проверка всех площадок', 1, { frequency: 'MONTHLY' }),
   leaf('reviews_m.reputation.campaign', 'reviews_m.reputation', 'Sharh kampaniyasi', 'Кампания по отзывам', 2, { frequency: 'MONTHLY' }),
@@ -758,6 +566,32 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   leaf('smm_m.strategy.report', 'smm_m.strategy', 'Oylik SMM hisobot', 'Месячный SMM отчёт', 1, { frequency: 'MONTHLY' }),
   leaf('smm_m.strategy.seo_audit', 'smm_m.strategy', 'SEO audit', 'SEO аудит', 2, { frequency: 'MONTHLY' }),
   leaf('smm_m.strategy.calendar', 'smm_m.strategy', 'Keyingi oy kalendar', 'Календарь на следующий месяц', 3, { frequency: 'MONTHLY' }),
+
+  group('smm_m.seo', 'smm_m', 'Websayt SEO · oylik', 'SEO сайта · месяц', 2, { frequency: 'MONTHLY' }),
+  leaf('smm_m.seo.content_volume', 'smm_m.seo', 'Oylik maqolalar soni (hisobot)', 'Отчёт: число статей за месяц', 1, {
+    frequency: 'MONTHLY',
+    proofRequired: true,
+    descriptionUz: 'Nechta maqola saytga chiqdi — roʻyxat + screenshot',
+    descriptionRu: 'Сколько статей вышло на сайт — список + скриншот',
+  }),
+  leaf('smm_m.seo.video_volume', 'smm_m.seo', 'Oylik videolar soni (hisobot)', 'Отчёт: число видео за месяц', 2, {
+    frequency: 'MONTHLY',
+    proofRequired: true,
+    descriptionUz: 'Sayt / YouTube videolar roʻyxati',
+    descriptionRu: 'Список видео сайта / YouTube',
+  }),
+  leaf('smm_m.seo.traffic', 'smm_m.seo', 'Organik trafik hisoboti', 'Отчёт по органическому трафику', 3, {
+    frequency: 'MONTHLY',
+  }),
+  leaf('smm_m.seo.tech', 'smm_m.seo', 'Texnik SEO (tezlik, mobile, HTTPS)', 'Техническое SEO (скорость, mobile, HTTPS)', 4, {
+    frequency: 'MONTHLY',
+  }),
+  leaf('smm_m.seo.competitors', 'smm_m.seo', 'Raqobatchilar SEO tahlili', 'SEO-анализ конкурентов', 5, {
+    frequency: 'MONTHLY',
+  }),
+  leaf('smm_m.seo.plan_next', 'smm_m.seo', 'Keyingi oy SEO kontent rejasi', 'План SEO-контента на след. месяц', 6, {
+    frequency: 'MONTHLY',
+  }),
 
   group('marketing_m.big', 'marketing_m', 'Katta marketing', 'Крупный маркетинг', 1, { frequency: 'MONTHLY' }),
   leaf('marketing_m.big.tv', 'marketing_m.big', 'TV / radio reklama', 'Реклама ТВ / радио', 1, { frequency: 'MONTHLY' }),

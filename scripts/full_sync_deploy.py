@@ -1,4 +1,8 @@
-"""Sync, rebuild api+web, migrate, restart."""
+"""Sync, rebuild api+web, migrate, restart.
+
+SSH password: set DEPLOY_SSH_PASSWORD (recommended). Fallback only for local ops.
+"""
+import os
 import paramiko
 import sys
 import tarfile
@@ -6,7 +10,11 @@ import tempfile
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-P = "qazxsw123@!"
+P = os.environ.get("DEPLOY_SSH_PASSWORD") or os.environ.get("KPI_DEPLOY_PASS")
+if not P:
+    # Legacy local fallback — rotate if repo is shared
+    P = "qazxsw123@!"
+    print("WARNING: using hardcoded SSH password; set DEPLOY_SSH_PASSWORD", file=sys.stderr)
 APP = "/home/admin_root/kpiradeski"
 S = f"echo '{P}' | sudo -S"
 ROOT = Path(__file__).resolve().parents[1]
@@ -60,14 +68,35 @@ if build_code != 0:
     sftp.close()
     c.close()
     raise SystemExit(1)
-run(f"{S} bash -lc '{compose} up -d api web'", t=300)
-run(f"{S} bash -lc '{compose} exec -T api npx prisma migrate deploy'", t=120)
+up_code, _ = run(f"{S} bash -lc '{compose} up -d api web'", t=300)
+if up_code != 0:
+    print("UP FAILED", up_code)
+    sftp.close()
+    c.close()
+    raise SystemExit(1)
+mig_code, mig_out = run(f"{S} bash -lc '{compose} exec -T api npx prisma migrate deploy'", t=120)
+if mig_code != 0 or "Error" in (mig_out or ""):
+    print("MIGRATE FAILED", mig_code)
+    sftp.close()
+    c.close()
+    raise SystemExit(1)
 run(f"{S} bash -lc '{compose} restart api web'", t=120)
-code, out = run("curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:13000/login")
-print("WEB LOGIN HTTP:", out.strip())
+import time
+out = "000"
+for _ in range(8):
+    time.sleep(4)
+    _, out = run("curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:13000/login")
+    out = (out or "").strip()
+    print("WEB LOGIN HTTP:", out)
+    if out in ("200", "301", "302", "307", "308"):
+        break
+if out not in ("200", "301", "302", "307", "308"):
+    print("HEALTH CHECK FAILED: login", out)
+    sftp.close()
+    c.close()
+    raise SystemExit(1)
 code2, out2 = run("curl -sf http://127.0.0.1:13000/api/kpi/ai-status")
 print("AI STATUS:", out2.strip()[:200])
-code3, out3 = run("curl -sf http://127.0.0.1:13000/api/positions -H 'Authorization: Bearer dummy' 2>/dev/null || echo need-auth")
 sftp.close()
 c.close()
 print("DEPLOY DONE")

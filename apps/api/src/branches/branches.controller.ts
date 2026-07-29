@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
 import { BranchesService } from './branches.service';
@@ -6,7 +6,7 @@ import { JwtAuthGuard, Roles, RolesGuard } from '../common/guards';
 import { CurrentUser } from '../common/decorators';
 
 class BranchDto {
-  @IsString() name: string;
+  @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() address?: string;
   @IsOptional() @IsBoolean() active?: boolean;
 }
@@ -44,7 +44,12 @@ export class BranchesController {
   @Post()
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   create(@Body() dto: BranchDto) {
-    return this.branches.create(dto);
+    if (!dto.name?.trim()) throw new BadRequestException('Filial nomi kerak');
+    return this.branches.create({
+      name: dto.name.trim(),
+      address: dto.address,
+      active: dto.active,
+    });
   }
 
   @Patch(':id')

@@ -17,6 +17,7 @@ import {
   Building2,
   Sparkles,
   Bot,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -45,6 +46,7 @@ const NAV: Array<{
   { href: '/branches', labelKey: 'nav.branches', icon: Building2, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { href: '/users', labelKey: 'nav.users', icon: Users, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { href: '/reports', labelKey: 'nav.reports', icon: FileBarChart, roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { href: '/settings', labelKey: 'nav.settings', icon: Settings, roles: ['ADMIN', 'SUPER_ADMIN', 'DIRECTOR'] },
   { href: '/notifications', labelKey: 'nav.notifications', icon: Bell },
   { href: '/account', labelKey: 'nav.account', icon: KeyRound },
 ];
@@ -55,12 +57,12 @@ function bottomTabsFor(role: Role, t: (k: string) => string) {
       { href: '/dashboard', label: t('nav.tabKpi'), icon: LayoutDashboard },
       { href: '/today', label: t('nav.tabToday'), icon: ClipboardList },
       { href: '/reports', label: t('nav.tabReport'), icon: FileBarChart },
-      { href: '/users', label: t('nav.users'), icon: Users },
+      { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
     ];
   }
   return [
     { href: '/today', label: t('nav.tabToday'), icon: ClipboardList },
-      { href: '/assistant', label: t('nav.assistant'), icon: Bot },
+    { href: '/assistant', label: t('nav.assistant'), icon: Bot },
     { href: '/notifications', label: t('nav.tabNotify'), icon: Bell },
     { href: '/account', label: t('nav.account'), icon: KeyRound },
   ];

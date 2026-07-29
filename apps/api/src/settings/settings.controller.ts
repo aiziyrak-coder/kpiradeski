@@ -1,6 +1,16 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { Role } from '@prisma/client';
-import { IsArray, IsInt, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { SettingsService } from './settings.service';
 import { JwtAuthGuard, Roles, RolesGuard } from '../common/guards';
@@ -41,6 +51,32 @@ class RestWeekdaysDto {
 class HolidayDto {
   @IsString() date: string;
   @IsString() title: string;
+}
+
+class WebsiteDto {
+  @IsOptional() @IsString() id?: string;
+  @IsString() name: string;
+  @IsString() url: string;
+  @IsOptional() @IsBoolean() enabled?: boolean;
+}
+
+class ChannelDto {
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  @IsOptional() @IsString() channelUrl?: string;
+  @IsOptional() @IsString() botUsername?: string;
+  @IsOptional() @IsString() username?: string;
+  @IsOptional() @IsString() profileUrl?: string;
+  @IsOptional() @IsString() notes?: string;
+}
+
+class IntegrationsDto {
+  @IsOptional() @ValidateNested() @Type(() => ChannelDto) telegram?: ChannelDto;
+  @IsOptional() @ValidateNested() @Type(() => ChannelDto) instagram?: ChannelDto;
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => WebsiteDto)
+  websites?: WebsiteDto[];
 }
 
 @Controller('settings')
@@ -118,5 +154,30 @@ export class SettingsController {
   @Roles(Role.SUPER_ADMIN, Role.MANAGER)
   deleteProduct(@Param('id') id: string) {
     return this.settings.deleteProduct(id);
+  }
+
+  @Get('integrations')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.DIRECTOR)
+  getIntegrations() {
+    return this.settings.getIntegrations();
+  }
+
+  @Put('integrations')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  updateIntegrations(@Body() dto: IntegrationsDto) {
+    return this.settings.updateIntegrations(dto as any);
+  }
+
+  @Post('integrations/ai-audit')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  runIntegrationsAudit() {
+    return this.settings.runIntegrationsAiAudit('manual');
+  }
+
+  @Get('integrations/ai-audit')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.DIRECTOR)
+  async lastIntegrationsAudit() {
+    const data = await this.settings.getIntegrations();
+    return data.lastAudit;
   }
 }

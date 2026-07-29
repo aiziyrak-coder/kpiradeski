@@ -233,7 +233,7 @@ export class StaffService implements OnModuleInit {
 
   /**
    * Xodimga bitta kunlik vazifa biriktirish (nom + izoh).
-   * recurring=true (default) — har ish kuni 06:00 da avtomatik ochiladi.
+   * recurring=true (default) — har ish kuni 08:00 da avtomatik ochiladi.
    */
   async assignDailyTask(
     managerId: string,
@@ -318,7 +318,7 @@ export class StaffService implements OnModuleInit {
         userId: data.userId,
         title: 'Yangi kunlik vazifa',
         message: recurring
-          ? `«${title}» — har ish kunida 06:00 da ochiladi.`
+          ? `«${title}» — har ish kunida 08:00 da ochiladi.`
           : `«${title}» — faqat bugun (${day.date}).`,
         type: 'REMINDER',
       },
@@ -340,8 +340,9 @@ export class StaffService implements OnModuleInit {
 
     await this.telegram.notify(
       'Kunlik vazifa biriktirildi',
-      `${assignee.name} → ${pos.nameUz}\n«${title}»${recurring ? ' (har ish kuni)' : ' (bugun)'}`,
+      `${assignee.name} → ${pos.nameUz}\n«${title}»${recurring ? ' (har ish kuni)' : ' (bugun)'}\n\nXodim /my orqali koʻradi.`,
       '📋',
+      { category: 'Topshiriq' },
     );
 
     return {
@@ -454,9 +455,9 @@ export class StaffService implements OnModuleInit {
     await this.notifications.createForRoles(
       ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN'],
       'Yangi isbot tekshiruvda',
-      `${employeeName}: «${taskTitle}» — Jamoa KPI dan tasdiqlang.`,
+      `${employeeName}: «${taskTitle}»\nPlatforma → Jamoa KPI dan tasdiqlang.`,
       'REMINDER',
-      { emoji: '📎', telegram: true },
+      { emoji: '📎', telegram: true, category: 'Tekshiruv' },
     );
   }
 
@@ -478,7 +479,7 @@ export class StaffService implements OnModuleInit {
     const me = await this.prisma.user.findUnique({ where: { id: requesterId } });
     const can =
       proof.task.userId === requesterId ||
-      (me && ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN'].includes(me.role));
+      (me && ['ADMIN', 'MANAGER', 'DIRECTOR', 'SUPER_ADMIN'].includes(me.role));
     if (!can) throw new ForbiddenException();
     const full = this.getProofAbsolutePath(proof.path);
     if (!fs.existsSync(full)) throw new NotFoundException('Fayl topilmadi');
@@ -558,7 +559,7 @@ export class StaffService implements OnModuleInit {
    * Xodimga vazifa biriktirish:
    * - lavozimni yangilash (ixtiyoriy)
    * - shablon(lar) yoki qoʻlda vazifa
-   * - recurring=true → lavozim shabloniga qoʻshiladi (har kuni 06:00)
+   * - recurring=true → lavozim shabloniga qoʻshiladi (har kuni 08:00)
    */
   async assignTasks(
     managerId: string,
@@ -690,9 +691,10 @@ export class StaffService implements OnModuleInit {
       });
 
       await this.telegram.notify(
-        'Vazifa biriktirildi',
-        `${assignee.name} (${posRow.nameUz}): ${created.map((t) => t.title).join(', ')}`,
+        'Vazifalar biriktirildi',
+        `${assignee.name} (${posRow.nameUz})\n${created.map((t) => `• ${t.title}`).join('\n')}`,
         '📋',
+        { category: 'Topshiriq' },
       );
     }
 
@@ -1214,19 +1216,20 @@ export class StaffService implements OnModuleInit {
     return rows.map((r) => mapUserWithPosition(r));
   }
 
-  /** Har kuni 06:00 — ish kuni boʻlsa kunlik vazifalar ochiladi */
-  @Cron('0 6 * * *', { timeZone: BUSINESS_TZ })
+  /** Har kuni 08:00 — ish kuni boʻlsa kunlik vazifalar ochiladi */
+  @Cron('0 8 * * *', { timeZone: BUSINESS_TZ })
   async morningTaskSpawn() {
     const day = await this.calendar.getDayInfo();
     if (day.restDay) {
       await this.telegram.notify(
         'Dam olish kuni',
-        `${day.date}: vazifalar ochilmaydi (${day.holiday?.title || day.weekdayLabel}). Hisoblanmaydi.`,
+        `${day.date}: vazifalar ochilmaydi (${day.holiday?.title || day.weekdayLabel}).`,
         '🌴',
+        { category: '08:00', buttons: false },
       );
       return;
     }
-    const { staff, created } = await this.spawnAllToday('06:00-day-rollover');
+    const { staff, created } = await this.spawnAllToday('08:00-day-rollover');
     const people = await this.activeStaff();
     for (const s of people) {
       const tasks = await this.prisma.dailyTask.findMany({
@@ -1244,9 +1247,10 @@ export class StaffService implements OnModuleInit {
       });
     }
     await this.telegram.notify(
-      'Ish kuni boshlandi (06:00)',
-      `${staff} xodim · kunlik vazifalar ochildi · yangi: ${created}`,
+      'Ish kuni boshlandi',
+      `${staff} xodim · yangi: ${created}\nEslatma 09:00–22:00 · AI 19:00`,
       '☀️',
+      { category: '08:00', meta: [day.date], buttons: false },
     );
   }
 
@@ -1256,7 +1260,7 @@ export class StaffService implements OnModuleInit {
     await this.runAiDailyMonitor('19:00-cron');
   }
 
-  async runAiDailyMonitor(reason = 'manual') {
+  async runAiDailyMonitor(reason = 'manual', opts?: { skipTelegram?: boolean }) {
     const day = await this.calendar.getDayInfo();
     if (day.restDay) {
       return {
@@ -1292,27 +1296,42 @@ export class StaffService implements OnModuleInit {
       )
       .join('\n');
 
-    const fallback = [
-      `Kundalik nazorat — ${day.date}`,
-      raw || 'Xodim yoʻq',
-      '',
-      'Qolgan vazifalarni ertaga ertalab tekshiring.',
-    ].join('\n');
+    const prompt = `Siz Radeski Skin Clinic operatsion AI sisiz.
+Bugungi jamoa holatini juda qisqa oʻzbekcha yozing (maks 6 qator).
+Format:
+1) 1 jumla umumiy baho
+2) kim ortda (nomlar)
+3) 2 ta aniq buyruq
+Ma'lumot:\n${raw || 'Maʼlumot yoʻq'}`;
 
     const ai =
-      (await openaiChat(
-        `Siz klinika KPI nazoratchisisiz. Quyidagi bugungi xodimlar bajarilishini o'zbekcha qisqa (5-8 jumla) tahlil qiling: kim yaxshi, kim kechikmoqda, nima qilish kerak.\n\n${raw || "Ma'lumot yo'q"}`,
-      )) || fallback;
+      (await openaiChat(prompt, {
+        system:
+          'Qisqa, aniq oʻzbekcha. Emoji kam. Jadval/roʻyxatni choʻzmang.',
+        maxTokens: 450,
+        temperature: 0.3,
+      })) ||
+      raw ||
+      'Bugun tahlil uchun maʼlumot yetarli emas.';
 
+    // In-app bildirishnoma — Telegram faqat bir marta (pastda yoki chaqiruvchi yuboradi)
     await this.notifications.createForRoles(
       ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN'],
       `AI kunlik nazorat — ${day.date}`,
-      ai.slice(0, 900),
+      ai.slice(0, 600),
       'AI_REPORT',
-      { emoji: '🤖' },
+      { emoji: '🤖', telegram: false },
     );
 
-    await this.telegram.notify(`AI kunlik nazorat (${day.date})`, ai.slice(0, 3500), '🤖');
+    if (!opts?.skipTelegram) {
+      await this.telegram.notify(
+        `AI baho · ${day.date}`,
+        ai.slice(0, 1200),
+        '🤖',
+        { category: '19:00', meta: [`${lines.length} xodim`], buttons: false },
+      );
+    }
+
     this.logger.log(`AI daily monitor (${reason}) done`);
     return { restDay: false, date: day.date, report: ai, members: lines.length };
   }
@@ -1343,22 +1362,16 @@ export class StaffService implements OnModuleInit {
       });
     }
     if (byUser.size) {
-      await this.telegram.notify(
-        'Tushlik (12:00)',
-        `${byUser.size} xodimda bajarilmagan vazifa bor.`,
-        '🕐',
-      );
+      // Telegram: soatlik pulse (09–22) qamrab oladi — guruhni toʻldirmaymiz
+      this.logger.log(`Midday nudge: ${byUser.size} staff with pending tasks`);
     }
   }
 
-  /** 17:00 — kechki shaxsiy vazifa ogohlantirishi */
+  /** 17:00 — kechki shaxsiy vazifa ogohlantirishi (faqat ilova, Telegram yoʻq) */
   @Cron('0 17 * * *', { timeZone: BUSINESS_TZ })
   async eveningStaffIncomplete() {
     if (await this.calendar.isRestDay()) return;
-    const text = await this.incompleteDigestText();
-    if (!text.includes('toʻliq') && !text.includes("to'liq")) {
-      await this.telegram.notify('Kechki xodim vazifalari (17:00)', text.replace(/<\/?b>/g, ''), '⏰');
-    }
+    // Telegram soatlik pulse yetarli — guruhga yana uzun roʻyxat yubormaymiz
     const date = toDateOnly();
     const pending = await this.prisma.dailyTask.findMany({
       where: { date, status: { in: [TaskStatus.PENDING, TaskStatus.REJECTED] } },
@@ -1394,9 +1407,9 @@ export class StaffService implements OnModuleInit {
     await this.notifications.createForRoles(
       ['MANAGER', 'DIRECTOR', 'SUPER_ADMIN'],
       'Tekshiruv navbati',
-      `Bugun ${waiting} ta isbot tasdiq kutmoqda. Jamoa KPI → Tasdiqlash.`,
+      `Bugun ${waiting} ta isbot tasdiq kutmoqda.`,
       'REMINDER',
-      { emoji: '✅' },
+      { emoji: '✅', telegram: true },
     );
   }
 
@@ -1488,13 +1501,13 @@ export class StaffService implements OnModuleInit {
   automationStatus() {
     return {
       timezone: BUSINESS_TZ,
-      dayRollover: '06:00',
+      dayRollover: '08:00',
       aiMonitor: '19:00',
       schedule: [
-        '06:00 — ish kuni: kunlik vazifalar ochiladi',
+        '08:00 — ish kuni: kunlik vazifalar ochiladi',
         'Dam olish kunlari — vazifa yoʻq, hisoblanmaydi',
-        '12:00 / 17:00 / 18:00 — eslatmalar (faqat ish kuni)',
-        '19:00 — AI kunlik nazorat (xodimlar boʻyicha)',
+        '09:00–22:00 — soatlik qisqa eslatma (Telegram)',
+        '19:00 — AI kunlik nazorat',
         'Har 2 soat — 24 soatlik isbotlarni avto-tasdiq',
         'Oy 1-kun 10:00 — oylik 100 ballik KPI + AI',
       ],
