@@ -182,7 +182,7 @@ export class ManagerKpiController {
   @UseInterceptors(
     FilesInterceptor('files', 8, {
       storage: memoryStorage(),
-      limits: { fileSize: 8 * 1024 * 1024 },
+      limits: { fileSize: 16 * 1024 * 1024 },
     }),
   )
   async proof(

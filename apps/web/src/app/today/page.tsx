@@ -8,7 +8,8 @@ import { useToast } from '@/components/Toast';
 import { useI18n } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import { api, getToken } from '@/lib/api';
-import { fetchProof, fetchProofUrl, getCachedProofUrl } from '@/lib/proof-cache';
+import { compressImageFile } from '@/lib/image-compress';
+import { fetchProof } from '@/lib/proof-cache';
 import { todayISO, weekStartISO } from '@/types';
 import { cn } from '@/lib/utils';
 import { Check, ChevronDown, ChevronRight, MessageSquare, Search, Upload, X } from 'lucide-react';
@@ -267,55 +268,28 @@ function SavedProofThumbs({
   onOpen: (id: string) => void;
 }) {
   const list = proofs || [];
-  const idsKey = list.map((p) => p.id).join(',');
-  const [urls, setUrls] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const next: Record<string, string> = {};
-      for (const p of list.slice(0, 8)) {
-        if (!p.mimeType?.startsWith('image/')) continue;
-        const cached = getCachedProofUrl(p.id);
-        if (cached) {
-          next[p.id] = cached;
-          continue;
-        }
-        const url = await fetchProofUrl(p.id);
-        if (url) next[p.id] = url;
-        if (cancelled) return;
-        setUrls((prev) => ({ ...prev, ...next }));
-      }
-      if (!cancelled) setUrls((prev) => ({ ...prev, ...next }));
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idsKey]);
-
+  // Miniatyuralarni avtomatik yuklamaymiz — screenshot/yuklashdan keyin
+  // soʻrov portlashi (429) ni oldini oladi. Bosilganda toʻliq ochiladi.
   if (!list.length) return null;
   return (
     <div className="flex flex-wrap gap-1.5 mt-1.5">
       {list.map((p) => {
-        const url = urls[p.id] || getCachedProofUrl(p.id);
         const isImg = p.mimeType?.startsWith('image/');
+        const ext =
+          (p.fileName.split('.').pop() || (isImg ? 'IMG' : 'FILE')).toUpperCase().slice(0, 4);
         return (
           <button
             key={p.id}
             type="button"
             onClick={() => onOpen(p.id)}
-            className="relative w-14 h-14 sm:w-12 sm:h-12 rounded-lg border border-teal-200 bg-white overflow-hidden active:ring-2 active:ring-teal-400 touch-manipulation"
+            className="relative w-14 h-14 sm:w-12 sm:h-12 rounded-lg border border-teal-200 bg-teal-50 overflow-hidden active:ring-2 active:ring-teal-400 touch-manipulation grid place-items-center"
             title={p.fileName}
           >
-            {url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={url} alt={p.fileName} className="w-full h-full object-cover" />
-            ) : (
-              <span className="w-full h-full grid place-items-center text-[8px] font-semibold text-teal-800 px-0.5">
-                {isImg ? '…' : p.fileName.split('.').pop()?.toUpperCase() || 'FILE'}
-              </span>
-            )}
+            <span className="text-[9px] font-bold text-teal-900 px-0.5 text-center leading-tight">
+              {isImg ? '📷' : '📄'}
+              <br />
+              {ext}
+            </span>
           </button>
         );
       })}
@@ -371,18 +345,29 @@ export default function TodayPage() {
     proofRequired: false,
   });
 
-  function addFiles(rowKey: string, list: FileList | null) {
+  async function addFiles(rowKey: string, list: FileList | null) {
     if (!list?.length) return;
-    setFiles((prev) => {
-      const cur = prev[rowKey] || [];
-      const next = [...cur];
-      for (const f of Array.from(list)) {
-        if (next.length >= 8) break;
-        if (next.some((x) => x.name === f.name && x.size === f.size)) continue;
-        next.push(f);
+    const incoming = Array.from(list);
+    try {
+      const prepared: File[] = [];
+      for (const f of incoming) {
+        if (prepared.length >= 8) break;
+        const out = await compressImageFile(f);
+        prepared.push(out);
       }
-      return { ...prev, [rowKey]: next };
-    });
+      setFiles((prev) => {
+        const cur = prev[rowKey] || [];
+        const next = [...cur];
+        for (const f of prepared) {
+          if (next.length >= 8) break;
+          if (next.some((x) => x.name === f.name && x.size === f.size)) continue;
+          next.push(f);
+        }
+        return { ...prev, [rowKey]: next };
+      });
+    } catch (e: any) {
+      toast.error(e?.message || t('common.error'));
+    }
   }
 
   function removeFile(rowKey: string, idx: number) {
@@ -560,7 +545,8 @@ export default function TodayPage() {
             ? data.message.join(', ')
             : data.message || t('common.error');
           throw new Error(msg);
-        }        if (data.aiStatus === 'REJECTED') toast.error(data.aiNote || t('today.statusRejected'));
+        }
+        if (data.aiStatus === 'REJECTED') toast.error(data.aiNote || t('today.statusRejected'));
         else if (data.aiStatus === 'APPROVED') toast.success(data.aiNote || t('today.proofOk'));
         else toast.success(t('today.submittedOk'));
         if (data.aiCoach?.summary) setAiCoach(data.aiCoach);

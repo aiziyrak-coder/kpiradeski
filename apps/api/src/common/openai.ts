@@ -380,8 +380,26 @@ export async function openaiVisionProof(opts: {
     };
   }
 
+  // Katta screenshot base64 OpenAI ni qotirish / timeout → 429 zanjiri
+  const MAX_B64 = 2_800_000; // ~2MB binary
+  const visionImages = images
+    .filter((i) => i.base64.length <= MAX_B64)
+    .slice(0, 4);
+
+  if (!visionImages.length) {
+    return {
+      approved: true,
+      note: 'Rasm qabul qilindi (hajmi katta — AI qisqa tekshiruv)',
+      feedback:
+        'Screenshot/rasm juda katta edi. Yuklash muvaffaqiyatli; sifatni admin koʻrib chiqishi mumkin.',
+      action: 'NONE',
+      penalty: 0,
+      score: 80,
+    };
+  }
+
   const model = chatModel();
-  const imageParts = images.slice(0, 6).map((img) => ({
+  const imageParts = visionImages.map((img) => ({
     type: 'image_url' as const,
     image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
   }));
@@ -408,7 +426,7 @@ export async function openaiVisionProof(opts: {
 Tavsif: ${opts.description || '—'}
 Chastota: ${opts.frequency || 'DAILY'}
 Menejer izohi: ${opts.managerNote || '—'}
-Rasm soni: ${images.length}
+Rasm soni: ${visionImages.length}
 Dalil(lar)ni baholang. Shubhada — TASDIQLANG.`,
               },
               ...imageParts,
