@@ -1198,12 +1198,6 @@ export class ManagerKpiService implements OnModuleInit {
     }> = [];
 
     for (const file of files) {
-      const mime = String(file.mimetype || '').toLowerCase();
-      if (!ALLOWED_MIME.has(mime) || mime === 'image/svg+xml') {
-        throw new BadRequestException(
-          'Ruxsat etilmagan fayl turi — faqat rasm (JPEG/PNG/WebP/GIF) yoki PDF/DOC/XLS',
-        );
-      }
       const buf = file.buffer;
       const isJpeg = buf.length > 2 && buf[0] === 0xff && buf[1] === 0xd8;
       const isPng =
@@ -1230,6 +1224,42 @@ export class ManagerKpiService implements OnModuleInit {
         buf[1] === 0x50 &&
         buf[2] === 0x44 &&
         buf[3] === 0x46;
+      const isHeic =
+        buf.length > 12 &&
+        buf[4] === 0x66 &&
+        buf[5] === 0x74 &&
+        buf[6] === 0x79 &&
+        buf[7] === 0x70 &&
+        ((buf[8] === 0x68 && buf[9] === 0x65 && buf[10] === 0x69) ||
+          (buf[8] === 0x6d && buf[9] === 0x69 && buf[10] === 0x66));
+
+      let mime = String(file.mimetype || '').toLowerCase().trim();
+      // iPhone baʼzan boʻsh yoki notoʻgʻri MIME yuboradi — magic bytes bilan aniqlaymiz
+      if (!mime || mime === 'application/octet-stream') {
+        if (isJpeg) mime = 'image/jpeg';
+        else if (isPng) mime = 'image/png';
+        else if (isGif) mime = 'image/gif';
+        else if (isWebp) mime = 'image/webp';
+        else if (isPdf) mime = 'application/pdf';
+        else if (/\.jpe?g$/i.test(file.originalname)) mime = 'image/jpeg';
+        else if (/\.png$/i.test(file.originalname)) mime = 'image/png';
+        else if (/\.webp$/i.test(file.originalname)) mime = 'image/webp';
+        else if (/\.gif$/i.test(file.originalname)) mime = 'image/gif';
+        else if (/\.pdf$/i.test(file.originalname)) mime = 'application/pdf';
+      }
+      if (mime === 'image/jpg') mime = 'image/jpeg';
+
+      if (isHeic || mime === 'image/heic' || mime === 'image/heif') {
+        throw new BadRequestException(
+          'iPhone HEIC format qoʻllab-quvvatlanmaydi. Sozlamalar → Kamera → Formatlar → «Eng mos» (JPEG) qiling yoki JPEG/PNG yuboring.',
+        );
+      }
+
+      if (!ALLOWED_MIME.has(mime) || mime === 'image/svg+xml') {
+        throw new BadRequestException(
+          'Ruxsat etilmagan fayl turi — faqat rasm (JPEG/PNG/WebP/GIF) yoki PDF/DOC/XLS',
+        );
+      }
       const claimsImage = mime.startsWith('image/');
       if (claimsImage && !(isJpeg || isPng || isGif || isWebp)) {
         throw new BadRequestException('Fayl rasm emas yoki buzilgan');

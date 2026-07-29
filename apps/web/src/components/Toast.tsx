@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useState, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useRef, useState, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
@@ -22,26 +22,45 @@ interface ToastApi {
 
 const ToastContext = createContext<ToastApi | null>(null);
 
+const MAX_TOASTS = 3;
+const DEDUPE_MS = 3500;
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
+  const lastErrorRef = useRef<{ key: string; at: number }>({ key: '', at: 0 });
 
   const push = useCallback((kind: ToastKind, title: string, message?: string) => {
+    if (kind === 'error') {
+      const key = `${title}|${message || ''}`;
+      const now = Date.now();
+      if (key === lastErrorRef.current.key && now - lastErrorRef.current.at < DEDUPE_MS) {
+        return;
+      }
+      lastErrorRef.current = { key, at: now };
+    }
+
     const id = `${Date.now()}-${Math.random()}`;
-    setItems((prev) => [...prev, { id, kind, title, message }]);
+    setItems((prev) => {
+      const next = [...prev, { id, kind, title, message }];
+      return next.slice(-MAX_TOASTS);
+    });
     setTimeout(() => setItems((prev) => prev.filter((t) => t.id !== id)), 4200);
   }, []);
 
-  const api: ToastApi = {
-    push,
-    success: (t, m) => push('success', t, m),
-    error: (t, m) => push('error', t, m),
-    info: (t, m) => push('info', t, m),
-  };
+  const api = useMemo<ToastApi>(
+    () => ({
+      push,
+      success: (t, m) => push('success', t, m),
+      error: (t, m) => push('error', t, m),
+      info: (t, m) => push('info', t, m),
+    }),
+    [push],
+  );
 
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 w-[min(100%-2rem,360px)]">
+      <div className="fixed bottom-20 sm:bottom-4 inset-x-3 sm:inset-x-auto sm:right-4 z-[100] flex flex-col gap-2 w-auto sm:w-[min(100%-2rem,360px)] pointer-events-none">
         <AnimatePresence>
           {items.map((t) => (
             <motion.div
@@ -50,7 +69,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8 }}
               className={cn(
-                'rounded-2xl border px-4 py-3 shadow-glow bg-white/95 backdrop-blur',
+                'pointer-events-auto rounded-2xl border px-4 py-3 shadow-glow bg-white/95 backdrop-blur',
                 t.kind === 'success' && 'border-emerald-200',
                 t.kind === 'error' && 'border-rose-200',
                 t.kind === 'info' && 'border-teal-200',

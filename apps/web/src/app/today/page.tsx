@@ -8,6 +8,7 @@ import { useToast } from '@/components/Toast';
 import { useI18n } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import { api, getToken } from '@/lib/api';
+import { fetchProof, fetchProofUrl, getCachedProofUrl } from '@/lib/proof-cache';
 import { todayISO, weekStartISO } from '@/types';
 import { cn } from '@/lib/utils';
 import { Check, ChevronDown, ChevronRight, MessageSquare, Search, Upload, X } from 'lucide-react';
@@ -211,6 +212,117 @@ function collectLeaves(n: TreeNode): string[] {
   return n.children.flatMap(collectLeaves);
 }
 
+function FileThumbs({
+  files,
+  onRemove,
+}: {
+  files: File[];
+  onRemove: (idx: number) => void;
+}) {
+  if (!files.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {files.map((f, i) => {
+        const isImg = f.type.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(f.name);
+        const url = isImg ? URL.createObjectURL(f) : null;
+        return (
+          <div
+            key={`${f.name}-${f.size}-${i}`}
+            className="relative w-14 h-14 rounded-lg border border-teal-200 bg-sand-50 overflow-hidden"
+            title={f.name}
+          >
+            {url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={url}
+                alt={f.name}
+                className="w-full h-full object-cover"
+                onLoad={() => URL.revokeObjectURL(url)}
+              />
+            ) : (
+              <div className="w-full h-full grid place-items-center text-[9px] font-semibold text-ink-muted px-0.5 text-center leading-tight">
+                {f.name.split('.').pop()?.toUpperCase() || 'FILE'}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => onRemove(i)}
+              className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/60 text-white grid place-items-center"
+              aria-label="remove"
+            >
+              <X className="w-2.5 h-2.5" />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SavedProofThumbs({
+  proofs,
+  onOpen,
+}: {
+  proofs?: Array<{ id: string; fileName: string; mimeType: string }>;
+  onOpen: (id: string) => void;
+}) {
+  const list = proofs || [];
+  const idsKey = list.map((p) => p.id).join(',');
+  const [urls, setUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const next: Record<string, string> = {};
+      for (const p of list.slice(0, 8)) {
+        if (!p.mimeType?.startsWith('image/')) continue;
+        const cached = getCachedProofUrl(p.id);
+        if (cached) {
+          next[p.id] = cached;
+          continue;
+        }
+        const url = await fetchProofUrl(p.id);
+        if (url) next[p.id] = url;
+        if (cancelled) return;
+        setUrls((prev) => ({ ...prev, ...next }));
+      }
+      if (!cancelled) setUrls((prev) => ({ ...prev, ...next }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
+
+  if (!list.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-1.5">
+      {list.map((p) => {
+        const url = urls[p.id] || getCachedProofUrl(p.id);
+        const isImg = p.mimeType?.startsWith('image/');
+        return (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => onOpen(p.id)}
+            className="relative w-14 h-14 sm:w-12 sm:h-12 rounded-lg border border-teal-200 bg-white overflow-hidden active:ring-2 active:ring-teal-400 touch-manipulation"
+            title={p.fileName}
+          >
+            {url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={url} alt={p.fileName} className="w-full h-full object-cover" />
+            ) : (
+              <span className="w-full h-full grid place-items-center text-[8px] font-semibold text-teal-800 px-0.5">
+                {isImg ? '…' : p.fileName.split('.').pop()?.toUpperCase() || 'FILE'}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function TodayPage() {
   const toast = useToast();
   const { lang, t } = useI18n();
@@ -281,115 +393,6 @@ export default function TodayPage() {
     });
   }
 
-  function FileThumbs({ rowKey }: { rowKey: string }) {
-    const list = files[rowKey] || [];
-    if (!list.length) return null;
-    return (
-      <div className="flex flex-wrap gap-1.5 mt-2">
-        {list.map((f, i) => {
-          const isImg = f.type.startsWith('image/');
-          const url = isImg ? URL.createObjectURL(f) : null;
-          return (
-            <div
-              key={`${f.name}-${f.size}-${i}`}
-              className="relative w-14 h-14 rounded-lg border border-teal-200 bg-sand-50 overflow-hidden"
-              title={f.name}
-            >
-              {url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={url}
-                  alt={f.name}
-                  className="w-full h-full object-cover"
-                  onLoad={() => URL.revokeObjectURL(url)}
-                />
-              ) : (
-                <div className="w-full h-full grid place-items-center text-[9px] font-semibold text-ink-muted px-0.5 text-center leading-tight">
-                  {f.name.split('.').pop()?.toUpperCase() || 'FILE'}
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={() => removeFile(rowKey, i)}
-                className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/60 text-white grid place-items-center"
-                aria-label="remove"
-              >
-                <X className="w-2.5 h-2.5" />
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  function SavedProofThumbs({
-    proofs,
-  }: {
-    proofs?: Array<{ id: string; fileName: string; mimeType: string }>;
-  }) {
-    const list = proofs || [];
-    const [urls, setUrls] = useState<Record<string, string>>({});
-
-    useEffect(() => {
-      let cancelled = false;
-      const created: string[] = [];
-      (async () => {
-        const token = getToken();
-        const next: Record<string, string> = {};
-        for (const p of list.slice(0, 8)) {
-          if (!p.mimeType?.startsWith('image/')) continue;
-          try {
-            const res = await fetch(`/api/manager-kpi/proofs/${p.id}`, {
-              headers: token ? { Authorization: `Bearer ${token}` } : {},
-            });
-            if (!res.ok) continue;
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            created.push(url);
-            next[p.id] = url;
-          } catch {
-            /* skip */
-          }
-        }
-        if (!cancelled) setUrls(next);
-      })();
-      return () => {
-        cancelled = true;
-        created.forEach((u) => URL.revokeObjectURL(u));
-      };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [list.map((p) => p.id).join(',')]);
-
-    if (!list.length) return null;
-    return (
-      <div className="flex flex-wrap gap-1.5 mt-1.5">
-        {list.map((p) => {
-          const url = urls[p.id];
-          const isImg = p.mimeType?.startsWith('image/');
-          return (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => openProof(p.id)}
-              className="relative w-14 h-14 sm:w-12 sm:h-12 rounded-lg border border-teal-200 bg-white overflow-hidden active:ring-2 active:ring-teal-400 touch-manipulation"
-              title={p.fileName}
-            >
-              {url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={url} alt={p.fileName} className="w-full h-full object-cover" />
-              ) : (
-                <span className="w-full h-full grid place-items-center text-[8px] font-semibold text-teal-800 px-0.5">
-                  {isImg ? '…' : p.fileName.split('.').pop()?.toUpperCase() || 'FILE'}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-    );
-  }
-
   const loadBranches = useCallback(async () => {
     const list = await api<any[]>('/branches/mine');
     const active = list.filter((b) => b.active !== false);
@@ -424,11 +427,14 @@ export default function TodayPage() {
     } finally {
       setLoading(false);
     }
-  }, [branchId, date, freq, toast]);
+    // toast is stable (memoized) — keep out of identity churn
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchId, date, freq]);
 
   useEffect(() => {
     loadBranches().catch((e) => toast.error(e.message));
-  }, [loadBranches, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadBranches]);
 
   useEffect(() => {
     loadDay();
@@ -549,8 +555,12 @@ export default function TodayPage() {
           body: fd,
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.message || t('common.error'));
-        if (data.aiStatus === 'REJECTED') toast.error(data.aiNote || t('today.statusRejected'));
+        if (!res.ok) {
+          const msg = Array.isArray(data.message)
+            ? data.message.join(', ')
+            : data.message || t('common.error');
+          throw new Error(msg);
+        }        if (data.aiStatus === 'REJECTED') toast.error(data.aiNote || t('today.statusRejected'));
         else if (data.aiStatus === 'APPROVED') toast.success(data.aiNote || t('today.proofOk'));
         else toast.success(t('today.submittedOk'));
         if (data.aiCoach?.summary) setAiCoach(data.aiCoach);
@@ -674,20 +684,12 @@ export default function TodayPage() {
 
   async function openProof(id: string) {
     try {
-      const token = getToken();
-      const res = await fetch(`/api/manager-kpi/proofs/${id}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error(t('proof.openFailed'));
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const mime = blob.type || 'application/octet-stream';
-      const name =
-        res.headers.get('content-disposition')?.match(/filename\*?=(?:UTF-8'')?\"?([^\";]+)/i)?.[1] ||
-        'dalil';
-      setProofPreview((prev) => {
-        if (prev?.url) URL.revokeObjectURL(prev.url);
-        return { url, mime, name: decodeURIComponent(name) };
+      const entry = await fetchProof(id);
+      if (!entry) throw new Error(t('proof.openFailed'));
+      setProofPreview({
+        url: entry.url,
+        mime: entry.mime,
+        name: entry.name,
       });
     } catch (e: any) {
       toast.error(e.message);
@@ -695,10 +697,8 @@ export default function TodayPage() {
   }
 
   function closeProofPreview() {
-    setProofPreview((prev) => {
-      if (prev?.url) URL.revokeObjectURL(prev.url);
-      return null;
-    });
+    // object URL cachedan kelgan — revoke qilmaymiz
+    setProofPreview(null);
   }
 
   async function review(proofId: string, approve: boolean) {
@@ -932,7 +932,9 @@ export default function TodayPage() {
                     <p className="text-xs text-ink leading-snug whitespace-pre-wrap">{note}</p>
                   </div>
                 ) : null}
-                {proofs.length > 0 ? <SavedProofThumbs proofs={proofs} /> : null}
+                {proofs.length > 0 ? (
+                  <SavedProofThumbs proofs={proofs} onOpen={openProof} />
+                ) : null}
                 {reviewActions(row, true)}
               </article>
             );
@@ -1081,7 +1083,10 @@ export default function TodayPage() {
                               }}
                             />
                           </label>
-                          <FileThumbs rowKey={row.key} />
+                          <FileThumbs
+                            files={files[row.key] || []}
+                            onRemove={(i) => removeFile(row.key, i)}
+                          />
                           <p className="text-[10px] text-ink-muted mt-1">
                             {t('today.needNoteOrFileHint')}
                           </p>
@@ -1111,7 +1116,7 @@ export default function TodayPage() {
                         </td>
                         <td className="p-3">
                           {proofs.length > 0 ? (
-                            <SavedProofThumbs proofs={proofs} />
+                            <SavedProofThumbs proofs={proofs} onOpen={openProof} />
                           ) : (
                             <span className="text-xs text-ink-muted">—</span>
                           )}
@@ -1243,7 +1248,7 @@ export default function TodayPage() {
                       {row.aiNote && row.status !== 'DONE' && (
                         <p className="text-[11px] text-ink-muted mt-0.5 line-clamp-1">{row.aiNote}</p>
                       )}
-                      <SavedProofThumbs proofs={row.proofs} />
+                      <SavedProofThumbs proofs={row.proofs} onOpen={openProof} />
                     </td>
                     <td className="p-2.5 align-middle max-md:p-0">
                       <div className="space-y-1">
@@ -1427,7 +1432,10 @@ export default function TodayPage() {
                                   : t('today.submit')}
                             </button>
                           </div>
-                          <FileThumbs rowKey={row.key} />
+                          <FileThumbs
+                            files={files[row.key] || []}
+                            onRemove={(i) => removeFile(row.key, i)}
+                          />
                           <p className="text-[10px] text-ink-muted">
                             {row.proofRequired
                               ? t('today.needFile')

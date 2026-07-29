@@ -71,11 +71,18 @@ function corsOriginDelegate(
   return cb(new Error(`CORS blocked: ${origin}`), false);
 }
 
-/** Simple global rate limit — 120 req/min per IP (in-memory, single instance) */
+/** Global rate limit — authenticated browsing needs headroom for proof thumbs */
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT = Number(process.env.API_RATE_LIMIT || 400);
+const RATE_WINDOW_MS = 60_000;
 
 function globalRateLimit(req: any, res: any, next: () => void) {
-  if (req.path?.startsWith('/api/health')) return next();
+  const path = String(req.originalUrl || req.url || req.path || '');
+  if (path.includes('/api/health') || path.includes('/health')) return next();
+  // Proof file bytes — cached client-side; don't burn the shared budget as hard
+  const isProofGet =
+    req.method === 'GET' && /\/api\/manager-kpi\/proofs\//.test(path);
+  const weight = isProofGet ? 0.25 : 1;
 
   const ip =
     (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
@@ -84,11 +91,12 @@ function globalRateLimit(req: any, res: any, next: () => void) {
   const now = Date.now();
   const row = rateBuckets.get(ip);
   if (!row || row.resetAt < now) {
-    rateBuckets.set(ip, { count: 1, resetAt: now + 60_000 });
+    rateBuckets.set(ip, { count: weight, resetAt: now + RATE_WINDOW_MS });
     return next();
   }
-  row.count += 1;
-  if (row.count > 120) {
+  row.count += weight;
+  if (row.count > RATE_LIMIT) {
+    res.setHeader('Retry-After', '30');
     res.status(429).json({ message: 'Juda koʻp soʻrov. Biroz kuting.' });
     return;
   }

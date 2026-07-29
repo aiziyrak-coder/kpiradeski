@@ -221,7 +221,7 @@ export class ManagerKpiController {
     const isImage = mime.startsWith('image/') && mime !== 'image/svg+xml';
     res.setHeader('Content-Type', isImage ? mime : 'application/octet-stream');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Cache-Control', 'private, max-age=300');
     if (!isImage) {
       res.setHeader(
         'Content-Disposition',
