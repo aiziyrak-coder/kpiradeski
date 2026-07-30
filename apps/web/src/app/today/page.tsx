@@ -9,7 +9,7 @@ import { useI18n } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import { api, getToken } from '@/lib/api';
 import { compressImageFile } from '@/lib/image-compress';
-import { fetchProof } from '@/lib/proof-cache';
+import { fetchProof, fetchProofUrl, getCachedProofUrl } from '@/lib/proof-cache';
 import { todayISO, weekStartISO } from '@/types';
 import { cn } from '@/lib/utils';
 import { Check, ChevronDown, ChevronRight, MessageSquare, Search, Upload, X } from 'lucide-react';
@@ -263,36 +263,82 @@ function FileThumbs({
 function SavedProofThumbs({
   proofs,
   onOpen,
+  loadImages = false,
 }: {
   proofs?: Array<{ id: string; fileName: string; mimeType: string }>;
   onOpen: (id: string) => void;
+  /** true — ochilgan boʻlimda rasm miniatyurasini yuklaydi (kesh + limit) */
+  loadImages?: boolean;
 }) {
-  const list = proofs || [];
-  // Miniatyuralarni avtomatik yuklamaymiz — screenshot/yuklashdan keyin
-  // soʻrov portlashi (429) ni oldini oladi. Bosilganda toʻliq ochiladi.
-  if (!list.length) return null;
+  const list = (proofs || []).filter(
+    (p) => p.mimeType?.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(p.fileName || ''),
+  );
+  const other = (proofs || []).filter((p) => !list.some((x) => x.id === p.id));
+  const idsKey = list.map((p) => p.id).join(',');
+  const [urls, setUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!loadImages || !list.length) return;
+    let cancelled = false;
+    (async () => {
+      const next: Record<string, string> = {};
+      for (const p of list.slice(0, 8)) {
+        const cached = getCachedProofUrl(p.id);
+        if (cached) {
+          next[p.id] = cached;
+          continue;
+        }
+        const url = await fetchProofUrl(p.id);
+        if (url) next[p.id] = url;
+        if (cancelled) return;
+        setUrls((prev) => ({ ...prev, ...next }));
+      }
+      if (!cancelled) setUrls((prev) => ({ ...prev, ...next }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey, loadImages]);
+
+  if (!list.length && !other.length) return null;
+
   return (
     <div className="flex flex-wrap gap-1.5 mt-1.5">
       {list.map((p) => {
-        const isImg = p.mimeType?.startsWith('image/');
-        const ext =
-          (p.fileName.split('.').pop() || (isImg ? 'IMG' : 'FILE')).toUpperCase().slice(0, 4);
+        const url = urls[p.id] || getCachedProofUrl(p.id);
         return (
           <button
             key={p.id}
             type="button"
             onClick={() => onOpen(p.id)}
-            className="relative w-14 h-14 sm:w-12 sm:h-12 rounded-lg border border-teal-200 bg-teal-50 overflow-hidden active:ring-2 active:ring-teal-400 touch-manipulation grid place-items-center"
+            className="relative w-16 h-16 sm:w-14 sm:h-14 rounded-xl border border-teal-200 bg-white overflow-hidden active:ring-2 active:ring-teal-400 touch-manipulation shadow-sm"
             title={p.fileName}
           >
-            <span className="text-[9px] font-bold text-teal-900 px-0.5 text-center leading-tight">
-              {isImg ? '📷' : '📄'}
-              <br />
-              {ext}
-            </span>
+            {url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={url} alt={p.fileName} className="w-full h-full object-cover" />
+            ) : (
+              <span className="w-full h-full grid place-items-center text-[10px] font-semibold text-teal-800">
+                …
+              </span>
+            )}
           </button>
         );
       })}
+      {other.map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          onClick={() => onOpen(p.id)}
+          className="relative w-16 h-16 sm:w-14 sm:h-14 rounded-xl border border-teal-200 bg-teal-50 overflow-hidden touch-manipulation grid place-items-center"
+          title={p.fileName}
+        >
+          <span className="text-[9px] font-bold text-teal-900">
+            {(p.fileName.split('.').pop() || 'FILE').toUpperCase().slice(0, 4)}
+          </span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -320,7 +366,7 @@ export default function TodayPage() {
   const [assignSel, setAssignSel] = useState<Record<string, boolean>>({});
   const [assignOpen, setAssignOpen] = useState(true);
   const [treeOpen, setTreeOpen] = useState<Record<string, boolean>>({});
-  const [adminTab, setAdminTab] = useState<'assign' | 'results'>('assign');
+  const [adminTab, setAdminTab] = useState<'assign' | 'results'>('results');
   const [showAddTask, setShowAddTask] = useState(false);
   const [aiCoach, setAiCoach] = useState<{
     summary: string;
@@ -491,6 +537,22 @@ export default function TodayPage() {
     return filterRows(base);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [day, q, lang]);
+
+  /** Admin natijalar: bajarilgan / tekshiruv / qolgan — bitta roʻyxat */
+  const allAdminRows = useMemo(() => {
+    const base = (day?.rows || []) as TaskRow[];
+    return filterRows(base);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day, q, lang]);
+
+  const adminStatusCounts = useMemo(() => {
+    const rows = allAdminRows;
+    return {
+      todo: rows.filter((r) => r.status === 'TODO' || r.status === 'REJECTED').length,
+      review: rows.filter((r) => r.status === 'PENDING').length,
+      done: rows.filter((r) => r.status === 'DONE').length,
+    };
+  }, [allAdminRows]);
 
   const statusCounts = useMemo(() => {
     const rows = allManagerRows;
@@ -823,6 +885,194 @@ export default function TodayPage() {
       ? String(row.value.note)
       : '') ||
     '';
+
+  /** Admin Natijalar — 2-rasmdagidek boʻlimlar, ichida izoh + rasm */
+  const renderAdminResultsBoard = (rows: TaskRow[]) => {
+    if (!rows.length) {
+      return (
+        <p className="text-sm text-ink-muted py-6 text-center border border-dashed border-teal-900/15 rounded-xl">
+          {t('today.emptyTasks')}
+        </p>
+      );
+    }
+
+    const sorted = [...rows].sort((a, b) => {
+      const sa = (lang === 'ru' ? a.sectionRu : a.sectionUz) || '';
+      const sb = (lang === 'ru' ? b.sectionRu : b.sectionUz) || '';
+      if (sa !== sb) return sa.localeCompare(sb, 'uz');
+      const order = { TODO: 0, REJECTED: 1, PENDING: 2, DONE: 3 } as const;
+      const oa = order[a.status] ?? 9;
+      const ob = order[b.status] ?? 9;
+      if (oa !== ob) return oa - ob;
+      const ta = (lang === 'ru' ? a.titleRu : a.titleUz) || '';
+      const tb = (lang === 'ru' ? b.titleRu : b.titleUz) || '';
+      return ta.localeCompare(tb, 'uz');
+    });
+
+    const sections: string[] = [];
+    for (const row of sorted) {
+      const s = (lang === 'ru' ? row.sectionRu : row.sectionUz) || '—';
+      if (!sections.includes(s)) sections.push(s);
+    }
+
+    return (
+      <div className="space-y-2">
+        {sections.map((section) => {
+          const sectionRows = sorted.filter((r) => {
+            const s = (lang === 'ru' ? r.sectionRu : r.sectionUz) || '—';
+            return s === section;
+          });
+          const doneN = sectionRows.filter((r) => r.status === 'DONE').length;
+          const leftN = sectionRows.filter(
+            (r) => r.status === 'TODO' || r.status === 'REJECTED' || r.status === 'PENDING',
+          ).length;
+          const secKey = `admin:${section}`;
+          const secOpen = sectionOpen[secKey] === true;
+          const allDone = doneN === sectionRows.length && sectionRows.length > 0;
+          const pal = blockPalette(hashSection(section));
+
+          return (
+            <div key={secKey} className={cn('rounded-xl overflow-hidden border', pal.wrap)}>
+              <button
+                type="button"
+                onClick={() =>
+                  setSectionOpen((s) => ({ ...s, [secKey]: !secOpen }))
+                }
+                className={cn(
+                  'w-full flex items-center gap-2 px-3 py-2.5 text-left touch-manipulation min-h-11',
+                  secOpen ? pal.headOpen : pal.headClosed,
+                )}
+              >
+                {secOpen ? (
+                  <ChevronDown className="w-4 h-4 shrink-0" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 shrink-0" />
+                )}
+                {allDone ? (
+                  <span
+                    className={cn(
+                      'w-5 h-5 rounded-md border-2 grid place-items-center shrink-0',
+                      pal.checkOn,
+                    )}
+                  >
+                    <Check className="w-3 h-3" strokeWidth={3} />
+                  </span>
+                ) : (
+                  <span
+                    className={cn(
+                      'w-5 h-5 rounded-md border-2 shrink-0',
+                      pal.checkOff,
+                    )}
+                  />
+                )}
+                <span className="text-sm font-semibold flex-1">{section}</span>
+                <span
+                  className={cn(
+                    'text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded',
+                    pal.badge,
+                  )}
+                >
+                  {allDone ? t('today.closed') : leftN > 0 ? t('today.statusTodo') : t('today.opened')}
+                </span>
+                <span className="text-xs tabular-nums opacity-80">
+                  {doneN}/{sectionRows.length}
+                </span>
+              </button>
+
+              {secOpen && (
+                <div className={cn('divide-y divide-black/[0.05]', pal.body)}>
+                  {sectionRows.map((row) => {
+                    const title = lang === 'ru' ? row.titleRu : row.titleUz;
+                    const note = rowNote(row);
+                    const proofs = proofsOf(row);
+                    const needsReview =
+                      row.status === 'PENDING' && !!row.proof?.id;
+
+                    return (
+                      <div
+                        key={row.key}
+                        className={cn('px-3 py-3 space-y-2', pal.row)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-ink leading-snug">{title}</p>
+                            {row.submittedBy && (
+                              <p className="text-[11px] text-teal-800 mt-0.5 font-medium">
+                                {row.submittedBy}
+                              </p>
+                            )}
+                          </div>
+                          <span
+                            className={cn(
+                              'inline-flex shrink-0 text-[11px] font-semibold px-2 py-1 rounded-full',
+                              row.status === 'DONE' && 'bg-teal-100 text-teal-900',
+                              row.status === 'REJECTED' && 'bg-rose-100 text-rose-800',
+                              row.status === 'PENDING' && 'bg-amber-100 text-amber-900',
+                              row.status === 'TODO' && 'bg-sand-100 text-ink-muted',
+                            )}
+                          >
+                            {statusLabel(row)}
+                          </span>
+                        </div>
+
+                        {note ? (
+                          <div className="rounded-lg bg-white/80 border border-black/[0.06] px-2.5 py-2">
+                            <p className="text-[10px] uppercase tracking-wide text-ink-muted font-semibold mb-0.5">
+                              {t('today.managerNote')}
+                            </p>
+                            <p className="text-sm text-ink leading-snug whitespace-pre-wrap">
+                              {note}
+                            </p>
+                          </div>
+                        ) : row.status !== 'TODO' ? (
+                          <p className="text-xs text-ink-muted italic">—</p>
+                        ) : null}
+
+                        {proofs.length > 0 && (
+                          <SavedProofThumbs
+                            proofs={proofs}
+                            onOpen={openProof}
+                            loadImages
+                          />
+                        )}
+
+                        {needsReview && (
+                          <div className="flex gap-2 pt-0.5">
+                            <button
+                              type="button"
+                              disabled={busyKey === row.proof!.id}
+                              onClick={() => review(row.proof!.id, true)}
+                              className="flex-1 h-10 rounded-lg text-xs font-semibold bg-teal-800 text-white disabled:opacity-50"
+                            >
+                              {t('today.approve')}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busyKey === row.proof!.id}
+                              onClick={() => review(row.proof!.id, false)}
+                              className="flex-1 h-10 rounded-lg text-xs font-semibold border border-rose-200 text-rose-800 disabled:opacity-50"
+                            >
+                              {t('today.reject')}
+                            </button>
+                          </div>
+                        )}
+
+                        {row.aiFeedback && row.status === 'REJECTED' && (
+                          <p className="text-[11px] text-rose-700 leading-snug">
+                            {row.aiFeedback}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   const renderTaskTable = (
     rows: TaskRow[],
@@ -1830,26 +2080,23 @@ export default function TodayPage() {
               )}
 
               {adminTab === 'results' && (
-                <div className="space-y-5">
+                <div className="space-y-4">
                   <p className="text-xs text-ink-muted">{t('today.resultsHint')}</p>
-                  <section className="space-y-2">
-                    <h2 className="text-sm font-semibold">
-                      {t('today.doneList')} · {completed.length}
-                    </h2>
-                    {renderTaskTable(completed, 'readonly')}
-                  </section>
-                  <section className="space-y-2">
-                    <h2 className="text-sm font-semibold">
-                      {t('today.inReview')} · {inReview.length}
-                    </h2>
-                    {renderTaskTable(inReview, 'admin-review')}
-                  </section>
-                  <section className="space-y-2">
-                    <h2 className="text-sm font-semibold">
-                      {t('today.todo')} · {uniquePending.length}
-                    </h2>
-                    {renderTaskTable(uniquePending, 'readonly')}
-                  </section>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-sand-100 text-ink-muted px-2.5 py-1 font-semibold">
+                      {t('today.statusTodo')} · {adminStatusCounts.todo}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 text-amber-900 px-2.5 py-1 font-semibold">
+                      {t('today.statusReview')} · {adminStatusCounts.review}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-100 text-teal-900 px-2.5 py-1 font-semibold">
+                      {t('today.statusDone')} · {adminStatusCounts.done}
+                    </span>
+                    <span className="text-ink-muted ml-auto">
+                      {t('today.allTasks')} · {allAdminRows.length}
+                    </span>
+                  </div>
+                  {renderAdminResultsBoard(allAdminRows)}
                 </div>
               )}
             </div>

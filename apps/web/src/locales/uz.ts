@@ -193,7 +193,8 @@ export const uz = {
     downloadProof: 'Yuklab olish',
     managerNote: 'Manager izohi',
     proofsCol: 'Rasmlar / fayllar',
-    resultsHint: 'Managerlar yuborgan izoh va rasmlar shu yerda ochilmasdan koʻrinadi',
+    resultsHint:
+      'Boʻlimni oching — manager izohi toʻliq va rasmlar joyida. Rasmni bosing: kattalashtiriladi.',
     savedAssign: 'Topshiriqlar doimiy saqlandi — har kun/hafta/oy yangilanadi',
     needFile: 'Kamida 1 ta rasm yoki hujjat yuklang (bir nechtasini mumkin)',
     submittedOk: 'Yuborildi — AI tekshirmoqda',
