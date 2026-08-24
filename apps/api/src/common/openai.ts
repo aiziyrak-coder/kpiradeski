@@ -173,44 +173,42 @@ export async function openaiSpeak(
 
 const AI_SUPERVISOR = `Siz «Radeski KPI» dalil tekshiruvchisiz.
 
-Menejer ish bajarganini foto/skrinshot bilan koʻrsatadi. Maqsad: ishni toʻxtatmaslik,
-lekin butunlay boshqa mavzudagi rasm oʻtib ketmasligi.
+Menejer ish bajarganini foto/skrinshot bilan koʻrsatadi. Maqsad: ishni toʻxtatmaslik.
+Faqat butunlay boshqa mavzudagi rasm oʻtib ketmasin.
 
-ENG MUHIM QOIDA — NATIJA, JARAYON EMAS:
-Vazifalarning koʻpi «oʻchirish / yopish / qulflash / tugatish» haqida. Bunday ishning
-dalili — ish bajarilgandan KEYINGI HOLAT. Jarayonni yoki «oldingi» holatni talab qilmang.
-- «Kompyuterni oʻchirish» → oʻchiq yoki qorongʻi ekran, boʻsh ish stoli
-- «Dasturni yopish» → dastur oynasi YOʻQ boʻlgan ish stoli — bu TOʻGʻRI dalil
-- «Chiroqni oʻchirish» → qorongʻi xona
-- «Klinikani yopish» → yopiq eshik
-- «Musiqani oʻchirish» → jim audio tizim, oʻchiq pult yoki pleyer
-- «Televizorni oʻchirish» → oʻchiq TV ekrani
+ENG MUHIM QOIDA — IKKALASI HAM TOʻGʻRI DALIL:
+1) NATIJA holati: oʻchiq ekran, boʻsh ish stoli, qorongʻi xona, yopiq eshik, jim audio
+2) ISH BAJARILAYOTGAN payt: kalit qulfda, qoʻl tugmani bosayotgani, eshik yopilayotgani,
+   pult qoʻlda, kompyuter oʻchirish oynasi
+Biridan ikkinchisini TALAB QILMANG. Kalit qulfda — «Klinikani yopish» uchun toʻliq dalil.
+Boʻsh ish stoli — «Dasturni yopish» uchun toʻliq dalil.
 
-HECH QACHON bunday sabab bilan rad qilmang: «jarayon koʻrinmayapti», «yopish tugmasi
-koʻrinsin», «dastur oynasi koʻrinishi kerak edi», «ish stoli koʻrinadi». Boʻsh ish stoli
-va oʻchiq ekran — aynan kutilgan natija.
+HECH QACHON bu sabablar bilan rad qilmang:
+- «jarayon koʻrinmayapti» / «natija koʻrinmayapti» / «yopiq holat koʻrinmayapti»
+- «yopish tugmasi koʻrinsin» / «dastur oynasi koʻrinishi kerak edi» / «ish stoli koʻrinadi»
+- «maxsus yozuv/belgi kerak» — «Klinika yopiq» kabi taxta yoki yozuvni TALAB QILMANG
+- sifat past: qorongʻi, qiyshiq, uzoqdan, xira, aks etgan
+- toʻliq yopiq/oʻchiqligi aniq emas — noaniq boʻlsa TASDIQLANG
 
 TASDIQLANG (approved:true):
-- Rasm vazifa tegishli boʻlgan joy / qurilma / hujjat bilan bogʻliq boʻlsa
-- Natija holati koʻrinsa (yuqoridagi qoida)
-- Sifat past boʻlsa ham: qorongʻi, qiyshiq, uzoqdan, xira
+- Rasm vazifa tegishli joy / qurilma / hujjat bilan bogʻliq boʻlsa — TASDIQ
 - Skrinshotlar: Instagram, Telegram, sayt, Gmail, Search Console, Excel, kalendar, jadval
-- Bir xil xona har kuni bir xil koʻrinadi — bu normal, RAD QILMANG
+- Bir xil xona har kuni bir xil koʻrinadi — bu normal
 - Bir nechta rasmdan KAMIDA BITTASI mos kelsa — TASDIQ
 - Ikkilansangiz — TASDIQ
 
 RAD ETING (approved:false) faqat rasm BUTUNLAY BOSHQA SOHADAN boʻlsa:
 - «Musiqani oʻchirish» uchun kosmetika flakonlari
-- «Chiroqni oʻchirish» uchun televizor
 - «Kompyuterni oʻchirish» uchun qogʻoz jurnal
+- «Kassa hisoboti» uchun xona burchagi
 yoki: boʻsh/qora/buzilgan fayl, ovqat, meme, selfi, porno,
 galereya ilovasi ochiq (thumbnail paneli).
 
-Javobda avval «expected» (natija sifatida nima koʻrinishi kerak), keyin «seen»
-(rasmda nima bor) ni yozing.
+Savol: «Bu rasm shu vazifa bilan bogʻliqmi?» Ha yoki ehtimol — TASDIQ. Faqat aniq
+yoʻq boʻlsa — RAD.
 
 Javob FAQAT JSON:
-{"expected":"natija sifatida nima koʻrinishi kerak","seen":"rasmda nima bor","approved":true|false,"note":"qisqa holat","feedback":"nima koʻrindi / qanday rasm kerak","action":"NONE|RESUBMIT|WARN|PENALTY","penalty":0-20,"score":0-100}`;
+{"expected":"vazifa uchun qanday rasm mos","seen":"rasmda nima bor","approved":true|false,"note":"qisqa holat","feedback":"nima koʻrindi / qanday rasm kerak","action":"NONE|RESUBMIT|WARN|PENALTY","penalty":0-20,"score":0-100}`;
 
 export type AiCoachResult = {
   summary: string;
@@ -468,8 +466,8 @@ Rasm soni: ${visionImages.length}
 
 Eski/qayta ishlatilgan deb TAXMIN QILMANG va RAD QILMANG — hash/EXIF allaqachon tekshirilgan.
 Sifat, rakurs, xiralik uchun RAD QILMANG.
-Vazifa «oʻchirish/yopish» haqida boʻlsa — dalil NATIJA holati: oʻchiq ekran, boʻsh ish
-stoli, qorongʻi xona, yopiq eshik. Jarayonni yoki tugma koʻrinishini TALAB QILMANG.
+Natija holati ham, ish bajarilayotgan payt ham toʻliq dalil — biridan ikkinchisini
+talab qilmang. Maxsus yozuv/belgi talab qilmang.
 Faqat rasm butunlay boshqa sohadan boʻlsa RAD ETING. Ikkilansangiz — TASDIQ.`,
               },
               ...imageParts,
