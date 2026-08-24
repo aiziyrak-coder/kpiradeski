@@ -1,4 +1,21 @@
 """Sync and rebuild web only."""
+import os as _os
+
+
+def _deploy_password() -> str:
+    """Deploy paroli — faqat env orqali.
+
+    Ilgari bu yerda parol ochiq yozilgan edi va repo ommaviy. Kalitni kodga
+    qaytarmang: `DEPLOY_SSH_PASSWORD` (yoki `KPI_DEPLOY_PASS`) ni oʻrnating.
+    """
+    pw = _os.environ.get("DEPLOY_SSH_PASSWORD") or _os.environ.get("KPI_DEPLOY_PASS")
+    if not pw:
+        raise SystemExit(
+            "DEPLOY_SSH_PASSWORD oʻrnatilmagan. "
+            "PowerShell: $env:DEPLOY_SSH_PASSWORD='...'  |  bash: export DEPLOY_SSH_PASSWORD='...'"
+        )
+    return pw
+
 import paramiko
 import sys
 import tarfile
@@ -7,7 +24,7 @@ import time
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-P = "qazxsw123@!"
+P = _deploy_password()
 APP = "/home/admin_root/kpiradeski"
 S = f"echo '{P}' | sudo -S"
 ROOT = Path(__file__).resolve().parents[1]

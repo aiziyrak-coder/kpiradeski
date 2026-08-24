@@ -85,6 +85,8 @@ Productionda demo UI o'chirilgan bo'lishi kerak.
 | `TELEGRAM_BOT_TOKEN` | Bot + Mini App imzo |
 | `TELEGRAM_CHAT_ID` | Guruh buyruqlari |
 | `NEXT_PUBLIC_DEMO` | `false` productionda |
+| `TELEGRAM_BOT_USERNAME` | Ixtiyoriy — bot `getMe` orqali o'zi aniqlaydi |
+| `DEPLOY_SSH_PASSWORD` | Deploy skriptlari uchun (kodda saqlanmaydi) |
 
 ## Xavfsizlik
 

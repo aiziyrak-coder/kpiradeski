@@ -2,6 +2,23 @@
 
 SSH password: set DEPLOY_SSH_PASSWORD (recommended). Fallback only for local ops.
 """
+import os as _os
+
+
+def _deploy_password() -> str:
+    """Deploy paroli — faqat env orqali.
+
+    Ilgari bu yerda parol ochiq yozilgan edi va repo ommaviy. Kalitni kodga
+    qaytarmang: `DEPLOY_SSH_PASSWORD` (yoki `KPI_DEPLOY_PASS`) ni oʻrnating.
+    """
+    pw = _os.environ.get("DEPLOY_SSH_PASSWORD") or _os.environ.get("KPI_DEPLOY_PASS")
+    if not pw:
+        raise SystemExit(
+            "DEPLOY_SSH_PASSWORD oʻrnatilmagan. "
+            "PowerShell: $env:DEPLOY_SSH_PASSWORD='...'  |  bash: export DEPLOY_SSH_PASSWORD='...'"
+        )
+    return pw
+
 import os
 import paramiko
 import sys
@@ -13,7 +30,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 P = os.environ.get("DEPLOY_SSH_PASSWORD") or os.environ.get("KPI_DEPLOY_PASS")
 if not P:
     # Legacy local fallback — rotate if repo is shared
-    P = "qazxsw123@!"
+    P = _deploy_password()
     print("WARNING: using hardcoded SSH password; set DEPLOY_SSH_PASSWORD", file=sys.stderr)
 APP = "/home/admin_root/kpiradeski"
 S = f"echo '{P}' | sudo -S"

@@ -26,6 +26,24 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 | `GET /api/health/live` | Process jon (liveness) |
 | Web `/login` | Frontend ishlayapti |
 
+## Deploy skriptlari (scripts/*.py)
+
+Server manzili va paroli **kodda saqlanmaydi** — env orqali beriladi:
+
+```bash
+export DEPLOY_SSH_PASSWORD='...'      # majburiy
+export DEPLOY_SSH_HOST=192.168.0.101  # ixtiyoriy (default: LAN manzili)
+export DEPLOY_SSH_PORT=22             # ixtiyoriy
+python scripts/full_sync_deploy.py
+```
+
+PowerShell'da: `$env:DEPLOY_SSH_PASSWORD='...'`
+
+**Diqqat:** server katalogi (`/home/admin_root/kpiradeski`) git repo emas —
+deploy fayllarni rsync qiladi. Shuning uchun serverda qo'lda o'zgartirilgan
+har qanday fayl keyingi deployda **bosib ketiladi**. Barcha o'zgarish avval
+gitga commit qilinsin.
+
 ## Secrets rotation
 
 1. **JWT_SECRET** — yangilang → barcha foydalanuvchilar qayta login
