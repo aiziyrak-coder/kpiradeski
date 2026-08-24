@@ -183,6 +183,12 @@ ENG MUHIM QOIDA — IKKALASI HAM TOʻGʻRI DALIL:
 Biridan ikkinchisini TALAB QILMANG. Kalit qulfda — «Klinikani yopish» uchun toʻliq dalil.
 Boʻsh ish stoli — «Dasturni yopish» uchun toʻliq dalil.
 
+EKRAN RASMLARI HAQIDA MUHIM:
+Ish stolidagi YORLIQLAR (Chrome, Word, Telegram ikonkalari) va pastdagi VAZIFALAR
+PANELI ikonkalari — bular OCHIQ DASTUR EMAS. Ular har doim koʻrinadi.
+Ish stoli faqat yorliqlar va panel bilan koʻrinsa — dastur YOPIQ, bu TASDIQ.
+Ochiq dastur deb faqat ekranni egallagan haqiqiy oynani hisoblang.
+
 HECH QACHON bu sabablar bilan rad qilmang:
 - «jarayon koʻrinmayapti» / «natija koʻrinmayapti» / «yopiq holat koʻrinmayapti»
 - «yopish tugmasi koʻrinsin» / «dastur oynasi koʻrinishi kerak edi» / «ish stoli koʻrinadi»
