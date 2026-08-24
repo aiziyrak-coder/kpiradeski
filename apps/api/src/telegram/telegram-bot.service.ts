@@ -28,8 +28,8 @@ import {
   tgEscape,
   tgProgressBar,
   tgUzDate,
+  tgAppLink,
   TG_BRAND,
-  webBaseUrl,
 } from './tg-format';
 
 type IncompleteTask = {
@@ -72,7 +72,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TelegramBotService.name);
   private offset = 0;
   private running = false;
-  private timer: NodeJS.Timeout | null = null;
+  private pollAbort: AbortController | null = null;
 
   constructor(
     private prisma: PrismaService,
@@ -116,6 +116,16 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       ],
     }).catch(() => undefined);
 
+    // Webhook oʻrnatilgan boʻlsa getUpdates 409 qaytaradi va bot buyruq qabul
+    // qila olmaydi. Polling rejimida ishlaymiz — avval webhookni olib tashlaymiz.
+    try {
+      const res = await this.api('deleteWebhook', { drop_pending_updates: false });
+      if (res.ok) this.logger.log('Telegram webhook tozalandi (polling rejimi)');
+      else this.logger.warn(`deleteWebhook: ${res.description}`);
+    } catch (e) {
+      this.logger.warn(`deleteWebhook xato: ${e}`);
+    }
+
     this.running = true;
     this.logger.log('Telegram bot polling boshlandi');
     this.pollLoop();
@@ -123,28 +133,36 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy() {
     this.running = false;
-    if (this.timer) clearTimeout(this.timer);
+    // Uzun poll (25s) shutdownni ushlab qolmasin
+    this.pollAbort?.abort();
   }
 
-  private async api(method: string, body?: Record<string, unknown>) {
+  /** timeoutMs — Telegram javob bermasa soʻrov abadiy osilib qolmasin */
+  private async api(
+    method: string,
+    body?: Record<string, unknown>,
+    opts?: { timeoutMs?: number; signal?: AbortSignal },
+  ) {
+    const timeout = AbortSignal.timeout(opts?.timeoutMs ?? 20_000);
+    const signal = opts?.signal ? AbortSignal.any([timeout, opts.signal]) : timeout;
     const res = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body || {}),
+      signal,
     });
     return (await res.json()) as { ok: boolean; result?: any; description?: string };
   }
 
   private keyboard(extra?: Array<Array<{ text: string; url?: string; callback_data?: string }>>) {
-    const web = webBaseUrl().replace(/\/$/, '');
     const rows = [
       [
-        { text: '📊 Dashboard', url: `${web}/dashboard` },
-        { text: '✅ Ishlar', url: `${web}/today` },
+        { text: '📊 Dashboard', url: tgAppLink('dashboard') },
+        { text: '✅ Ishlar', url: tgAppLink('today') },
       ],
       [
-        { text: '🤖 AI assistant', url: `${web}/assistant` },
-        { text: '📈 Hisobotlar', url: `${web}/reports` },
+        { text: '🤖 AI assistant', url: tgAppLink('assistant') },
+        { text: '📈 Hisobotlar', url: tgAppLink('reports') },
       ],
       ...(extra || []),
     ];
@@ -234,21 +252,33 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   private async pollLoop() {
     while (this.running) {
       try {
-        const json = await this.api('getUpdates', {
-          offset: this.offset,
-          timeout: 25,
-          allowed_updates: ['message'],
-        });
+        this.pollAbort = new AbortController();
+        const json = await this.api(
+          'getUpdates',
+          { offset: this.offset, timeout: 25, allowed_updates: ['message'] },
+          { timeoutMs: 35_000, signal: this.pollAbort.signal },
+        );
         if (json.ok && Array.isArray(json.result)) {
           for (const upd of json.result as TgUpdate[]) {
             this.offset = upd.update_id + 1;
-            await this.handleUpdate(upd);
+            // Bitta buyruq xato bersa — qolgan updatelar ham tushib qolmasin
+            try {
+              await this.handleUpdate(upd);
+            } catch (e) {
+              this.logger.warn(`handleUpdate ${upd.update_id}: ${e}`);
+            }
           }
+        } else if (json.description?.includes('webhook is active')) {
+          // Kimdir webhook oʻrnatgan — olib tashlab polling'ni tiklaymiz
+          this.logger.warn('getUpdates 409 — webhook aniqlandi, olib tashlanmoqda');
+          await this.api('deleteWebhook', { drop_pending_updates: false }).catch(() => undefined);
+          await new Promise((r) => setTimeout(r, 2000));
         } else {
           this.logger.warn(`getUpdates ok=false: ${JSON.stringify(json).slice(0, 200)}`);
           await new Promise((r) => setTimeout(r, 5000));
         }
       } catch (e) {
+        if (!this.running) break;
         this.logger.warn(`Polling xato: ${e}`);
         await new Promise((r) => setTimeout(r, 3000));
       }
@@ -351,6 +381,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         '• <b>10/14/18/20</b> — hodimlar davomati',
         '• <b>Dushanba 10:00</b> — haftalik ishlar',
         '• <b>Dushanba 10:15</b> — oylik ishlar',
+        '• <b>Shanba 18:00</b> — haftalik vazifalar ijrosi',
         '',
         '<b>Buyruqlar</b>',
         '• /bugun — bugungi ball',

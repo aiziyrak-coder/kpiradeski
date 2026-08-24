@@ -8,6 +8,10 @@ export type AiProofVerdict = {
   action: 'NONE' | 'RESUBMIT' | 'WARN' | 'PENALTY';
   penalty: number;
   score: number;
+  /** AI vazifadan kutgan predmet — mos kelmaslik sababini koʻrsatish uchun */
+  expected?: string;
+  /** AI rasmda koʻrgan predmet */
+  seen?: string;
 };
 
 function apiKey() {
@@ -167,26 +171,39 @@ export async function openaiSpeak(
   }
 }
 
-const AI_SUPERVISOR = `Siz «Radeski KPI» dalil tekshiruvchisiz — adolatli va yumshoq.
+const AI_SUPERVISOR = `Siz «Radeski KPI» dalil tekshiruvchisiz — sifatga yumshoq, MAVZUGA qatʼiy.
 
-Menejer ishni foto/skrinshot bilan topshiradi. Maqsad: ISHNI TOʻXTATMASLIK.
+Menejer ishni foto/skrinshot bilan topshiradi. Maqsad: ishni toʻxtatmaslik, lekin
+boshqa vazifaning rasmi oʻtib ketmasligi.
 
-TASDIQLANG (approved:true) DEYARLI HAR DOIM:
-- Klinika xonasi, stol, sochiq, qogʻoz, lavabo, kassa, forma, poyabzal — qorongʻi/qiyshiq boʻlsa ham
-- Telefon/kompyuter SKRINSHOTI: Instagram, Telegram, sayt, Gmail, Search Console, PageSpeed, Excel, Notion, Canva, kontent-kalendar, jadval — bu NORMAL dalil
-- Oylik/haftalik kontent-reja: jadval, kalendar, reja skrinshoti — TASDIQLANG
-- Bir xil xona har kuni bir xil koʻrinadi — bu yangi foto boʻlishi oddiy
-- Mavzu 100% aniq boʻlmasa ham — TASDIQLANG
+ISH TARTIBI (majburiy, shu ketma-ketlikda):
+1. «expected» — vazifa nomidan kelib chiqib, rasmda nima koʻrinishi kerakligini bir jumlada yozing.
+   Masalan «Musiqani oʻchirish» → audio pult / dinamik / pleyer ekrani / jim tizim.
+2. «seen» — rasmda haqiqatda NIMA borligini bir jumlada yozing. Taxmin qilmang.
+3. Ikkalasini solishtiring va shundan keyin hukm chiqaring.
 
-RAD ETING (approved:false) FAQAT:
+TASDIQLANG (approved:true) agar «seen» «expected» ga mos yoki uning natijasi boʻlsa:
+- Sifat past boʻlsa ham: qorongʻi, qiyshiq, uzoqdan, xira — kerakli predmet tanilsa TASDIQ
+- Skrinshotlar normal dalil: Instagram, Telegram, sayt, Gmail, Search Console, PageSpeed,
+  Excel, Notion, Canva, kontent-kalendar, jadval, reja
+- Bir xil xona har kuni bir xil koʻrinadi — bu yangi foto boʻlishi oddiy, RAD QILMANG
+- Bir nechta rasm boʻlsa — ulardan KAMIDA BITTASI mos kelsa TASDIQ
+
+RAD ETING (approved:false) faqat shu holatlarda:
+- Rasmdagi predmet vazifaga aloqasiz: «Musiqani oʻchirish» uchun kosmetika flakonlari,
+  «Chiroqni oʻchirish» uchun televizor, «Kompyuterni oʻchirish» uchun qogʻoz jurnal
 - Boʻsh, qora, umuman buzilgan fayl
-- Ovqat, meme, random oyoq/selfi, porno
+- Ovqat, meme, random selfi, porno
 - Galereya ilovasi ochiq (thumbnail paneli) — ish emas, galereya UI
+- «Oʻchiring» deyilgan qurilma rasmda yoqiq turgani aniq koʻrinsa
 
-HECH QACHON rad qilmang: «eski rasm», «qayta ishlatilgan», «ekrandagi rasm», «vazifaga mos emas», «axlat koʻrinadi», «TV koʻrinmaydi».
-Shubha = approved:true.
+MUHIM:
+- «Xona/stol/ekran koʻrinyapti» degan umumiy sabab TASDIQ uchun YETARLI EMAS.
+- Sifat, rakurs, «eski rasm», «qayta ishlatilgan» uchun RAD QILMANG.
+- Rad etganda feedback da aynan qanday rasm kerakligini yozing.
+
 Javob FAQAT JSON:
-{"approved":true|false,"note":"qisqa holat","feedback":"nima koʻrindi","action":"NONE|RESUBMIT|WARN|PENALTY","penalty":0-20,"score":0-100}`;
+{"expected":"nima koʻrinishi kerak","seen":"rasmda nima bor","approved":true|false,"note":"qisqa holat","feedback":"nima koʻrindi / qanday rasm kerak","action":"NONE|RESUBMIT|WARN|PENALTY","penalty":0-20,"score":0-100}`;
 
 export type AiCoachResult = {
   summary: string;
@@ -441,9 +458,12 @@ Hozirgi vaqt (Toshkent): ${opts.nowLabel || '—'}
 Vazifa vaqt oynasi: ${opts.windowLabel || 'kun boʻyi'}
 Menejer izohi: ${opts.managerNote || '—'}
 Rasm soni: ${visionImages.length}
-Eski/qayta ishlatilgan deb TAXMIN QILMANG va RAD QILMANG.
-Hash/EXIF allaqachon tekshirilgan. Mavzu mos boʻlsa TASDIQLANG.
-Shubha = approved:true.`,
+
+Eski/qayta ishlatilgan deb TAXMIN QILMANG va RAD QILMANG — hash/EXIF allaqachon tekshirilgan.
+Sifat, rakurs, xiralik uchun RAD QILMANG.
+Avval «expected» (vazifa boʻyicha rasmda nima koʻrinishi kerak), keyin «seen» (rasmda
+haqiqatda nima bor) ni yozing, soʻng solishtiring.
+Mavzu mos boʻlsa TASDIQLANG. Predmet butunlay boshqa boʻlsa RAD ETING.`,
               },
               ...imageParts,
             ],
@@ -482,21 +502,31 @@ Shubha = approved:true.`,
       parsed.feedback ||
       (approved ? 'Yaxshi' : 'Qayta topshiring — aniqroq dalil kerak');
 
+    const expected = String((parsed as any).expected || '').trim() || undefined;
+    const seen = String((parsed as any).seen || '').trim() || undefined;
+
     const guess = `${note} ${feedback}`.toLowerCase();
     const hardReject =
       /boʻsh rasm|bush rasm|qora ekran|buzilgan fayl|meme|ovqat|porno|galereya ilovasi|thumbnail/.test(
         guess,
       );
-    const pickyReject =
-      /eski|qayta ishlat|reuse|old photo|galereya|kechagi|yangi emas|mos emas|koʻrsatilmagan|ko'rsatilmagan|koʻrinmay|ko'rinmay|ekranidagi|skrin|screenshot|gmail|search console|axlat|не нов|повторн/.test(
+    // Sifat / qayta ishlatish / skrinshot shikoyatlari rad etish uchun sabab emas —
+    // bularni tasdiqqa aylantiramiz. Lekin MAVZU mos kelmasligi haqiqiy rad sabab,
+    // shuning uchun «mos emas» va shunga oid iboralar bu roʻyxatdan chiqarildi.
+    const nitpickReject =
+      /eski|qayta ishlat|reuse|old photo|kechagi|yangi emas|ekranidagi|skrin|screenshot|gmail|search console|axlat|не нов|повторн/.test(
         guess,
       );
-    if (!approved && !hardReject) {
+    if (!approved && !hardReject && nitpickReject) {
       approved = true;
-      if (pickyReject) {
-        note = 'Dalil qabul qilindi';
-        feedback = 'Rasm yuklandi va qabul qilindi.';
-      }
+      note = 'Dalil qabul qilindi';
+      feedback = 'Rasm yuklandi va qabul qilindi.';
+    }
+    // Rad etilganda menejer aynan nima xato boʻlganini koʻrsin
+    if (!approved && expected && seen) {
+      feedback = `${feedback}
+Kutilgan: ${expected}
+Rasmda: ${seen}`;
     }
 
     const action = (['NONE', 'RESUBMIT', 'WARN', 'PENALTY'].includes(String(parsed.action))
@@ -516,6 +546,8 @@ Shubha = approved:true.`,
       action: approved && action === 'RESUBMIT' ? 'WARN' : action,
       penalty: approved ? Math.min(penalty, 10) : penalty,
       score: approved ? Math.max(score, 60) : score,
+      expected,
+      seen,
     };
   } catch (e) {
     console.warn('OpenAI vision failed', e);

@@ -59,6 +59,7 @@ export class NotificationsService {
         '10/14/18/20 — hodimlar davomati',
         'Dushanba 10:00 — haftalik ishlar',
         'Dushanba 10:15 — oylik ishlar',
+        'Shanba 18:00 — haftalik vazifalar ijrosi hisoboti',
         'Buyruqlar: /bugun /holat /vazifalar /yordam',
       ],
     };

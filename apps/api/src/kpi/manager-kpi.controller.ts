@@ -212,6 +212,13 @@ export class ManagerKpiController {
     });
   }
 
+  /** Haftalik hisobotni qoʻlda yuborish (shanbani kutmasdan tekshirish uchun) */
+  @Post('weekly-report/send')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  sendWeeklyReport() {
+    return this.kpi.sendWeeklyExecutionReport();
+  }
+
   @Get('proofs/:id')
   async getProof(
     @CurrentUser() user: { id: string; role: Role },

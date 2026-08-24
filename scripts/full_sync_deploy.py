@@ -18,7 +18,7 @@ if not P:
 APP = "/home/admin_root/kpiradeski"
 S = f"echo '{P}' | sudo -S"
 ROOT = Path(__file__).resolve().parents[1]
-EXCLUDE = {"node_modules", ".next", "dist", ".git", "uploads", "__pycache__"}
+EXCLUDE = {"node_modules", ".next", "dist", ".git", "uploads", "__pycache__", "scratchpad", ".claude"}
 
 c = paramiko.SSHClient()
 c.set_missing_host_key_policy(paramiko.AutoAddPolicy())

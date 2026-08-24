@@ -16,6 +16,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const res = ctx.getResponse<Response>();
 
+    // @Res() bilan stream/sendFile qilingan javob — header allaqachon yuborilgan
+    if (res.headersSent) {
+      if (exception instanceof Error) {
+        this.logger.error(`Post-response error: ${exception.message}`, exception.stack);
+      }
+      res.end();
+      return;
+    }
+
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | string[] = 'Ichki server xatosi';
 

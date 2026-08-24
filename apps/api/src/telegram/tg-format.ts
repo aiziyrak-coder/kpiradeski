@@ -160,6 +160,23 @@ export function webBaseUrl(): string {
   );
 }
 
+/**
+ * Guruhdagi tugma uchun havola.
+ *
+ * Inline `web_app` tugmalari FAQAT shaxsiy chatda ishlaydi, guruhda emas.
+ * Guruhda Mini App ni ochishning yagona yoʻli — `t.me/<bot>?startapp=<param>`
+ * deep-link (BotFather da Mini App URL sozlangan boʻlishi shart).
+ * TELEGRAM_BOT_USERNAME berilmagan boʻlsa — eski oddiy web havola qoladi.
+ */
+export function tgAppLink(route: string): string {
+  const bot = process.env.TELEGRAM_BOT_USERNAME?.trim().replace(/^@/, '');
+  const web = webBaseUrl().replace(/\/$/, '');
+  const path = route.replace(/^\//, '');
+  if (!bot) return `${web}/${path}`;
+  // startapp faqat A-Z a-z 0-9 _ - qabul qiladi
+  return `https://t.me/${bot}?startapp=${path.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+}
+
 export function chunkHtml(text: string, max = 3500): string[] {
   if (text.length <= max) return [text];
   const chunks: string[] = [];

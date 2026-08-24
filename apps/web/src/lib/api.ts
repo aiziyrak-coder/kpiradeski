@@ -86,8 +86,12 @@ export function downloadBlob(blob: Blob, filename: string) {
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  a.rel = 'noopener';
+  // Firefox/Safari: element DOMda boʻlishi va URL darhol revoke qilinmasligi kerak
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 export async function downloadReport(kind: 'excel' | 'pdf', from: string, to: string) {

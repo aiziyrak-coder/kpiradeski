@@ -90,7 +90,7 @@ Productionda demo UI o'chirilgan bo'lishi kerak.
 
 - Isbot fayllar faqat `Authorization: Bearer` orqali
 - Productionda LAN CORS bypass o'chirilgan
-- Global rate limit: 120 req/min/IP
+- Global rate limit: 600 req/min/IP (`API_RATE_LIMIT` bilan sozlanadi)
 - Seed wipe productionda bloklangan
 
 **Muhim:** `.env` fayllarini hech qachon gitga qo'shmang. Tokenlarni chatda ulashmang — rotate qiling.

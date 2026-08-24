@@ -19,7 +19,10 @@ import * as path from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { BranchesService } from '../branches/branches.service';
 import { openaiCoachManagerSubmit, openaiVisionProof, type AiCoachResult } from '../common/openai';
-import { colorStatus, toDateOnly } from '../common/kpi.constants';
+import { Cron } from '@nestjs/schedule';
+import { BUSINESS_TZ, colorStatus, toDateOnly } from '../common/kpi.constants';
+import { NotificationsService } from '../notifications/notifications.service';
+import { scoreIcon, tgCard, tgEscape } from '../telegram/tg-format';
 import { CalendarService } from '../common/calendar.service';
 import { seedKpiCatalog } from '../../prisma/seed-catalog';
 import { ATTENDANCE_NODE_KEY } from '../attendance/attendance.constants';
@@ -120,6 +123,7 @@ export class ManagerKpiService implements OnModuleInit {
     private prisma: PrismaService,
     private branches: BranchesService,
     private calendar: CalendarService,
+    private notifications: NotificationsService,
   ) {}
 
   async onModuleInit() {
@@ -1781,8 +1785,17 @@ export class ManagerKpiService implements OnModuleInit {
     }
 
     if (imageFiles.length) {
+      // Ota-blok nomi AI ga kontekst beradi (masalan «Klinikani yopish · Musiqani oʻchirish»)
+      const parentNode = node.parentKey
+        ? await this.prisma.kpiCatalogNode.findUnique({
+            where: { key: node.parentKey },
+            select: { titleUz: true },
+          })
+        : null;
       const vision = await openaiVisionProof({
-        title: `${node.titleUz} / ${node.titleRu}`,
+        title: parentNode
+          ? `${parentNode.titleUz} · ${node.titleUz} / ${node.titleRu}`
+          : `${node.titleUz} / ${node.titleRu}`,
         description: node.descriptionUz || node.descriptionRu,
         images: imageFiles.map((f) => ({
           mimeType: f.mimetype,
@@ -2487,5 +2500,98 @@ export class ManagerKpiService implements OnModuleInit {
     }
     if (!fs.existsSync(full)) throw new NotFoundException('Fayl topilmadi');
     return { proof, full };
+  }
+
+  /** Haftalik KPI ijrosi — har shanba 18:00 (Asia/Tashkent) Telegram guruhga */
+  @Cron('0 18 * * 6', { timeZone: BUSINESS_TZ })
+  async weeklyExecutionReportCron() {
+    try {
+      await this.sendWeeklyExecutionReport();
+    } catch (e) {
+      this.logger.warn(`Haftalik hisobot yuborilmadi: ${e}`);
+    }
+  }
+
+  /** Joriy hafta (dushanba–yakshanba) boʻyicha WEEKLY vazifalar ijrosi */
+  async sendWeeklyExecutionReport() {
+    const periodStart = periodDate(KpiFrequency.WEEKLY);
+    const periodEnd = new Date(
+      Date.UTC(
+        periodStart.getUTCFullYear(),
+        periodStart.getUTCMonth(),
+        periodStart.getUTCDate() + 6,
+      ),
+    );
+    const branches = await this.prisma.branch.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    if (!branches.length) return { sent: false, reason: 'filial yoʻq' };
+
+    const admin = { id: 'system', role: Role.SUPER_ADMIN };
+    const lines: string[] = [];
+    let totalAssigned = 0;
+    let totalDone = 0;
+
+    for (const branch of branches) {
+      let day: any;
+      try {
+        day = await this.getDay(
+          admin,
+          branch.id,
+          periodStart.toISOString().slice(0, 10),
+          KpiFrequency.WEEKLY,
+        );
+      } catch (e) {
+        this.logger.warn(`weekly report ${branch.name}: ${e}`);
+        continue;
+      }
+      const rows = day.rows || [];
+      if (!rows.length) continue;
+      const done = day.completed?.length ?? 0;
+      const review = day.inReview?.length ?? 0;
+      const pending = day.pending?.length ?? 0;
+      totalAssigned += rows.length;
+      totalDone += done;
+
+      const pctDone = rows.length ? Math.round((done / rows.length) * 100) : 0;
+      lines.push(
+        `${scoreIcon(pctDone)} <b>${tgEscape(branch.name)}</b> — <b>${done}/${rows.length}</b> (${pctDone}%)`,
+      );
+      if (review) lines.push(`   🕵️ tekshiruvda: ${review}`);
+      if (pending) {
+        const names = (day.pending || [])
+          .slice(0, 5)
+          .map((r: any) => tgEscape(String(r.titleUz || r.key)))
+          .join(', ');
+        lines.push(`   ⛔ bajarilmagan ${pending}: ${names}${pending > 5 ? ' …' : ''}`);
+      }
+    }
+
+    if (!lines.length) return { sent: false, reason: 'haftalik vazifa biriktirilmagan' };
+
+    const avgPct = totalAssigned ? Math.round((totalDone / totalAssigned) * 100) : 0;
+    const period = `${periodStart.toISOString().slice(0, 10)} — ${periodEnd.toISOString().slice(0, 10)}`;
+    const html = tgCard({
+      emoji: '📆',
+      category: 'Haftalik hisobot',
+      title: `Haftalik vazifalar ijrosi · ${avgPct}%`,
+      meta: [period, `${totalDone}/${totalAssigned} bajarildi`],
+      htmlLines: lines,
+      compact: true,
+      actions: '/hafta · /vazifalar',
+      footer: 'Yakshanbagacha yopilmagan ishlar keyingi haftaga oʻtmaydi.',
+    });
+
+    await this.notifications.sendTelegram(html);
+    await this.notifications.createForRoles(
+      ['DIRECTOR', 'MANAGER', 'ADMIN', 'SUPER_ADMIN'],
+      'Haftalik vazifalar ijrosi',
+      `${period}: ${totalDone}/${totalAssigned} bajarildi (${avgPct}%)`,
+      'SYSTEM',
+      { telegram: false },
+    );
+    return { sent: true, period, totalDone, totalAssigned, avgPct };
   }
 }
