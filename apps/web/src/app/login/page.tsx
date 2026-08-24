@@ -26,9 +26,17 @@ export default function LoginPage() {
     { email: 'super@klinikpi.uz', role: 'SUPER_ADMIN' as const },
   ];
 
+  // t.me/<bot>?startapp=<route> — guruhdagi tugma qaysi sahifani soʻraganini beradi
+  const startRoute = (() => {
+    const raw = webApp?.initDataUnsafe?.start_param;
+    if (!raw) return null;
+    const allowed = ['dashboard', 'today', 'assistant', 'reports', 'my', 'notifications'];
+    return allowed.includes(raw) ? `/${raw}` : null;
+  })();
+
   useEffect(() => {
-    if (!loading && user) router.replace(homeForRole(user.role));
-  }, [loading, user, router]);
+    if (!loading && user) router.replace(startRoute || homeForRole(user.role));
+  }, [loading, user, router, startRoute]);
 
   useEffect(() => {
     if (!ready || loading || user || !isMiniApp || !webApp?.initData) return;
@@ -39,7 +47,7 @@ export default function LoginPage() {
         const u = await loginTelegram(webApp.initData);
         if (cancelled) return;
         haptic('success');
-        router.replace(homeForRole(u.role));
+        router.replace(startRoute || homeForRole(u.role));
       } catch {
         // email/parol kerak
       } finally {
@@ -49,7 +57,7 @@ export default function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [ready, loading, user, isMiniApp, webApp, loginTelegram, router, tgUser]);
+  }, [ready, loading, user, isMiniApp, webApp, loginTelegram, router, tgUser, startRoute]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -65,7 +73,7 @@ export default function LoginPage() {
         }
       }
       haptic('success');
-      router.push(homeForRole(u.role));
+      router.push(startRoute || homeForRole(u.role));
     } catch (err: any) {
       haptic('error');
       setError(err.message || t('login.failed'));

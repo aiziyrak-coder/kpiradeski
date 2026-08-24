@@ -21,8 +21,8 @@ import {
   tgCard,
   tgCode,
   tgEscape,
+  tgAppLink,
   TG_BRAND,
-  webBaseUrl,
 } from './tg-format';
 
 type TgUpdate = {
@@ -113,15 +113,14 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private keyboard(extra?: Array<Array<{ text: string; url?: string; callback_data?: string }>>) {
-    const web = webBaseUrl().replace(/\/$/, '');
     const rows = [
       [
-        { text: '📊 Dashboard', url: `${web}/dashboard` },
-        { text: '✅ Ishlar', url: `${web}/today` },
+        { text: '📊 Dashboard', url: tgAppLink('dashboard') },
+        { text: '✅ Ishlar', url: tgAppLink('today') },
       ],
       [
-        { text: '🤖 AI assistant', url: `${web}/assistant` },
-        { text: '📈 Hisobotlar', url: `${web}/reports` },
+        { text: '🤖 AI assistant', url: tgAppLink('assistant') },
+        { text: '📈 Hisobotlar', url: tgAppLink('reports') },
       ],
       ...(extra || []),
     ];
