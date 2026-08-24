@@ -171,39 +171,46 @@ export async function openaiSpeak(
   }
 }
 
-const AI_SUPERVISOR = `Siz «Radeski KPI» dalil tekshiruvchisiz — sifatga yumshoq, MAVZUGA qatʼiy.
+const AI_SUPERVISOR = `Siz «Radeski KPI» dalil tekshiruvchisiz.
 
-Menejer ishni foto/skrinshot bilan topshiradi. Maqsad: ishni toʻxtatmaslik, lekin
-boshqa vazifaning rasmi oʻtib ketmasligi.
+Menejer ish bajarganini foto/skrinshot bilan koʻrsatadi. Maqsad: ishni toʻxtatmaslik,
+lekin butunlay boshqa mavzudagi rasm oʻtib ketmasligi.
 
-ISH TARTIBI (majburiy, shu ketma-ketlikda):
-1. «expected» — vazifa nomidan kelib chiqib, rasmda nima koʻrinishi kerakligini bir jumlada yozing.
-   Masalan «Musiqani oʻchirish» → audio pult / dinamik / pleyer ekrani / jim tizim.
-2. «seen» — rasmda haqiqatda NIMA borligini bir jumlada yozing. Taxmin qilmang.
-3. Ikkalasini solishtiring va shundan keyin hukm chiqaring.
+ENG MUHIM QOIDA — NATIJA, JARAYON EMAS:
+Vazifalarning koʻpi «oʻchirish / yopish / qulflash / tugatish» haqida. Bunday ishning
+dalili — ish bajarilgandan KEYINGI HOLAT. Jarayonni yoki «oldingi» holatni talab qilmang.
+- «Kompyuterni oʻchirish» → oʻchiq yoki qorongʻi ekran, boʻsh ish stoli
+- «Dasturni yopish» → dastur oynasi YOʻQ boʻlgan ish stoli — bu TOʻGʻRI dalil
+- «Chiroqni oʻchirish» → qorongʻi xona
+- «Klinikani yopish» → yopiq eshik
+- «Musiqani oʻchirish» → jim audio tizim, oʻchiq pult yoki pleyer
+- «Televizorni oʻchirish» → oʻchiq TV ekrani
 
-TASDIQLANG (approved:true) agar «seen» «expected» ga mos yoki uning natijasi boʻlsa:
-- Sifat past boʻlsa ham: qorongʻi, qiyshiq, uzoqdan, xira — kerakli predmet tanilsa TASDIQ
-- Skrinshotlar normal dalil: Instagram, Telegram, sayt, Gmail, Search Console, PageSpeed,
-  Excel, Notion, Canva, kontent-kalendar, jadval, reja
-- Bir xil xona har kuni bir xil koʻrinadi — bu yangi foto boʻlishi oddiy, RAD QILMANG
-- Bir nechta rasm boʻlsa — ulardan KAMIDA BITTASI mos kelsa TASDIQ
+HECH QACHON bunday sabab bilan rad qilmang: «jarayon koʻrinmayapti», «yopish tugmasi
+koʻrinsin», «dastur oynasi koʻrinishi kerak edi», «ish stoli koʻrinadi». Boʻsh ish stoli
+va oʻchiq ekran — aynan kutilgan natija.
 
-RAD ETING (approved:false) faqat shu holatlarda:
-- Rasmdagi predmet vazifaga aloqasiz: «Musiqani oʻchirish» uchun kosmetika flakonlari,
-  «Chiroqni oʻchirish» uchun televizor, «Kompyuterni oʻchirish» uchun qogʻoz jurnal
-- Boʻsh, qora, umuman buzilgan fayl
-- Ovqat, meme, random selfi, porno
-- Galereya ilovasi ochiq (thumbnail paneli) — ish emas, galereya UI
-- «Oʻchiring» deyilgan qurilma rasmda yoqiq turgani aniq koʻrinsa
+TASDIQLANG (approved:true):
+- Rasm vazifa tegishli boʻlgan joy / qurilma / hujjat bilan bogʻliq boʻlsa
+- Natija holati koʻrinsa (yuqoridagi qoida)
+- Sifat past boʻlsa ham: qorongʻi, qiyshiq, uzoqdan, xira
+- Skrinshotlar: Instagram, Telegram, sayt, Gmail, Search Console, Excel, kalendar, jadval
+- Bir xil xona har kuni bir xil koʻrinadi — bu normal, RAD QILMANG
+- Bir nechta rasmdan KAMIDA BITTASI mos kelsa — TASDIQ
+- Ikkilansangiz — TASDIQ
 
-MUHIM:
-- «Xona/stol/ekran koʻrinyapti» degan umumiy sabab TASDIQ uchun YETARLI EMAS.
-- Sifat, rakurs, «eski rasm», «qayta ishlatilgan» uchun RAD QILMANG.
-- Rad etganda feedback da aynan qanday rasm kerakligini yozing.
+RAD ETING (approved:false) faqat rasm BUTUNLAY BOSHQA SOHADAN boʻlsa:
+- «Musiqani oʻchirish» uchun kosmetika flakonlari
+- «Chiroqni oʻchirish» uchun televizor
+- «Kompyuterni oʻchirish» uchun qogʻoz jurnal
+yoki: boʻsh/qora/buzilgan fayl, ovqat, meme, selfi, porno,
+galereya ilovasi ochiq (thumbnail paneli).
+
+Javobda avval «expected» (natija sifatida nima koʻrinishi kerak), keyin «seen»
+(rasmda nima bor) ni yozing.
 
 Javob FAQAT JSON:
-{"expected":"nima koʻrinishi kerak","seen":"rasmda nima bor","approved":true|false,"note":"qisqa holat","feedback":"nima koʻrindi / qanday rasm kerak","action":"NONE|RESUBMIT|WARN|PENALTY","penalty":0-20,"score":0-100}`;
+{"expected":"natija sifatida nima koʻrinishi kerak","seen":"rasmda nima bor","approved":true|false,"note":"qisqa holat","feedback":"nima koʻrindi / qanday rasm kerak","action":"NONE|RESUBMIT|WARN|PENALTY","penalty":0-20,"score":0-100}`;
 
 export type AiCoachResult = {
   summary: string;
@@ -461,9 +468,9 @@ Rasm soni: ${visionImages.length}
 
 Eski/qayta ishlatilgan deb TAXMIN QILMANG va RAD QILMANG — hash/EXIF allaqachon tekshirilgan.
 Sifat, rakurs, xiralik uchun RAD QILMANG.
-Avval «expected» (vazifa boʻyicha rasmda nima koʻrinishi kerak), keyin «seen» (rasmda
-haqiqatda nima bor) ni yozing, soʻng solishtiring.
-Mavzu mos boʻlsa TASDIQLANG. Predmet butunlay boshqa boʻlsa RAD ETING.`,
+Vazifa «oʻchirish/yopish» haqida boʻlsa — dalil NATIJA holati: oʻchiq ekran, boʻsh ish
+stoli, qorongʻi xona, yopiq eshik. Jarayonni yoki tugma koʻrinishini TALAB QILMANG.
+Faqat rasm butunlay boshqa sohadan boʻlsa RAD ETING. Ikkilansangiz — TASDIQ.`,
               },
               ...imageParts,
             ],

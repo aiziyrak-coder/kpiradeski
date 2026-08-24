@@ -1719,8 +1719,15 @@ export class ManagerKpiService implements OnModuleInit {
             }
           }
           if (!sameTask && !samePlanFamily) {
+            // Qaysi vazifada ishlatilganini aytamiz — menejer nima qilishni bilsin
+            const other = await this.prisma.kpiCatalogNode.findUnique({
+              where: { key: dup.entry.nodeKey },
+              select: { titleUz: true },
+            });
             throw new BadRequestException(
-              'Bu rasm boshqa ish uchun allaqachon yuborilgan. Har bir vazifa uchun alohida yangi foto/skrin oling.',
+              other
+                ? `Bu aynan shu fayl «${other.titleUz}» vazifasiga yuborilgan. Shu ish uchun yangi surat oling — eski suratni qayta tanlamang.`
+                : 'Bu aynan shu fayl boshqa vazifaga yuborilgan. Shu ish uchun yangi surat oling — eski suratni qayta tanlamang.',
             );
           }
           if (!sameDay && !periodTask && !samePlanFamily) {
