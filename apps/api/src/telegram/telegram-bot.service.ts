@@ -84,6 +84,16 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       ],
     }).catch(() => undefined);
 
+    // Webhook oʻrnatilgan boʻlsa getUpdates 409 qaytaradi va bot buyruq qabul
+    // qila olmaydi. Polling rejimida ishlaymiz — avval webhookni olib tashlaymiz.
+    try {
+      const res = await this.api('deleteWebhook', { drop_pending_updates: false });
+      if (res.ok) this.logger.log('Telegram webhook tozalandi (polling rejimi)');
+      else this.logger.warn(`deleteWebhook: ${res.description}`);
+    } catch (e) {
+      this.logger.warn(`deleteWebhook xato: ${e}`);
+    }
+
     this.running = true;
     this.logger.log('Telegram bot polling boshlandi');
     this.pollLoop();
@@ -227,8 +237,16 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
             }
           }
         } else {
-          this.logger.warn(`getUpdates ok=false: ${JSON.stringify(json).slice(0, 200)}`);
-          await new Promise((r) => setTimeout(r, 5000));
+          // 409 = kimdir webhook oʻrnatgan. Loglarni 5s da bir marta toʻldirmasdan,
+          // webhookni olib tashlab polling'ni tiklaymiz.
+          if (json.description?.includes('webhook is active')) {
+            this.logger.warn('getUpdates 409 — webhook aniqlandi, olib tashlanmoqda');
+            await this.api('deleteWebhook', { drop_pending_updates: false }).catch(() => undefined);
+            await new Promise((r) => setTimeout(r, 2000));
+          } else {
+            this.logger.warn(`getUpdates ok=false: ${JSON.stringify(json).slice(0, 200)}`);
+            await new Promise((r) => setTimeout(r, 5000));
+          }
         }
       } catch (e) {
         if (!this.running) break;
