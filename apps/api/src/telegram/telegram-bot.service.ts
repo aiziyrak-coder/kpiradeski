@@ -31,6 +31,7 @@ import {
   tgAppLink,
   TG_BRAND,
 } from './tg-format';
+import { telegramStatus } from './telegram-status';
 
 type IncompleteTask = {
   key: string;
@@ -126,6 +127,22 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`deleteWebhook xato: ${e}`);
     }
 
+    // Bot username'ini oʻzi aniqlaydi — guruhdagi tugmalar Mini App deep-link
+    // (t.me/<bot>?startapp=...) boʻlishi uchun kerak, qoʻlda sozlash shart emas
+    try {
+      const me = await this.api('getMe');
+      const username = me.ok ? me.result?.username : null;
+      if (username) {
+        telegramStatus.botUsername = String(username);
+        this.logger.log(`Bot username: @${username} (Mini App havolalari yoqildi)`);
+      } else {
+        this.logger.warn('getMe username bermadi — tugmalar oddiy web havola boʻladi');
+      }
+    } catch (e) {
+      this.logger.warn(`getMe xato: ${e} — tugmalar oddiy web havola boʻladi`);
+    }
+
+    telegramStatus.enabled = true;
     this.running = true;
     this.logger.log('Telegram bot polling boshlandi');
     this.pollLoop();
@@ -259,6 +276,8 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           { timeoutMs: 35_000, signal: this.pollAbort.signal },
         );
         if (json.ok && Array.isArray(json.result)) {
+          telegramStatus.lastPollOkAt = Date.now();
+          telegramStatus.lastError = null;
           for (const upd of json.result as TgUpdate[]) {
             this.offset = upd.update_id + 1;
             // Bitta buyruq xato bersa — qolgan updatelar ham tushib qolmasin
@@ -269,16 +288,19 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
             }
           }
         } else if (json.description?.includes('webhook is active')) {
+          telegramStatus.lastError = json.description;
           // Kimdir webhook oʻrnatgan — olib tashlab polling'ni tiklaymiz
           this.logger.warn('getUpdates 409 — webhook aniqlandi, olib tashlanmoqda');
           await this.api('deleteWebhook', { drop_pending_updates: false }).catch(() => undefined);
           await new Promise((r) => setTimeout(r, 2000));
         } else {
+          telegramStatus.lastError = json.description || 'getUpdates ok=false';
           this.logger.warn(`getUpdates ok=false: ${JSON.stringify(json).slice(0, 200)}`);
           await new Promise((r) => setTimeout(r, 5000));
         }
       } catch (e) {
         if (!this.running) break;
+        telegramStatus.lastError = e instanceof Error ? e.message : String(e);
         this.logger.warn(`Polling xato: ${e}`);
         await new Promise((r) => setTimeout(r, 3000));
       }

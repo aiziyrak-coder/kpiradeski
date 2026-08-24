@@ -6,6 +6,10 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  telegramPollingHealthy,
+  telegramStatus,
+} from '../telegram/telegram-status';
 
 @Controller('health')
 export class HealthController {
@@ -21,13 +25,25 @@ export class HealthController {
     } catch {
       db = 'down';
     }
-    const ok = db === 'up';
+    // Bot pollingi jim oʻlishi mumkin (masalan webhook 409) — health yashil
+    // qolmasin, aks holda uzilish kunlar davomida sezilmaydi
+    const tgPolling = telegramPollingHealthy();
+    const ok = db === 'up' && tgPolling;
     if (!ok) res.status(HttpStatus.SERVICE_UNAVAILABLE);
     const now = new Date();
     return {
       status: ok ? 'ok' : 'degraded',
       db,
       telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
+      telegramPolling: telegramStatus.enabled
+        ? {
+            healthy: tgPolling,
+            lastOkAt: telegramStatus.lastPollOkAt
+              ? new Date(telegramStatus.lastPollOkAt).toISOString()
+              : null,
+            lastError: telegramStatus.lastError,
+          }
+        : { healthy: true, disabled: true },
       timezone: 'Asia/Tashkent',
       time: now.toISOString(),
       timeTashkent: new Intl.DateTimeFormat('uz-UZ', {

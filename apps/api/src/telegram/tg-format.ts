@@ -3,6 +3,8 @@
  * Qisqa, tushunarli HTML kartochkalar
  */
 
+import { telegramStatus } from './telegram-status';
+
 export const TG_BRAND = 'Radeski KPI';
 
 export function tgEscape(s: unknown): string {
@@ -169,7 +171,9 @@ export function webBaseUrl(): string {
  * TELEGRAM_BOT_USERNAME berilmagan boʻlsa — eski oddiy web havola qoladi.
  */
 export function tgAppLink(route: string): string {
-  const bot = process.env.TELEGRAM_BOT_USERNAME?.trim().replace(/^@/, '');
+  const bot =
+    telegramStatus.botUsername ||
+    process.env.TELEGRAM_BOT_USERNAME?.trim().replace(/^@/, '');
   const web = webBaseUrl().replace(/\/$/, '');
   const path = route.replace(/^\//, '');
   if (!bot) return `${web}/${path}`;

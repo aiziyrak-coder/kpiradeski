@@ -3,11 +3,19 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { useTelegram } from '@/components/TelegramProvider';
 import { homeForRole } from '@/types';
+
+const START_ROUTES = ['dashboard', 'today', 'assistant', 'reports', 'my', 'notifications'];
 
 export default function Home() {
   const { user, loading } = useAuth();
+  const { webApp } = useTelegram();
   const router = useRouter();
+
+  // Mini App t.me/<bot>?startapp=<route> bilan ochilgan boʻlsa — shu sahifaga
+  const raw = webApp?.initDataUnsafe?.start_param;
+  const startRoute = raw && START_ROUTES.includes(raw) ? `/${raw}` : null;
 
   useEffect(() => {
     if (loading) return;
@@ -15,8 +23,8 @@ export default function Home() {
       router.replace('/login');
       return;
     }
-    router.replace(homeForRole(user.role));
-  }, [user, loading, router]);
+    router.replace(startRoute || homeForRole(user.role));
+  }, [user, loading, router, startRoute]);
 
   return (
     <div className="min-h-screen grid place-items-center bg-mesh">
