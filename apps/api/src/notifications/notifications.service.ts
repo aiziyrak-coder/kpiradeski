@@ -4,7 +4,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TelegramBotService } from '../telegram/telegram-bot.service';
 import { CalendarService } from '../common/calendar.service';
 import { toDateOnly } from '../common/kpi.constants';
-import { blockLabel, scoreIcon } from '../telegram/tg-format';
 
 const TZ = 'Asia/Tashkent';
 
@@ -56,8 +55,10 @@ export class NotificationsService {
       duties: [
         '08:00 — ish kuni: kunlik vazifalar ochiladi',
         'Dam olish (Sh/Ya + bayram) — vazifa yoʻq',
-        '09:00–22:00 — soatlik qisqa eslatma',
-        '19:00 — AI kunlik nazorat',
+        '09:00–21:00 — har 2 soat: holat + bajarilmagan kunlik ishlar',
+        '10/14/18/20 — hodimlar davomati',
+        'Dushanba 10:00 — haftalik ishlar',
+        'Dushanba 10:15 — oylik ishlar',
         'Buyruqlar: /bugun /holat /vazifalar /yordam',
       ],
     };
@@ -140,18 +141,39 @@ export class NotificationsService {
     // Telegram: soatlik pulse (09–22) qamrab oladi
   }
 
-  /** Ish vaqti har soat (09–22): guruhga qisqa holat + eslatma */
-  @Cron('0 9-22 * * *', { timeZone: TZ })
+  /** Ish vaqti har 2 soat: holat + bajarilmagan kunlik ishlar */
+  @Cron('0 9,11,13,15,17,19,21 * * *', { timeZone: TZ })
   async hourlyWorkPulseCron() {
     try {
       await this.telegram.hourlyWorkPulse();
     } catch (e) {
-      this.logger.warn(`Hourly pulse failed: ${e}`);
+      this.logger.warn(`Work pulse failed: ${e}`);
+    }
+  }
+
+  /** Haftalik ishlar — dushanba 10:00 */
+  @Cron('0 10 * * 1', { timeZone: TZ })
+  async weeklyWorkPulseCron() {
+    try {
+      await this.telegram.weeklyWorkPulse();
+    } catch (e) {
+      this.logger.warn(`Weekly pulse failed: ${e}`);
+    }
+  }
+
+  /** Oylik ishlar — dushanba 10:15 (haftada 1 marta) */
+  @Cron('15 10 * * 1', { timeZone: TZ })
+  async monthlyWorkPulseCron() {
+    try {
+      await this.telegram.monthlyWorkPulse();
+    } catch (e) {
+      this.logger.warn(`Monthly pulse failed: ${e}`);
     }
   }
 
   @Cron('0 10 * * 1', { timeZone: TZ })
   async mysteryReminder() {
+    // Telegram spam yoʻq — faqat ichki eslatma
     const last = await this.prisma.mysteryPatientTest.findFirst({ orderBy: { date: 'desc' } });
     const today = toDateOnly(new Date());
     if (last) {
@@ -161,47 +183,16 @@ export class NotificationsService {
     await this.createForRoles(
       ['MANAGER', 'SUPER_ADMIN'],
       'Maxfiy bemor testi',
-      'Har 2 haftada bir marta maxfiy bemor testini oʻtkazing.\nNatijani platformaga kiriting — sifat nazorati shu yerda boshlanadi.',
+      'Har 2 haftada bir marta maxfiy bemor testini oʻtkazing.',
       'MYSTERY',
-      { emoji: '🕵️', category: 'Sifat auditi' },
+      { emoji: '🕵️', category: 'Sifat auditi', telegram: false },
     );
   }
 
   @Cron('0 8 * * *', { timeZone: TZ })
   async lowScoreAlert() {
-    const yesterday = toDateOnly(new Date());
-    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-    if (await this.calendar.isRestDay(yesterday)) return;
-    const scores = await this.prisma.dailyScore.findMany({
-      where: { date: yesterday, frequency: 'DAILY', branchId: { not: null } },
-      include: { branch: { select: { name: true } } },
-    });
-    for (const score of scores) {
-      if (!score || score.colorStatus === 'rest' || (score.completion as any)?.restDay) continue;
-      if (score.totalScore < 50) {
-        const blocks = (score.blockScores as Record<string, any>) || {};
-        const weak = Object.entries(blocks)
-          .filter(
-            ([k, v]) =>
-              !k.includes('.') &&
-              !k.endsWith('_w') &&
-              !k.endsWith('_m') &&
-              typeof v === 'number' &&
-              v < 50,
-          )
-          .map(([k, v]) => `${blockLabel(k)} ${v}`)
-          .join(', ');
-        const dateStr = yesterday.toISOString().slice(0, 10);
-        const branchName = score.branch?.name || 'Filial';
-        await this.createForRoles(
-          ['DIRECTOR', 'SUPER_ADMIN', 'MANAGER'],
-          'Past kunlik ball',
-          `${branchName} · ${dateStr}: ${score.totalScore}/100 ${scoreIcon(score.totalScore)}\nZaif: ${weak || '—'}\nBugun shu yerga eʼtibor.`,
-          'SCORE',
-          { emoji: '📉', category: 'KPI', telegram: true },
-        );
-      }
-    }
+    // Telegramga past ball / AI xulosasi yuborilmaydi
+    return;
   }
 
   @Cron('0 9 * * *', { timeZone: TZ })
@@ -216,27 +207,7 @@ export class NotificationsService {
 
   @Cron('0 9 * * 1', { timeZone: TZ })
   async weeklyDigest() {
-    const end = toDateOnly(new Date());
-    const start = new Date(end);
-    start.setUTCDate(start.getUTCDate() - 7);
-    const scores = await this.prisma.dailyScore.findMany({
-      where: { date: { gte: start, lte: end }, frequency: 'DAILY', branchId: { not: null } },
-      include: { branch: { select: { name: true } } },
-    });
-    const working = scores.filter(
-      (s) => s.colorStatus !== 'rest' && !(s.completion as any)?.restDay,
-    );
-    if (!working.length) return;
-    const avg =
-      Math.round((working.reduce((s, x) => s + x.totalScore, 0) / working.length) * 10) / 10;
-    const red = working.filter((s) => s.colorStatus === 'red').length;
-    const best = [...working].sort((a, b) => b.totalScore - a.totalScore)[0];
-    await this.createForRoles(
-      ['DIRECTOR', 'MANAGER', 'SUPER_ADMIN'],
-      'Haftalik KPI xulosa',
-      `Ish kunlari oʻrtacha: ${avg}/100 ${scoreIcon(avg)}\nQizil kunlar: ${red}/${working.length}\nEng yaxshi: ${best?.branch?.name || '—'} (${best?.totalScore ?? '—'})\n\nBatafsil: /hafta`,
-      'SYSTEM',
-      { emoji: '📊', category: 'Haftalik hisobot' },
-    );
+    // Eski AI/haftalik xulosa o‘rniga weeklyWorkPulse ishlaydi
+    return;
   }
 }

@@ -111,6 +111,46 @@ export function tgDivider(): string {
   return '┄┄┄┄┄┄┄┄┄┄';
 }
 
+const UZ_MONTHS = [
+  'yanvar',
+  'fevral',
+  'mart',
+  'aprel',
+  'may',
+  'iyun',
+  'iyul',
+  'avgust',
+  'sentabr',
+  'oktabr',
+  'noyabr',
+  'dekabr',
+];
+
+/** 2026-08-19 → 19-avgust */
+export function tgUzDate(iso: string, weekday?: string): string {
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return [iso, weekday].filter(Boolean).join(', ');
+  const day = Number(m[3]);
+  const month = UZ_MONTHS[Number(m[2]) - 1] || m[2];
+  const core = `${day}-${month}`;
+  return weekday ? `${core}, ${weekday}` : core;
+}
+
+export function tgClock(hour: number): string {
+  return `${String(hour).padStart(2, '0')}:00`;
+}
+
+/** [■■■■■■□□□□] 60% */
+export function tgProgressBar(done: number, total: number): string {
+  const t = Math.max(0, total);
+  const d = Math.max(0, Math.min(done, t));
+  const pct = t ? Math.round((d / t) * 100) : 0;
+  const width = 10;
+  const filled = t ? Math.round((d / t) * width) : 0;
+  const bar = '■'.repeat(filled) + '□'.repeat(Math.max(0, width - filled));
+  return `<i>[${bar}] ${pct}%</i>`;
+}
+
 export function webBaseUrl(): string {
   return (
     process.env.WEB_PUBLIC_URL?.trim() ||

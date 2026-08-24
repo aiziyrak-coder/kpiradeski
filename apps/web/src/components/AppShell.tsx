@@ -13,11 +13,13 @@ import {
   X,
   LogOut,
   Users,
+  UserCircle,
   KeyRound,
   Building2,
   Sparkles,
   Bot,
   Settings,
+  BookOpen,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -41,12 +43,14 @@ const NAV: Array<{
     roles: ['ADMIN', 'SUPER_ADMIN'],
   },
   { href: '/today', labelKey: 'nav.today', icon: ClipboardList, roles: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
+  { href: '/guide', labelKey: 'nav.guide', icon: BookOpen, roles: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
   { href: '/ai', labelKey: 'nav.ai', icon: Sparkles, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { href: '/assistant', labelKey: 'nav.assistant', icon: Bot, roles: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
   { href: '/branches', labelKey: 'nav.branches', icon: Building2, roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { href: '/employees', labelKey: 'nav.employees', icon: UserCircle, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { href: '/users', labelKey: 'nav.users', icon: Users, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { href: '/reports', labelKey: 'nav.reports', icon: FileBarChart, roles: ['ADMIN', 'SUPER_ADMIN'] },
-  { href: '/settings', labelKey: 'nav.settings', icon: Settings, roles: ['ADMIN', 'SUPER_ADMIN', 'DIRECTOR'] },
+  { href: '/integrations', labelKey: 'nav.settings', icon: Settings, roles: ['ADMIN', 'SUPER_ADMIN', 'DIRECTOR'] },
   { href: '/notifications', labelKey: 'nav.notifications', icon: Bell },
   { href: '/account', labelKey: 'nav.account', icon: KeyRound },
 ];

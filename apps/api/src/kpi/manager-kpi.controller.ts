@@ -57,6 +57,7 @@ class CreateCatalogTaskDto {
   @IsString() parentKey: string;
   @IsOptional() @IsBoolean() proofRequired?: boolean;
   @IsOptional() @IsString() inputType?: string;
+  @IsOptional() @IsBoolean() sharedAcrossBranches?: boolean;
 }
 
 @Controller('manager-kpi')
@@ -104,6 +105,7 @@ export class ManagerKpiController {
       parentKey: dto.parentKey,
       proofRequired: dto.proofRequired,
       inputType: dto.inputType,
+      sharedAcrossBranches: dto.sharedAcrossBranches,
     });
   }
 
@@ -217,17 +219,33 @@ export class ManagerKpiController {
     @Res() res: Response,
   ) {
     const { proof, full } = await this.kpi.getProofFile(id, user);
-    const mime = proof.mimeType || 'application/octet-stream';
+    let mime = proof.mimeType || 'application/octet-stream';
+    // Diskdagi magic bytes — notoʻgʻri MIME saqlangan boʻlsa ham rasm sifatida beramiz
+    try {
+      const fs = await import('fs');
+      const buf = fs.readFileSync(full);
+      if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8) mime = 'image/jpeg';
+      else if (buf.length > 4 && buf[0] === 0x89 && buf[1] === 0x50) mime = 'image/png';
+      else if (buf.length > 4 && buf[0] === 0x47 && buf[1] === 0x49) mime = 'image/gif';
+      else if (
+        buf.length > 12 &&
+        buf[0] === 0x52 &&
+        buf[8] === 0x57 &&
+        buf[9] === 0x45 &&
+        buf[10] === 0x42
+      )
+        mime = 'image/webp';
+    } catch {
+      /* keep stored mime */
+    }
     const isImage = mime.startsWith('image/') && mime !== 'image/svg+xml';
-    res.setHeader('Content-Type', isImage ? mime : 'application/octet-stream');
+    res.setHeader('Content-Type', isImage ? mime : mime || 'application/octet-stream');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, max-age=300');
-    if (!isImage) {
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${encodeURIComponent(proof.fileName || 'proof')}"`,
-      );
-    }
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(proof.fileName || 'proof')}"`,
+    );
     res.sendFile(full);
   }
 }

@@ -53,6 +53,16 @@ class HolidayDto {
   @IsString() title: string;
 }
 
+class LinkItemDto {
+  @IsOptional() @IsString() id?: string;
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsString() url?: string;
+  @IsOptional() @IsString() username?: string;
+  @IsOptional() @IsString() profileUrl?: string;
+  @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsBoolean() enabled?: boolean;
+}
+
 class WebsiteDto {
   @IsOptional() @IsString() id?: string;
   @IsString() name: string;
@@ -72,6 +82,16 @@ class ChannelDto {
 class IntegrationsDto {
   @IsOptional() @ValidateNested() @Type(() => ChannelDto) telegram?: ChannelDto;
   @IsOptional() @ValidateNested() @Type(() => ChannelDto) instagram?: ChannelDto;
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => LinkItemDto)
+  telegramChannels?: LinkItemDto[];
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => LinkItemDto)
+  instagramProfiles?: LinkItemDto[];
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })

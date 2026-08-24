@@ -15,7 +15,7 @@ EXCLUDE = {"node_modules", ".next", "dist", ".git", "uploads", "__pycache__", "s
 
 c = paramiko.SSHClient()
 c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-c.connect("87.192.230.208", port=2222, username="admin_root", password=P, timeout=30)
+c.connect("192.168.0.101", port=22, username="admin_root", password=P, timeout=30)
 sftp = c.open_sftp()
 
 tmp = Path(tempfile.gettempdir()) / "kpiradeski-web-sync.tar.gz"

@@ -33,6 +33,9 @@ export async function seedKpiCatalog(
           weight: n.weight ?? 0,
           sortOrder: n.sortOrder,
           proofRequired: n.proofRequired ?? false,
+          windowStartMin: n.windowStartMin ?? null,
+          windowEndMin: n.windowEndMin ?? null,
+          sharedAcrossBranches: !!n.sharedAcrossBranches,
         },
       });
       continue;
@@ -50,20 +53,32 @@ export async function seedKpiCatalog(
           inputType: n.inputType,
           frequency,
           sortOrder: n.sortOrder,
+          windowStartMin: n.windowStartMin ?? null,
+          windowEndMin: n.windowEndMin ?? null,
+          sharedAcrossBranches: !!n.sharedAcrossBranches,
         },
       });
     } else {
-      // Daraxt tuzilmasi + root ogʻirliklar (ball 100% ga mos)
+      // Daraxt tuzilmasi + seed matnlari (vazifa nomlari yangilansin)
       const isRoot = n.parentKey == null;
       await client.kpiCatalogNode.update({
         where: { key: n.key },
         data: {
           parentKey: n.parentKey ?? null,
+          titleUz: n.titleUz,
+          titleRu: n.titleRu,
+          descriptionUz: n.descriptionUz ?? null,
+          descriptionRu: n.descriptionRu ?? null,
           sortOrder: n.sortOrder,
           inputType: n.inputType,
           frequency,
-          active: true,
+          active: n.active !== false,
           ...(isRoot && typeof n.weight === 'number' ? { weight: n.weight } : {}),
+          ...(typeof n.windowStartMin === 'number'
+            ? { windowStartMin: n.windowStartMin, windowEndMin: n.windowEndMin ?? null }
+            : {}),
+          ...(n.key === 'reception.attendance' ? { proofRequired: false } : {}),
+          sharedAcrossBranches: !!n.sharedAcrossBranches,
         },
       });
     }

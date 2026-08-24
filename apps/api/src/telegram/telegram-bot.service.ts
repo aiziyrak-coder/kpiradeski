@@ -10,7 +10,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { StaffService } from '../staff/staff.service';
 import { CalendarService } from '../common/calendar.service';
-import { toDateOnly } from '../common/kpi.constants';
+import { startOfWeek, toDateOnly } from '../common/kpi.constants';
+import { evalTaskWindow } from '../common/task-window';
+import { isCompanyWideTaskKey } from '../common/company-wide-tasks';
+import { ATTENDANCE_NODE_KEY } from '../attendance/attendance.constants';
+import { KpiInputType, AttendanceStatus } from '@prisma/client';
 import {
   blockLabel,
   branchProgressLine,
@@ -19,11 +23,39 @@ import {
   scoreIcon,
   tgBold,
   tgCard,
+  tgClock,
   tgCode,
   tgEscape,
+  tgProgressBar,
+  tgUzDate,
   TG_BRAND,
   webBaseUrl,
 } from './tg-format';
+
+type IncompleteTask = {
+  key: string;
+  title: string;
+  section: string;
+  shared: boolean;
+};
+
+type FreqBranchStat = {
+  id: string;
+  name: string;
+  done: number;
+  assigned: number;
+  incomplete: IncompleteTask[];
+  managers: string[];
+};
+
+type FreqStats = {
+  lines: string[];
+  branches: FreqBranchStat[];
+  sharedIncomplete: IncompleteTask[];
+  totalAssigned: number;
+  totalDone: number;
+  laggingManagers: string[];
+};
 
 type TgUpdate = {
   update_id: number;
@@ -315,8 +347,10 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         welcome ? 'KPI va ishlar holati — qisqa xabarlar bilan.' : '',
         '<b>Ish kuni</b>',
         '• <b>08:00</b> — vazifalar ochiladi',
-        '• <b>09:00–22:00</b> — soatlik eslatma',
-        '• <b>19:00</b> — AI yakuniy baho',
+        '• <b>09:00–21:00</b> — har 2 soat: holat + ochiq kunlik ishlar',
+        '• <b>10/14/18/20</b> — hodimlar davomati',
+        '• <b>Dushanba 10:00</b> — haftalik ishlar',
+        '• <b>Dushanba 10:15</b> — oylik ishlar',
         '',
         '<b>Buyruqlar</b>',
         '• /bugun — bugungi ball',
@@ -364,8 +398,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       compact: true,
       htmlLines: [
         'Vazifalar <b>08:00</b> da ochiladi.',
-        'Eslatma: <b>09:00–22:00</b> har soat.',
-        'AI baho: <b>19:00</b>.',
+        'Eslatma: har <b>2 soatda</b> (09:00–21:00).',
       ],
     });
   }
@@ -554,6 +587,8 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
+    const stats = await this.collectFreqStats('DAILY', date);
+    const incompleteByName = new Map(stats.branches.map((b) => [b.name, b.incomplete]));
     const htmlLines: string[] = [];
     for (const score of scores) {
       const name = score.branch?.name || 'Filial';
@@ -580,6 +615,10 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         htmlLines.push(
           `   zaif: ${weak.map(([k, v]) => `${blockLabel(k)} ${v}`).join(', ')}`,
         );
+      }
+      const left = incompleteByName.get(name) || [];
+      if (left.length) {
+        htmlLines.push(`   ochiq: ${left.length} ta`);
       }
     }
 
@@ -626,20 +665,29 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       ([k, v]) => !k.includes('.') && !k.endsWith('_w') && !k.endsWith('_m') && typeof v === 'number',
     );
     const weak = entries.filter(([, v]) => v < 50);
+    const stats = await this.collectFreqStats('DAILY', date);
+    const branchName = score.branch?.name || 'Filial';
+    const branchInc = stats.branches.find((b) => b.name === branchName)?.incomplete || [];
+    const htmlLines = [
+      ...entries.map(
+        ([k, v]) => `${scoreIcon(v)} ${tgEscape(blockLabel(k))}: ${tgBold(`${v}`)}`,
+      ),
+      ...(weak.length
+        ? ['', `Zaif: ${weak.map(([k]) => blockLabel(k)).join(', ')}`]
+        : []),
+    ];
+    if (branchInc.length) {
+      htmlLines.push('');
+      htmlLines.push(`📋 ${tgBold('Bajarilmagan ishlar')} — ${branchInc.length} ta`);
+      htmlLines.push(...this.groupedIncompleteLines(branchInc));
+    }
     return tgCard({
       emoji: colorIcon(score.colorStatus),
       category: 'Holat',
-      title: `${score.branch?.name || 'Filial'} · ${score.totalScore}/100`,
+      title: `${branchName} · ${score.totalScore}/100`,
       meta: [day.date],
       compact: true,
-      htmlLines: [
-        ...entries.map(
-          ([k, v]) => `${scoreIcon(v)} ${tgEscape(blockLabel(k))}: ${tgBold(`${v}`)}`,
-        ),
-        ...(weak.length
-          ? ['', `Zaif: ${weak.map(([k]) => blockLabel(k)).join(', ')}`]
-          : []),
-      ],
+      htmlLines,
     });
   }
 
@@ -739,9 +787,9 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Ish vaqti soatlik eslatma (09–22).
-   * 08:00 da ertalabki ochilish alohida yuboriladi.
-   * Dam olishda faqat 09:00 da bir marta qisqa xabar.
+   * Ish vaqti har 2 soat (09/11/13/15/17/19/21):
+   * 1) tushunarli holat
+   * 2) har filial — bajarilmagan kunlik ishlarning aniq roʻyxati
    */
   async hourlyWorkPulse(hour?: number) {
     const day = await this.calendar.getDayInfo();
@@ -756,153 +804,465 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
             }).format(new Date()),
           );
 
-    // 08:00 — ertalabki spawn xabari yetarli; pulse 09–22
-    if (h < 9 || h > 22) {
+    const allowed = new Set([9, 11, 13, 15, 17, 19, 21]);
+    if (!allowed.has(h)) {
       return { ok: true, skipped: true, hour: h };
     }
 
     if (day.restDay) {
-      if (h === 9) {
-        await this.sendCard(
-          tgCard({
-            emoji: '🌴',
-            category: `${String(h).padStart(2, '0')}:00`,
-            title: 'Dam olish kuni',
-            meta: [day.date, day.holiday?.title || day.weekdayLabel],
-            compact: true,
-            body: 'Bugun KPI eslatmasi yoʻq. Yaxshi dam oling!',
-          }),
-          { buttons: false },
-        );
-      }
       return { ok: true, restDay: true, hour: h };
     }
 
     const date = toDateOnly(day.date);
-    const branches = await this.prisma.branch.findMany({
-      where: { active: true },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
+    const stats = await this.collectFreqStats('DAILY', date);
+    if (!stats.totalAssigned) {
+      return { ok: true, empty: true };
+    }
+
+    await this.sendDailySummaryCard({
+      stats,
+      dateLabel: day.date,
+      weekdayLabel: day.weekdayLabel,
+      hour: h,
     });
 
+    const allDone =
+      stats.totalDone >= stats.totalAssigned && stats.sharedIncomplete.length === 0;
+    if (!allDone) {
+      await this.sendDailyIncompleteByBranch({
+        stats,
+        dateLabel: day.date,
+        hour: h,
+      });
+    }
+
+    return {
+      ok: true,
+      totalDone: stats.totalDone,
+      totalAssigned: stats.totalAssigned,
+      allDone,
+    };
+  }
+
+  /** Haftalik ishlar — haftada 1 marta (dushanba 10:00) */
+  async weeklyWorkPulse() {
+    const day = await this.calendar.getDayInfo();
+    if (day.restDay) return { ok: true, restDay: true };
+    const period = startOfWeek(toDateOnly(day.date));
+    return this.sendFreqProgressPulse({
+      frequency: 'WEEKLY',
+      date: period,
+      dateLabel: day.date,
+      weekdayLabel: day.weekdayLabel,
+      title: `Haftalik ishlar · ${day.date}`,
+    });
+  }
+
+  /** Oylik ishlar — haftada 1 marta (dushanba 10:15) */
+  async monthlyWorkPulse() {
+    const day = await this.calendar.getDayInfo();
+    if (day.restDay) return { ok: true, restDay: true };
+    const d = toDateOnly(day.date);
+    const period = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+    return this.sendFreqProgressPulse({
+      frequency: 'MONTHLY',
+      date: period,
+      dateLabel: day.date,
+      weekdayLabel: day.weekdayLabel,
+      title: `Oylik ishlar · ${day.date}`,
+    });
+  }
+
+  private async sendFreqProgressPulse(opts: {
+    frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+    date: Date;
+    dateLabel: string;
+    weekdayLabel?: string;
+    hour?: number;
+    title: string;
+  }) {
+    const stats = await this.collectFreqStats(opts.frequency, opts.date);
+    if (!stats.totalAssigned) {
+      return { ok: true, empty: true };
+    }
+    const kind =
+      opts.frequency === 'WEEKLY' ? 'Haftalik' : opts.frequency === 'MONTHLY' ? 'Oylik' : 'Kunlik';
+    const left = Math.max(0, stats.totalAssigned - stats.totalDone);
+    const allDone = left === 0;
     const lines: string[] = [];
-    let totalAssigned = 0;
-    let totalDone = 0;
-    let lagging: string[] = [];
-
-    for (const b of branches) {
-      const templates = await this.prisma.kpiAssignmentTemplate.findMany({
-        where: { branchId: b.id, frequency: 'DAILY', active: true },
-        select: { nodeKey: true },
-      });
-      const keys = templates.map((t) => t.nodeKey);
-      const assigned = keys.length;
-      let done = 0;
-      if (keys.length) {
-        done = await this.prisma.kpiDayEntry.count({
-          where: {
-            branchId: b.id,
-            date,
-            done: true,
-            nodeKey: { in: keys },
-          },
-        });
-      }
-      const score = await this.prisma.dailyScore.findFirst({
-        where: { branchId: b.id, date, frequency: 'DAILY' },
-      });
-      const pct = assigned ? Math.round((done / assigned) * 100) : 0;
-      totalAssigned += assigned;
-      totalDone += done;
+    for (const b of stats.branches) {
+      const pct = b.assigned ? Math.round((b.done / b.assigned) * 100) : 0;
+      lines.push(`${scoreIcon(pct)} ${tgBold(b.name)} — <b>${b.done}/${b.assigned}</b>`);
+      lines.push(tgProgressBar(b.done, b.assigned));
+    }
+    lines.push('');
+    if (allDone) {
       lines.push(
-        branchProgressLine({
-          name: b.name,
-          done,
-          assigned,
-          score: score?.totalScore ?? null,
-        }),
+        opts.frequency === 'WEEKLY'
+          ? '🏆 Haftalik ishlar yopildi. Rahmat!'
+          : '🏆 Oylik ishlar yopildi. Rahmat!',
       );
-      if (assigned > 0 && pct < 50) lagging.push(b.name);
-    }
-
-    const overallPct = totalAssigned
-      ? Math.round((totalDone / totalAssigned) * 100)
-      : 0;
-    const left = Math.max(0, totalAssigned - totalDone);
-
-    let tip = 'Davom eting — ochiq ishlarni yuboring.';
-    let emoji = '⏱';
-    if (h <= 10) {
-      emoji = '☀️';
-      tip = 'Kun boshlandi. Birinchi muhim ishlarni yuboring.';
-    } else if (h <= 13) {
-      emoji = '📋';
-      tip =
-        overallPct < 30
-          ? 'Ertalabki ishlar ortda — tempni oshiring.'
-          : 'Yaxshi. Tushgacha ochiq ishlarni yoping.';
-    } else if (h <= 17) {
-      emoji = '⚡';
-      tip =
-        overallPct < 50
-          ? 'Yarim kun — eng muhim ochiq ishlarga qayting.'
-          : 'Yaxshi temp. Qolganini kechga qoldirmang.';
-    } else if (h <= 20) {
-      emoji = '🏁';
-      tip =
-        left > 0
-          ? `Yakunlash: hali ${left} ta ish ochiq.`
-          : 'Deyarli tayyor — oxirgi ishlarni yoping.';
     } else {
-      emoji = '🌙';
-      tip =
-        left > 0
-          ? `Ish kuni tugayapti — qolgan ${left} ta ishni hozir yuboring.`
-          : 'Kun yopildi. Rahmat!';
-    }
-
-    if (totalAssigned === 0) {
-      tip = 'Filialga kunlik ish biriktirilmagan (Admin → Bugun).';
-    } else if (lagging.length && overallPct < 60) {
-      tip += ` Ortda: ${lagging.slice(0, 3).join(', ')}.`;
+      lines.push(`Hali <b>${left}</b> ta ish ochiq.`);
+      if (stats.laggingManagers.length) {
+        lines.push(`Javobgar: ${tgEscape(stats.laggingManagers.slice(0, 6).join(', '))}`);
+      }
     }
 
     await this.sendCard(
-      tgCard({
-        emoji,
-        category: `${String(h).padStart(2, '0')}:00`,
-        title: `Holat · ${day.date}`,
-        meta: [
-          day.weekdayLabel,
-          `Jami ${totalDone}/${totalAssigned} (${overallPct}%)`,
-        ],
-        compact: true,
-        htmlLines: [
-          ...lines,
-          '',
-          `👉 ${tgEscape(tip)}`,
-        ],
-      }),
+      [`📅 <b>${kind} ishlar</b>`, tgUzDate(opts.dateLabel, opts.weekdayLabel), '', ...lines].join(
+        '\n',
+      ),
       { buttons: false },
     );
 
-    return { ok: true, hour: h, totalDone, totalAssigned, overallPct };
+    return { ok: true, totalDone: stats.totalDone, totalAssigned: stats.totalAssigned, allDone };
+  }
+
+  private async sendDailySummaryCard(opts: {
+    stats: FreqStats;
+    dateLabel: string;
+    weekdayLabel?: string;
+    hour: number;
+  }) {
+    const { stats, hour } = opts;
+    const left = Math.max(0, stats.totalAssigned - stats.totalDone);
+    const allDone = left === 0 && stats.sharedIncomplete.length === 0;
+    const lines: string[] = [
+      `⏰ <b>${tgClock(hour)} · Kunlik eslatma</b>`,
+      tgUzDate(opts.dateLabel, opts.weekdayLabel),
+      '',
+      '<b>Filiallar holati</b>',
+    ];
+    for (const b of stats.branches) {
+      const pct = b.assigned ? Math.round((b.done / b.assigned) * 100) : 0;
+      const leftB = Math.max(0, b.assigned - b.done);
+      lines.push(
+        `${scoreIcon(pct)} ${tgBold(b.name)} — <b>${b.done}/${b.assigned}</b>` +
+          (leftB ? ` · qoldi ${leftB}` : ' · tayyor'),
+      );
+      lines.push(tgProgressBar(b.done, b.assigned));
+    }
+    lines.push('');
+    if (allDone) {
+      lines.push('🏆 Bugungi kunlik ishlarning hammasi yopildi. Jamoaga rahmat!');
+    } else {
+      lines.push(`Hali <b>${left}</b> ta kunlik ish ochiq.`);
+      if (stats.sharedIncomplete.length) {
+        lines.push(
+          `Shundan <b>${stats.sharedIncomplete.length}</b> tasi umumiy (SEO/SMM/marketing).`,
+        );
+      }
+      lines.push('Quyidagi xabarlarda — qaysi ishlar qolgani.');
+    }
+    await this.sendCard(lines.join('\n'), { buttons: false });
+  }
+
+  private async sendDailyIncompleteByBranch(opts: {
+    stats: FreqStats;
+    dateLabel: string;
+    hour: number;
+  }) {
+    const { stats, hour } = opts;
+    const pending = stats.branches.filter((b) => b.incomplete.length > 0);
+    if (!pending.length && !stats.sharedIncomplete.length) return { ok: true, sent: 0 };
+
+    const hh = tgClock(hour);
+    let sent = 0;
+    for (const b of pending) {
+      const left = b.incomplete.length;
+      const who = b.managers.length
+        ? `Javobgar: ${tgEscape(b.managers.slice(0, 4).join(', '))}`
+        : '';
+      const html = [
+        `📋 <b>${tgEscape(b.name)}</b> — bajarilmagan kunlik ishlar`,
+        `${hh} · tayyor ${b.done}/${b.assigned} · qoldi <b>${left}</b>`,
+        '',
+        ...this.groupedIncompleteLines(b.incomplete),
+        ...(who ? ['', who] : []),
+      ].join('\n');
+      await this.sendCard(html, { buttons: false });
+      sent += 1;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    if (stats.sharedIncomplete.length) {
+      const html = [
+        `🌐 <b>Umumiy biznes</b> — SEO / SMM / marketing`,
+        `${hh} · qoldi <b>${stats.sharedIncomplete.length}</b> ta`,
+        'Bitta filial yopsa, qolganlarida ham yopiladi.',
+        '',
+        ...this.groupedIncompleteLines(stats.sharedIncomplete),
+      ].join('\n');
+      await this.sendCard(html, { buttons: false });
+      sent += 1;
+    }
+    return { ok: true, sent };
+  }
+
+  private groupedIncompleteLines(tasks: IncompleteTask[]): string[] {
+    if (!tasks.length) return ['✅ Bajarilmagan ish yoʻq.'];
+    const lines: string[] = [];
+    let lastSection = '';
+    let n = 1;
+    for (const t of tasks) {
+      const section = t.section || 'Boshqa';
+      if (section !== lastSection) {
+        if (lines.length) lines.push('');
+        lines.push(`<b>${tgEscape(section)}</b>`);
+        lastSection = section;
+        n = 1;
+      }
+      lines.push(`${n}. ${tgEscape(t.title)}`);
+      n += 1;
+    }
+    return lines;
+  }
+
+  private async collectFreqStats(
+    frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY',
+    date: Date,
+  ): Promise<FreqStats> {
+    const branches = await this.prisma.branch.findMany({
+      where: { active: true },
+      select: {
+        id: true,
+        name: true,
+        managers: {
+          include: {
+            user: { select: { id: true, name: true, active: true } },
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    const catalog = await this.prisma.kpiCatalogNode.findMany({
+      where: { active: true },
+      select: {
+        key: true,
+        titleUz: true,
+        parentKey: true,
+        inputType: true,
+        frequency: true,
+        sharedAcrossBranches: true,
+        sortOrder: true,
+      },
+      orderBy: { sortOrder: 'asc' },
+    });
+    const nodeByKey = new Map(catalog.map((n) => [n.key, n]));
+    const childrenOf = new Map<string, typeof catalog>();
+    for (const n of catalog) {
+      if (!n.parentKey) continue;
+      const arr = childrenOf.get(n.parentKey) || [];
+      arr.push(n);
+      childrenOf.set(n.parentKey, arr);
+    }
+
+    const rootSectionOf = (key: string): string => {
+      let cur = nodeByKey.get(key);
+      if (!cur?.parentKey) return '';
+      let last = nodeByKey.get(cur.parentKey);
+      cur = last;
+      while (cur?.parentKey) {
+        last = nodeByKey.get(cur.parentKey) || last;
+        cur = nodeByKey.get(cur.parentKey);
+      }
+      return last?.titleUz || '';
+    };
+
+    const expandLeaves = (keys: string[]) => {
+      const out: typeof catalog = [];
+      const seen = new Set<string>();
+      const walk = (key: string) => {
+        const n = nodeByKey.get(key);
+        if (!n) return;
+        if (n.inputType !== KpiInputType.GROUP) {
+          if (n.frequency === frequency && !seen.has(n.key)) {
+            seen.add(n.key);
+            out.push(n);
+          }
+          return;
+        }
+        for (const c of childrenOf.get(n.key) || []) walk(c.key);
+      };
+      for (const k of keys) walk(k);
+      return out.sort((a, b) => a.sortOrder - b.sortOrder);
+    };
+
+    const branchIds = branches.map((b) => b.id);
+    const [templates, doneEntries, attRows] = await Promise.all([
+      branchIds.length
+        ? this.prisma.kpiAssignmentTemplate.findMany({
+            where: { frequency, active: true, branchId: { in: branchIds } },
+            select: { branchId: true, nodeKey: true },
+          })
+        : Promise.resolve([] as Array<{ branchId: string; nodeKey: string }>),
+      branchIds.length
+        ? this.prisma.kpiDayEntry.findMany({
+            where: { date, done: true, branchId: { in: branchIds } },
+            select: { branchId: true, nodeKey: true },
+          })
+        : Promise.resolve([] as Array<{ branchId: string; nodeKey: string }>),
+      frequency === 'DAILY' && branchIds.length
+        ? this.prisma.employeeAttendance.findMany({
+            where: {
+              date,
+              branchId: { in: branchIds },
+              status: { in: [AttendanceStatus.ON_TIME, AttendanceStatus.LATE] },
+            },
+            select: { branchId: true },
+          })
+        : Promise.resolve([] as Array<{ branchId: string }>),
+    ]);
+
+    const assignedKeysByBranch = new Map<string, string[]>();
+    for (const t of templates) {
+      const arr = assignedKeysByBranch.get(t.branchId) || [];
+      arr.push(t.nodeKey);
+      assignedKeysByBranch.set(t.branchId, arr);
+    }
+    const doneSet = new Set(doneEntries.map((e) => `${e.branchId}:${e.nodeKey}`));
+    const sharedDoneGlobally = new Set<string>();
+    for (const e of doneEntries) {
+      const n = nodeByKey.get(e.nodeKey);
+      if (n && (n.sharedAcrossBranches || isCompanyWideTaskKey(e.nodeKey))) {
+        sharedDoneGlobally.add(e.nodeKey);
+      }
+    }
+    const attArrived = new Set<string>();
+    for (const a of attRows) attArrived.add(a.branchId);
+
+    const lines: string[] = [];
+    const branchStats: FreqBranchStat[] = [];
+    const sharedSeen = new Set<string>();
+    const sharedIncomplete: IncompleteTask[] = [];
+    let totalAssigned = 0;
+    let totalDone = 0;
+    const laggingManagers: string[] = [];
+
+    for (const b of branches) {
+      const leaves = expandLeaves(assignedKeysByBranch.get(b.id) || []);
+      const assigned = leaves.length;
+      if (!assigned) continue;
+
+      const incomplete: IncompleteTask[] = [];
+      let done = 0;
+      for (const node of leaves) {
+        const shared = Boolean(node.sharedAcrossBranches) || isCompanyWideTaskKey(node.key);
+        const attDone =
+          node.key === ATTENDANCE_NODE_KEY && attArrived.has(b.id);
+        const locallyDone = doneSet.has(`${b.id}:${node.key}`) || attDone;
+        const globallySharedDone = shared && sharedDoneGlobally.has(node.key);
+        if (locallyDone || globallySharedDone) {
+          done += 1;
+          continue;
+        }
+        if (shared) {
+          if (!sharedSeen.has(node.key)) {
+            sharedSeen.add(node.key);
+            sharedIncomplete.push({
+              key: node.key,
+              title: node.titleUz || node.key,
+              section: rootSectionOf(node.key) || 'Umumiy biznes',
+              shared: true,
+            });
+          }
+          continue;
+        }
+        incomplete.push({
+          key: node.key,
+          title: node.titleUz || node.key,
+          section: rootSectionOf(node.key),
+          shared: false,
+        });
+      }
+      done = Math.min(done, assigned);
+
+      const managers = b.managers
+        .filter((m) => m.user?.active !== false && m.user?.name)
+        .map((m) => m.user!.name);
+
+      totalAssigned += assigned;
+      totalDone += done;
+      lines.push(branchProgressLine({ name: b.name, done, assigned }));
+      branchStats.push({
+        id: b.id,
+        name: b.name,
+        done,
+        assigned,
+        incomplete,
+        managers,
+      });
+
+      if (done < assigned) laggingManagers.push(...managers);
+    }
+
+    return {
+      lines,
+      branches: branchStats,
+      sharedIncomplete,
+      totalAssigned,
+      totalDone,
+      laggingManagers: [...new Set(laggingManagers)],
+    };
+  }
+
+  private async collectExpiredWindowLines(date: Date) {
+    const dateISO = date.toISOString().slice(0, 10);
+    const nodes = await this.prisma.kpiCatalogNode.findMany({
+      where: {
+        active: true,
+        frequency: 'DAILY',
+        windowStartMin: { not: null },
+        windowEndMin: { not: null },
+        inputType: { not: 'GROUP' },
+      },
+      select: { key: true, titleUz: true, windowStartMin: true, windowEndMin: true },
+    });
+    const expiredKeys = nodes
+      .filter((n) => evalTaskWindow(n.windowStartMin, n.windowEndMin, { dateISO }).status === 'expired')
+      .map((n) => n.key);
+    if (!expiredKeys.length) return { count: 0, titles: [] as string[], managers: [] as string[] };
+
+    const branches = await this.prisma.branch.findMany({
+      where: { active: true },
+      select: {
+        id: true,
+        name: true,
+        managers: { include: { user: { select: { name: true, active: true } } } },
+      },
+    });
+    const titles: string[] = [];
+    const managers = new Set<string>();
+    let count = 0;
+    for (const b of branches) {
+      const assigned = await this.prisma.kpiAssignmentTemplate.findMany({
+        where: { branchId: b.id, frequency: 'DAILY', active: true, nodeKey: { in: expiredKeys } },
+        select: { nodeKey: true },
+      });
+      if (!assigned.length) continue;
+      const keys = assigned.map((a) => a.nodeKey);
+      const done = await this.prisma.kpiDayEntry.findMany({
+        where: { branchId: b.id, date, done: true, nodeKey: { in: keys } },
+        select: { nodeKey: true },
+      });
+      const doneSet = new Set(done.map((d) => d.nodeKey));
+      for (const key of keys) {
+        if (doneSet.has(key)) continue;
+        count += 1;
+        const title = nodes.find((n) => n.key === key)?.titleUz || key;
+        if (titles.length < 8) titles.push(`${b.name}: ${title}`);
+        for (const m of b.managers) {
+          if (m.user?.active !== false && m.user?.name) managers.add(m.user.name);
+        }
+      }
+    }
+    return { count, titles, managers: [...managers] };
   }
 
   async morningChecklistAlert() {
     const day = await this.calendar.getDayInfo();
     if (day.restDay) {
-      await this.sendCard(
-        tgCard({
-          emoji: '🌴',
-          category: 'Ertalab',
-          title: 'Dam olish kuni',
-          meta: [day.date, day.holiday?.title || day.weekdayLabel],
-          compact: true,
-          body: 'Bugun chek-list yoʻq. Yaxshi dam oling!',
-        }),
-        { buttons: false },
-      );
       return;
     }
     await this.sendCard(
@@ -914,8 +1274,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         compact: true,
         htmlLines: [
           'Vazifalar <b>08:00</b> dan ochiq.',
-          'Soatlik eslatma: <b>09:00–22:00</b>.',
-          'AI yakuniy baho: <b>19:00</b>.',
+          'Eslatma: har <b>2 soatda</b> (09:00–21:00) — bajarilmagan kunlik ishlar roʻyxati.',
         ],
       }),
       { buttons: false },

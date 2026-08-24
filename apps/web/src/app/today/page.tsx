@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, Fragment, type ReactNode } from 'react';
+import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { RoleGate } from '@/components/RoleGate';
 import { ScoreBadge } from '@/components/ui';
@@ -10,9 +11,10 @@ import { useAuth } from '@/lib/auth';
 import { api, getToken } from '@/lib/api';
 import { compressImageFile } from '@/lib/image-compress';
 import { fetchProof, fetchProofUrl, getCachedProofUrl } from '@/lib/proof-cache';
+import { AttendancePanel } from '@/components/AttendancePanel';
 import { todayISO, weekStartISO } from '@/types';
 import { cn } from '@/lib/utils';
-import { Check, ChevronDown, ChevronRight, MessageSquare, Search, Upload, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, MessageSquare, ScanFace, Search, Upload, X } from 'lucide-react';
 
 type Freq = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 type TaskRow = {
@@ -23,12 +25,27 @@ type TaskRow = {
   sectionRu?: string;
   inputType: string;
   proofRequired: boolean;
-  status: 'TODO' | 'PENDING' | 'REJECTED' | 'DONE';
+  status: 'TODO' | 'PENDING' | 'REJECTED' | 'DONE' | 'EXPIRED';
   done: boolean;
   value: any;
   aiStatus: string | null;
   aiNote: string | null;
   aiFeedback: string | null;
+  canSubmit?: boolean;
+  isAttendance?: boolean;
+  sharedAcrossBranches?: boolean;
+  sharedFromOtherBranch?: boolean;
+  attendance?: { arrived: number; total: number; late: number };
+  window?: {
+    startMin: number | null;
+    endMin: number | null;
+    startLabel: string | null;
+    endLabel: string | null;
+    status: 'none' | 'upcoming' | 'open' | 'expired';
+    remainingSec: number | null;
+    endsAt: string | null;
+    startsAt: string | null;
+  };
   proof: { id: string; fileName: string; mimeType?: string; aiStatus: string } | null;
   proofs?: Array<{
     id: string;
@@ -39,6 +56,8 @@ type TaskRow = {
   }>;
   managerNote?: string | null;
   submittedBy?: string | null;
+  descriptionUz?: string | null;
+  descriptionRu?: string | null;
 };
 
 type TreeNode = {
@@ -56,12 +75,14 @@ type CatalogParent = {
   titleRu: string;
   pathUz?: string;
   pathRu?: string;
+  companyWide?: boolean;
   subs: {
     key: string;
     titleUz: string;
     titleRu: string;
     pathUz?: string;
     pathRu?: string;
+    companyWide?: boolean;
   }[];
 };
 
@@ -213,6 +234,77 @@ function collectLeaves(n: TreeNode): string[] {
   return n.children.flatMap(collectLeaves);
 }
 
+function windowLiveStatus(
+  win?: TaskRow['window'],
+  now = Date.now(),
+): 'none' | 'upcoming' | 'open' | 'expired' {
+  if (!win || win.status === 'none' || !win.startLabel) return 'none';
+  if (win.startsAt && now < new Date(win.startsAt).getTime()) return 'upcoming';
+  if (win.endsAt && now >= new Date(win.endsAt).getTime()) return 'expired';
+  if (win.status === 'expired') return 'expired';
+  if (win.status === 'upcoming') return 'upcoming';
+  return 'open';
+}
+
+function formatRemain(sec: number, t: (k: string) => string) {
+  const s = Math.max(0, Math.floor(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  return `${h} ${t('today.hoursUnit')} ${m} ${t('today.minutesUnit')} ${String(r).padStart(2, '0')} ${t('today.secondsUnit')}`;
+}
+
+function WindowCountdown({
+  win,
+  t,
+  now,
+}: {
+  win?: TaskRow['window'];
+  t: (k: string) => string;
+  now?: number;
+}) {
+  const ts = now ?? Date.now();
+  const live = windowLiveStatus(win, ts);
+  if (!win || live === 'none' || !win.startLabel) return null;
+
+  const target = live === 'upcoming' ? win.startsAt : win.endsAt;
+  const remain = target ? Math.max(0, Math.floor((new Date(target).getTime() - ts) / 1000)) : 0;
+  const total =
+    win.startMin != null && win.endMin != null
+      ? Math.max(1, (win.endMin - win.startMin) * 60)
+      : 1;
+  const ratio = live === 'open' ? remain / total : 1;
+  const tone =
+    live === 'expired'
+      ? 'bg-rose-100 text-rose-900 border-rose-200'
+      : live === 'upcoming'
+        ? 'bg-sky-50 text-sky-900 border-sky-200'
+        : ratio > 0.45
+          ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+          : ratio > 0.18
+            ? 'bg-amber-50 text-amber-900 border-amber-200'
+            : 'bg-rose-50 text-rose-900 border-rose-200';
+
+  return (
+    <div className={cn('mt-1.5 rounded-lg border px-2 py-1.5 text-[11px] font-medium', tone)}>
+      <p>
+        {t('today.windowHours')}: {win.startLabel}–{win.endLabel}
+      </p>
+      {live === 'expired' ? (
+        <p className="font-semibold">{t('today.windowExpired')}</p>
+      ) : live === 'upcoming' ? (
+        <p className="tabular-nums">
+          {t('today.windowOpensIn')}: {formatRemain(remain, t)}
+        </p>
+      ) : (
+        <p className="tabular-nums">
+          {t('today.windowLeft')}: {formatRemain(remain, t)}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function FileThumbs({
   files,
   onRemove,
@@ -260,6 +352,30 @@ function FileThumbs({
   );
 }
 
+function isNoteOnlyProof(p: { fileName?: string; mimeType?: string }) {
+  const name = String(p.fileName || '').toLowerCase();
+  const mime = String(p.mimeType || '').toLowerCase();
+  return (
+    mime === 'text/plain' ||
+    name === 'izoh.txt' ||
+    name.endsWith('.txt')
+  );
+}
+
+function isImageProof(p: { fileName?: string; mimeType?: string }) {
+  if (isNoteOnlyProof(p)) return false;
+  const mime = String(p.mimeType || '').toLowerCase();
+  const name = String(p.fileName || '');
+  if (mime.startsWith('image/')) return true;
+  if (/\.(jpe?g|png|webp|gif|heic|heif|bmp)$/i.test(name)) return true;
+  // iPhone/Android baʼzan MIME bermaydi — rasm deb yuklab koʻramiz
+  if (!mime || mime === 'application/octet-stream') {
+    if (/\.(pdf|docx?|xlsx?)$/i.test(name)) return false;
+    return true;
+  }
+  return false;
+}
+
 function SavedProofThumbs({
   proofs,
   onOpen,
@@ -270,10 +386,9 @@ function SavedProofThumbs({
   /** true — ochilgan boʻlimda rasm miniatyurasini yuklaydi (kesh + limit) */
   loadImages?: boolean;
 }) {
-  const list = (proofs || []).filter(
-    (p) => p.mimeType?.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(p.fileName || ''),
-  );
-  const other = (proofs || []).filter((p) => !list.some((x) => x.id === p.id));
+  const usable = (proofs || []).filter((p) => !isNoteOnlyProof(p));
+  const list = usable.filter(isImageProof);
+  const other = usable.filter((p) => !list.some((x) => x.id === p.id));
   const idsKey = list.map((p) => p.id).join(',');
   const [urls, setUrls] = useState<Record<string, string>>({});
 
@@ -282,7 +397,7 @@ function SavedProofThumbs({
     let cancelled = false;
     (async () => {
       const next: Record<string, string> = {};
-      for (const p of list.slice(0, 8)) {
+      for (const p of list.slice(0, 12)) {
         const cached = getCachedProofUrl(p.id);
         if (cached) {
           next[p.id] = cached;
@@ -388,12 +503,22 @@ export default function TodayPage() {
     descriptionUz: '',
     categoryKey: '',
     subKey: '',
-    proofRequired: false,
+    proofRequired: true,
+    sharedAcrossBranches: false,
   });
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
-  async function addFiles(rowKey: string, list: FileList | null) {
+  async function addFiles(
+    rowKey: string,
+    list: FileList | File[] | null,
+    opts?: { fromPaste?: boolean },
+  ) {
     if (!list?.length) return;
-    const incoming = Array.from(list);
+    const incoming = Array.from(list as ArrayLike<File>);
     try {
       const prepared: File[] = [];
       for (const f of incoming) {
@@ -411,9 +536,45 @@ export default function TodayPage() {
         }
         return { ...prev, [rowKey]: next };
       });
+      if (opts?.fromPaste && prepared.length) {
+        toast.success(t('today.pasteOk'));
+      }
     } catch (e: any) {
       toast.error(e?.message || t('common.error'));
     }
+  }
+
+  /** Skrinshot / clipboard rasmini Ctrl+V bilan qoʻshish */
+  function handlePasteFiles(rowKey: string, e: React.ClipboardEvent | ClipboardEvent) {
+    const items = e.clipboardData?.items;
+    if (!items?.length) return;
+    const images: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item || item.kind !== 'file') continue;
+      if (!String(item.type || '').startsWith('image/')) continue;
+      const file = item.getAsFile();
+      if (!file) continue;
+      const ext =
+        file.type === 'image/png'
+          ? 'png'
+          : file.type === 'image/webp'
+            ? 'webp'
+            : file.type === 'image/gif'
+              ? 'gif'
+              : 'jpg';
+      const named =
+        file.name && file.name !== 'image.png' && file.name !== 'blob'
+          ? file
+          : new File([file], `screenshot-${Date.now()}-${images.length}.${ext}`, {
+              type: file.type || 'image/png',
+            });
+      images.push(named);
+    }
+    if (!images.length) return;
+    e.preventDefault();
+    if ('stopPropagation' in e) e.stopPropagation();
+    void addFiles(rowKey, images, { fromPaste: true });
   }
 
   function removeFile(rowKey: string, idx: number) {
@@ -423,6 +584,26 @@ export default function TodayPage() {
       return { ...prev, [rowKey]: cur };
     });
   }
+
+  // Ochilgan vazifa formasida Ctrl+V — rasm paste
+  useEffect(() => {
+    if (!expandKey) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      // Boshqa inputlarda oddiy matn paste ishlasin; rasm boʻlsa shu vazifaga qoʻshamiz
+      const hasImage = Array.from(e.clipboardData?.items || []).some(
+        (it) => it.kind === 'file' && String(it.type || '').startsWith('image/'),
+      );
+      if (!hasImage) return;
+      // Agar fokusus boshqa sahifa elementi boʻlsa ham, ochiq formaga paste qilamiz
+      if (target?.closest?.('[data-no-global-paste]')) return;
+      handlePasteFiles(expandKey, e);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandKey]);
+
 
   const loadBranches = useCallback(async () => {
     const list = await api<any[]>('/branches/mine');
@@ -482,6 +663,7 @@ export default function TodayPage() {
         ...s,
         categoryKey: list?.[0]?.key || '',
         subKey: '',
+        sharedAcrossBranches: !!list?.[0]?.companyWide,
       }));
     } catch {
       setCatalogParents([]);
@@ -547,31 +729,53 @@ export default function TodayPage() {
 
   const adminStatusCounts = useMemo(() => {
     const rows = allAdminRows;
+    const expired = (r: TaskRow) =>
+      r.status === 'EXPIRED' || windowLiveStatus(r.window, nowMs) === 'expired';
     return {
-      todo: rows.filter((r) => r.status === 'TODO' || r.status === 'REJECTED').length,
+      todo: rows.filter(
+        (r) => (r.status === 'TODO' || r.status === 'REJECTED') && !expired(r),
+      ).length,
       review: rows.filter((r) => r.status === 'PENDING').length,
       done: rows.filter((r) => r.status === 'DONE').length,
+      expired: rows.filter((r) => expired(r) && r.status !== 'DONE' && r.status !== 'PENDING').length,
     };
-  }, [allAdminRows]);
+  }, [allAdminRows, nowMs]);
 
   const statusCounts = useMemo(() => {
     const rows = allManagerRows;
+    const expired = (r: TaskRow) =>
+      r.status === 'EXPIRED' || windowLiveStatus(r.window, nowMs) === 'expired';
     return {
-      todo: rows.filter((r) => r.status === 'TODO' || r.status === 'REJECTED').length,
+      todo: rows.filter(
+        (r) => (r.status === 'TODO' || r.status === 'REJECTED') && !expired(r),
+      ).length,
       review: rows.filter((r) => r.status === 'PENDING').length,
       done: rows.filter((r) => r.status === 'DONE').length,
+      expired: rows.filter((r) => expired(r) && r.status !== 'DONE' && r.status !== 'PENDING').length,
     };
-  }, [allManagerRows]);
+  }, [allManagerRows, nowMs]);
 
   async function submitTask(row: TaskRow) {
-    const note = (notes[row.key] || '').trim();
-    const fileList = files[row.key] || [];
-    if (row.proofRequired && !fileList.length) {
-      toast.error(t('today.needFile'));
+    const live = windowLiveStatus(row.window, Date.now());
+    if (row.status === 'EXPIRED' || live === 'expired') {
+      toast.error(t('today.windowExpired'));
       return;
     }
-    if (!note && !fileList.length) {
-      toast.error(t('today.needNoteOrFile'));
+    if (live === 'upcoming') {
+      toast.error(t('today.windowNotOpen'));
+      return;
+    }
+    const note = (notes[row.key] || '').trim();
+    const fileList = files[row.key] || [];
+    const hasImage = fileList.some(
+      (f) => f.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(f.name),
+    );
+    if (!note) {
+      toast.error(t('today.needNote'));
+      return;
+    }
+    if (!hasImage) {
+      toast.error(t('today.needPhoto'));
       return;
     }
 
@@ -624,46 +828,7 @@ export default function TodayPage() {
       return;
     }
 
-    setBusyKey(row.key);
-    try {
-      const raw = draft[row.key];
-      let value: any = { note };
-      if (row.inputType === 'NUMBER') {
-        value = { count: Number(raw?.count) || 0, note };
-      } else if (row.inputType === 'RATIO') {
-        value = {
-          calls: Number(raw?.calls) || 0,
-          booked: Number(raw?.booked) || 0,
-          note,
-        };
-      } else if (raw != null && typeof raw === 'object') {
-        value = { ...raw, note };
-      }
-      const done = await api<any>('/manager-kpi/complete', {
-        method: 'POST',
-        body: JSON.stringify({
-          branchId,
-          date,
-          nodeKey: row.key,
-          value,
-        }),
-      });
-      if (done?.status === 'REJECTED' || done?.aiStatus === 'REJECTED') {
-        toast.error(done.aiNote || t('today.statusRejected'));
-      } else if (done?.status === 'PENDING' || done?.aiStatus === 'PENDING') {
-        toast.success(t('today.submittedOk'));
-      } else {
-        toast.success(done?.aiNote || t('today.statusDone'));
-      }
-      if (done?.aiCoach?.summary) setAiCoach(done.aiCoach);
-      setNotes((n) => ({ ...n, [row.key]: '' }));
-      setExpandKey(null);
-      await loadDay();
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setBusyKey(null);
-    }
+    toast.error(t('today.needPhoto'));
   }
 
   async function saveAssign() {
@@ -706,7 +871,8 @@ export default function TodayPage() {
           descriptionUz: newTask.descriptionUz.trim() || undefined,
           frequency: freq,
           parentKey,
-          proofRequired: newTask.proofRequired,
+          proofRequired: true,
+          sharedAcrossBranches: newTask.sharedAcrossBranches,
         }),
       });
       toast.success(`${t('today.taskAdded')}. ${t('today.taskAddedHint')}`);
@@ -715,7 +881,7 @@ export default function TodayPage() {
         titleUz: '',
         titleRu: '',
         descriptionUz: '',
-        proofRequired: false,
+        proofRequired: true,
       }));
       setShowAddTask(false);
       await loadDay();
@@ -765,15 +931,46 @@ export default function TodayPage() {
     }
   }
 
+  function canSubmitRow(row: TaskRow) {
+    if (row.isAttendance || row.key === 'reception.attendance') return true;
+    if (row.status !== 'TODO' && row.status !== 'REJECTED') return false;
+    const live = windowLiveStatus(row.window, nowMs);
+    if (live === 'expired' || live === 'upcoming') return false;
+    return true;
+  }
+
   function statusLabel(row: TaskRow) {
+    if (row.isAttendance && row.attendance) {
+      return `${row.attendance.arrived}/${row.attendance.total}`;
+    }
+    const live = windowLiveStatus(row.window, nowMs);
+    if (row.status === 'EXPIRED' || live === 'expired') return t('today.statusExpired');
     if (row.aiStatus === 'APPROVED' || row.status === 'DONE') return t('today.statusDone');
     if (row.status === 'REJECTED' || row.aiStatus === 'REJECTED') return t('today.statusRejected');
     if (row.status === 'PENDING' || row.aiStatus === 'PENDING') return t('today.statusReview');
     return t('today.statusTodo');
   }
 
-  function canSubmitRow(row: TaskRow) {
-    return row.status === 'TODO' || row.status === 'REJECTED';
+  function taskHint(row: TaskRow) {
+    const d = (lang === 'ru' ? row.descriptionRu : row.descriptionUz) || '';
+    if (!d.trim()) return null;
+    return <p className="text-[11px] text-ink-muted mt-1 leading-snug">{d}</p>;
+  }
+
+  function sharedMarks(row: TaskRow, withHint = true) {
+    if (!row.sharedAcrossBranches) return null;
+    return (
+      <>
+        <span className="inline-block mt-1 mr-1 text-[10px] font-semibold uppercase tracking-wide text-indigo-800 bg-indigo-100 px-1.5 py-0.5 rounded">
+          {t('today.sharedTask')}
+        </span>
+        {withHint && (
+          <p className="text-[11px] text-indigo-800 mt-1">
+            {row.sharedFromOtherBranch ? t('today.sharedFromOther') : t('today.sharedHint')}
+          </p>
+        )}
+      </>
+    );
   }
 
   const renderAssignTree = (node: TreeNode, depth = 0, colorIdx = 0): ReactNode => {
@@ -865,19 +1062,21 @@ export default function TodayPage() {
     );
   };
 
-  const proofsOf = (row: TaskRow) =>
-    row.proofs?.length
-      ? row.proofs
-      : row.proof
-        ? [
-            {
-              id: row.proof.id,
-              fileName: row.proof.fileName,
-              mimeType: row.proof.mimeType || 'image/jpeg',
-              aiStatus: row.proof.aiStatus,
-            },
-          ]
-        : [];
+  const proofsOf = (row: TaskRow) => {
+    const fromList = (row.proofs || []).filter((p) => !isNoteOnlyProof(p));
+    if (fromList.length) return fromList;
+    if (row.proof?.id && !isNoteOnlyProof(row.proof)) {
+      return [
+        {
+          id: row.proof.id,
+          fileName: row.proof.fileName,
+          mimeType: row.proof.mimeType || 'image/jpeg',
+          aiStatus: row.proof.aiStatus,
+        },
+      ];
+    }
+    return [];
+  };
 
   const rowNote = (row: TaskRow) =>
     row.managerNote ||
@@ -900,7 +1099,7 @@ export default function TodayPage() {
       const sa = (lang === 'ru' ? a.sectionRu : a.sectionUz) || '';
       const sb = (lang === 'ru' ? b.sectionRu : b.sectionUz) || '';
       if (sa !== sb) return sa.localeCompare(sb, 'uz');
-      const order = { TODO: 0, REJECTED: 1, PENDING: 2, DONE: 3 } as const;
+      const order = { TODO: 0, REJECTED: 1, PENDING: 2, EXPIRED: 3, DONE: 4 } as const;
       const oa = order[a.status] ?? 9;
       const ob = order[b.status] ?? 9;
       if (oa !== ob) return oa - ob;
@@ -948,23 +1147,6 @@ export default function TodayPage() {
                 ) : (
                   <ChevronRight className="w-4 h-4 shrink-0" />
                 )}
-                {allDone ? (
-                  <span
-                    className={cn(
-                      'w-5 h-5 rounded-md border-2 grid place-items-center shrink-0',
-                      pal.checkOn,
-                    )}
-                  >
-                    <Check className="w-3 h-3" strokeWidth={3} />
-                  </span>
-                ) : (
-                  <span
-                    className={cn(
-                      'w-5 h-5 rounded-md border-2 shrink-0',
-                      pal.checkOff,
-                    )}
-                  />
-                )}
                 <span className="text-sm font-semibold flex-1">{section}</span>
                 <span
                   className={cn(
@@ -996,19 +1178,27 @@ export default function TodayPage() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <p className="font-medium text-ink leading-snug">{title}</p>
+                            {taskHint(row)}
                             {row.submittedBy && (
                               <p className="text-[11px] text-teal-800 mt-0.5 font-medium">
                                 {row.submittedBy}
                               </p>
                             )}
+                            {sharedMarks(row)}
+                            <WindowCountdown win={row.window} t={t} now={nowMs} />
                           </div>
                           <span
                             className={cn(
                               'inline-flex shrink-0 text-[11px] font-semibold px-2 py-1 rounded-full',
+                              (row.status === 'EXPIRED' ||
+                                windowLiveStatus(row.window, nowMs) === 'expired') &&
+                                'bg-rose-100 text-rose-900',
                               row.status === 'DONE' && 'bg-teal-100 text-teal-900',
                               row.status === 'REJECTED' && 'bg-rose-100 text-rose-800',
                               row.status === 'PENDING' && 'bg-amber-100 text-amber-900',
-                              row.status === 'TODO' && 'bg-sand-100 text-ink-muted',
+                              row.status === 'TODO' &&
+                                windowLiveStatus(row.window, nowMs) !== 'expired' &&
+                                'bg-sand-100 text-ink-muted',
                             )}
                           >
                             {statusLabel(row)}
@@ -1090,10 +1280,14 @@ export default function TodayPage() {
       <span
         className={cn(
           'inline-flex shrink-0 text-[11px] font-semibold px-2 py-1 rounded-full',
+          (row.status === 'EXPIRED' || windowLiveStatus(row.window, nowMs) === 'expired') &&
+            'bg-rose-100 text-rose-900',
           row.status === 'DONE' && 'bg-teal-100 text-teal-900',
           row.status === 'REJECTED' && 'bg-rose-100 text-rose-800',
           row.status === 'PENDING' && 'bg-amber-100 text-amber-900',
-          row.status === 'TODO' && 'bg-sand-100 text-ink-muted',
+          row.status === 'TODO' &&
+            windowLiveStatus(row.window, nowMs) !== 'expired' &&
+            'bg-sand-100 text-ink-muted',
         )}
       >
         {statusLabel(row)}
@@ -1147,19 +1341,20 @@ export default function TodayPage() {
                   <div className="min-w-0 flex-1">
                     <p className="text-[11px] text-ink-muted leading-snug">{section || '—'}</p>
                     <p className="font-medium text-ink leading-snug mt-0.5">{title}</p>
+                    {taskHint(row)}
                     {row.submittedBy && showSubmit && (
                       <p className="text-[11px] text-teal-800 mt-0.5 font-medium">
                         {row.submittedBy}
                       </p>
                     )}
-                    {row.proofRequired && (
-                      <span className="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
-                        {t('today.needsProof')}
-                      </span>
-                    )}
+                    {sharedMarks(row, false)}
+                    <span className="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                      {t('today.needsProof')}
+                    </span>
                   </div>
                   {statusPill(row)}
                 </div>
+                <WindowCountdown win={row.window} t={t} now={nowMs} />
                 {note ? (
                   <div className="rounded-lg bg-sand-50/80 border border-teal-900/5 px-2.5 py-2">
                     <p className="text-[10px] uppercase tracking-wide text-ink-muted font-semibold mb-0.5">
@@ -1169,7 +1364,7 @@ export default function TodayPage() {
                   </div>
                 ) : null}
                 {proofs.length > 0 ? (
-                  <SavedProofThumbs proofs={proofs} onOpen={openProof} />
+                  <SavedProofThumbs proofs={proofs} onOpen={openProof} loadImages />
                 ) : null}
                 {reviewActions(row, true)}
               </article>
@@ -1216,16 +1411,17 @@ export default function TodayPage() {
                     </td>
                     <td className="p-3">
                       <p className="font-medium text-ink">{title}</p>
+                      {taskHint(row)}
                       {row.submittedBy && showSubmit && (
                         <p className="text-[11px] text-teal-800 mt-0.5 font-medium">
                           {row.submittedBy}
                         </p>
                       )}
-                      {row.proofRequired && (
-                        <span className="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
-                          {t('today.needsProof')}
-                        </span>
-                      )}
+                      {sharedMarks(row)}
+                      <span className="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                        {t('today.needsProof')}
+                      </span>
+                      <WindowCountdown win={row.window} t={t} now={nowMs} />
                       {row.aiNote && mode === 'manager-todo' && (
                         <p className="text-xs text-ink-muted mt-1 leading-snug">{row.aiNote}</p>
                       )}
@@ -1273,7 +1469,11 @@ export default function TodayPage() {
                         <input
                           type="text"
                           inputMode="numeric"
-                          placeholder={t('today.count')}
+                          placeholder={
+                                    row.key.startsWith('reviews')
+                                      ? t('today.reviewsCount')
+                                      : t('today.count')
+                                  }
                           className="mt-2 w-28 h-8 rounded-lg border border-teal-200 px-2"
                           value={draft[row.key]?.count ?? ''}
                           onChange={(e) => {
@@ -1290,6 +1490,11 @@ export default function TodayPage() {
                     {mode === 'manager-todo' && (
                       <>
                         <td className="p-3 min-w-[200px]">
+                          <div
+                            className="rounded-lg border border-dashed border-teal-200/80 bg-teal-50/30 p-1.5 space-y-1.5"
+                            onPaste={(e) => handlePasteFiles(row.key, e)}
+                            tabIndex={0}
+                          >
                           <textarea
                             className="w-full min-h-[56px] rounded-lg border border-teal-200 bg-white px-2 py-1.5 text-xs"
                             placeholder={t('today.notePlaceholder')}
@@ -1297,8 +1502,9 @@ export default function TodayPage() {
                             onChange={(e) =>
                               setNotes((n) => ({ ...n, [row.key]: e.target.value }))
                             }
+                            onPaste={(e) => handlePasteFiles(row.key, e)}
                           />
-                          <label className="mt-2 inline-flex items-center gap-1.5 text-xs text-teal-800 cursor-pointer">
+                          <label className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-teal-800 cursor-pointer">
                             <Upload className="w-3.5 h-3.5" />
                             <span>
                               {(files[row.key]?.length || 0) > 0
@@ -1323,9 +1529,10 @@ export default function TodayPage() {
                             files={files[row.key] || []}
                             onRemove={(i) => removeFile(row.key, i)}
                           />
-                          <p className="text-[10px] text-ink-muted mt-1">
+                          <p className="text-[10px] text-ink-muted mt-0.5">
                             {t('today.needNoteOrFileHint')}
                           </p>
+                          </div>
                         </td>
                         <td className="p-3">
                           <button
@@ -1470,11 +1677,18 @@ export default function TodayPage() {
                   >
                     <td className="p-2.5 align-middle max-md:p-0 max-md:col-span-2">
                       <p className="font-medium text-ink leading-snug">{title}</p>
-                      {row.proofRequired && (
+                      {taskHint(row)}
+                      {sharedMarks(row)}
+                      {row.isAttendance || row.key === 'reception.attendance' ? (
+                        <span className="inline-block mt-1 ml-1 text-[10px] font-semibold uppercase tracking-wide text-teal-800 bg-teal-100 px-1.5 py-0.5 rounded">
+                          {t('employees.scan')}
+                        </span>
+                      ) : (
                         <span className="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
                           {t('today.needsProof')}
                         </span>
                       )}
+                      <WindowCountdown win={row.window} t={t} now={nowMs} />
                       {(row.managerNote ||
                         (row.value && typeof row.value === 'object' && row.value.note)) && (
                         <p className="text-[11px] text-ink mt-1 leading-snug line-clamp-2">
@@ -1491,10 +1705,15 @@ export default function TodayPage() {
                         <span
                           className={cn(
                             'inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full',
+                            (row.status === 'EXPIRED' ||
+                              windowLiveStatus(row.window, nowMs) === 'expired') &&
+                              'bg-rose-100 text-rose-900',
                             row.status === 'DONE' && 'bg-teal-100 text-teal-900',
                             row.status === 'REJECTED' && 'bg-rose-100 text-rose-800',
                             row.status === 'PENDING' && 'bg-amber-100 text-amber-900',
-                            row.status === 'TODO' && 'bg-sand-100 text-ink-muted',
+                            row.status === 'TODO' &&
+                              windowLiveStatus(row.window, nowMs) !== 'expired' &&
+                              'bg-sand-100 text-ink-muted',
                           )}
                         >
                           {statusLabel(row)}
@@ -1514,7 +1733,16 @@ export default function TodayPage() {
                       </div>
                     </td>
                     <td className="p-2.5 align-middle max-md:p-0 max-md:justify-self-end">
-                      {canSubmitRow(row) ? (
+                      {windowLiveStatus(row.window, nowMs) === 'expired' ||
+                      row.status === 'EXPIRED' ? (
+                        <span className="text-[10px] text-rose-800 font-semibold leading-snug max-w-[160px] inline-block">
+                          {t('today.windowExpired')}
+                        </span>
+                      ) : windowLiveStatus(row.window, nowMs) === 'upcoming' ? (
+                        <span className="text-[10px] text-sky-800 font-medium leading-snug max-w-[160px] inline-block">
+                          {t('today.windowNotOpen')}
+                        </span>
+                      ) : canSubmitRow(row) ? (
                         <button
                           type="button"
                           onClick={() => setExpandKey(open ? null : row.key)}
@@ -1527,8 +1755,16 @@ export default function TodayPage() {
                                 : cn('bg-white', pal.btn),
                           )}
                         >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                          {open ? t('today.closeNote') : t('today.writeNote')}
+                          {row.isAttendance || row.key === 'reception.attendance' ? (
+                            <ScanFace className="w-3.5 h-3.5" />
+                          ) : (
+                            <MessageSquare className="w-3.5 h-3.5" />
+                          )}
+                          {open
+                            ? t('today.closeNote')
+                            : row.isAttendance || row.key === 'reception.attendance'
+                              ? t('employees.scan')
+                              : t('today.writeNote')}
                         </button>
                       ) : row.status === 'PENDING' ? (
                         <span className="text-[10px] text-amber-800 font-medium">
@@ -1557,11 +1793,29 @@ export default function TodayPage() {
                   {open && canSubmitRow(row) && (
                     <tr className={cn('border-t max-md:block', pal.body)}>
                       <td colSpan={3} className="p-3 max-md:block max-md:w-full">
-                        <div className={cn('rounded-xl border bg-white p-3 space-y-2.5 max-w-xl', pal.noteBg)}>
+                        {row.isAttendance || row.key === 'reception.attendance' ? (
+                          <AttendancePanel
+                            branchId={branchId}
+                            date={date}
+                            onChanged={() => loadDay()}
+                          />
+                        ) : (
+                        <div
+                          className={cn(
+                            'rounded-xl border border-dashed bg-white p-3 space-y-2.5 max-w-xl',
+                            pal.noteBg,
+                          )}
+                          onPaste={(e) => handlePasteFiles(row.key, e)}
+                        >
                           {row.status === 'REJECTED' && (row.aiFeedback || row.aiNote) && (
                             <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
                               <p className="font-semibold mb-0.5">{t('today.aiReturn')}</p>
                               <p>{row.aiFeedback || row.aiNote}</p>
+                            </div>
+                          )}
+                          {taskHint(row) && (
+                            <div className="rounded-lg bg-sand-50 border border-teal-900/10 px-3 py-2 text-[12px] text-ink leading-snug">
+                              {lang === 'ru' ? row.descriptionRu : row.descriptionUz}
                             </div>
                           )}
                           {(row.inputType === 'RATIO' || row.inputType === 'NUMBER') && (
@@ -1610,7 +1864,11 @@ export default function TodayPage() {
                                 <input
                                   type="text"
                                   inputMode="numeric"
-                                  placeholder={t('today.count')}
+                                  placeholder={
+                                    row.key.startsWith('reviews')
+                                      ? t('today.reviewsCount')
+                                      : t('today.count')
+                                  }
                                   className="w-28 h-9 rounded-lg border border-teal-200 px-2 text-sm"
                                   value={draft[row.key]?.count ?? ''}
                                   onChange={(e) => {
@@ -1629,6 +1887,7 @@ export default function TodayPage() {
                             onChange={(e) =>
                               setNotes((n) => ({ ...n, [row.key]: e.target.value }))
                             }
+                            onPaste={(e) => handlePasteFiles(row.key, e)}
                           />
                           <div className="flex flex-wrap items-center gap-2">
                             <label className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-teal-200 text-xs text-teal-900 cursor-pointer hover:bg-teal-50">
@@ -1652,6 +1911,7 @@ export default function TodayPage() {
                                 }}
                               />
                             </label>
+                            <span className="text-[10px] text-ink-muted">{t('today.pasteHint')}</span>
                             <button
                               type="button"
                               disabled={busyKey === row.key}
@@ -1673,11 +1933,10 @@ export default function TodayPage() {
                             onRemove={(i) => removeFile(row.key, i)}
                           />
                           <p className="text-[10px] text-ink-muted">
-                            {row.proofRequired
-                              ? t('today.needFile')
-                              : t('today.needNoteOrFileHint')}
+                            {t('today.needNoteOrFileHint')}
                           </p>
                         </div>
+                        )}
                       </td>
                     </tr>
                   )}
@@ -1708,6 +1967,12 @@ export default function TodayPage() {
               </p>
             </div>
             <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-2 w-full sm:w-auto">
+              <Link
+                href="/guide"
+                className="h-11 px-3 rounded-lg border border-teal-200 bg-white text-sm font-semibold text-teal-900 inline-flex items-center justify-center gap-1.5"
+              >
+                {t('today.openGuide')}
+              </Link>
               <select
                 className="h-11 w-full sm:w-auto min-w-0 rounded-lg border border-teal-900/10 bg-white px-3 text-sm"
                 value={branchId}
@@ -1874,6 +2139,11 @@ export default function TodayPage() {
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-100 text-teal-900 px-2.5 py-1 font-semibold">
                       {t('today.statusDone')} · {statusCounts.done}
                     </span>
+                    {statusCounts.expired > 0 && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100 text-rose-900 px-2.5 py-1 font-semibold">
+                        {t('today.statusExpired')} · {statusCounts.expired}
+                      </span>
+                    )}
                     <span className="text-ink-muted ml-auto">
                       {t('today.allTasks')} · {allManagerRows.length}
                     </span>
@@ -1972,13 +2242,16 @@ export default function TodayPage() {
                           <select
                             className="w-full h-10 rounded-lg border border-teal-900/10 bg-white px-3 text-sm"
                             value={newTask.categoryKey}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              const categoryKey = e.target.value;
+                              const p = catalogParents.find((x) => x.key === categoryKey);
                               setNewTask((s) => ({
                                 ...s,
-                                categoryKey: e.target.value,
+                                categoryKey,
                                 subKey: '',
-                              }))
-                            }
+                                sharedAcrossBranches: !!p?.companyWide,
+                              }));
+                            }}
                           >
                             {!catalogParents.length && (
                               <option value="">{t('today.pickCategory')}</option>
@@ -1995,9 +2268,18 @@ export default function TodayPage() {
                           <select
                             className="w-full h-10 rounded-lg border border-teal-900/10 bg-white px-3 text-sm"
                             value={newTask.subKey}
-                            onChange={(e) =>
-                              setNewTask((s) => ({ ...s, subKey: e.target.value }))
-                            }
+                            onChange={(e) => {
+                              const subKey = e.target.value;
+                              const p = catalogParents.find((x) => x.key === newTask.categoryKey);
+                              const sub = p?.subs.find((x) => x.key === subKey);
+                              setNewTask((s) => ({
+                                ...s,
+                                subKey,
+                                sharedAcrossBranches: subKey
+                                  ? !!sub?.companyWide
+                                  : !!p?.companyWide,
+                              }));
+                            }}
                           >
                             <option value="">{t('today.noSub')}</option>
                             {(
@@ -2043,17 +2325,30 @@ export default function TodayPage() {
                           />
                         </label>
                       </div>
-                      <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
+                      <label className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50/60 px-3 py-2.5 cursor-pointer">
                         <input
                           type="checkbox"
-                          className="w-4 h-4 accent-teal-800"
-                          checked={newTask.proofRequired}
+                          className="mt-0.5"
+                          checked={newTask.sharedAcrossBranches}
                           onChange={(e) =>
-                            setNewTask((s) => ({ ...s, proofRequired: e.target.checked }))
+                            setNewTask((s) => ({
+                              ...s,
+                              sharedAcrossBranches: e.target.checked,
+                            }))
                           }
                         />
-                        {t('today.proofNeeded')}
+                        <span>
+                          <span className="block text-sm font-medium text-indigo-950">
+                            {t('today.sharedNewTask')}
+                          </span>
+                          <span className="block text-[11px] text-indigo-800 mt-0.5 leading-snug">
+                            {t('today.sharedNewTaskHint')}
+                          </span>
+                        </span>
                       </label>
+                      <p className="text-sm text-amber-900 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                        {t('today.proofNeeded')}
+                      </p>
                       <p className="text-xs text-ink-muted">
                         {freq === 'DAILY'
                           ? t('today.daily')
@@ -2092,6 +2387,11 @@ export default function TodayPage() {
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-100 text-teal-900 px-2.5 py-1 font-semibold">
                       {t('today.statusDone')} · {adminStatusCounts.done}
                     </span>
+                    {adminStatusCounts.expired > 0 && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100 text-rose-900 px-2.5 py-1 font-semibold">
+                        {t('today.statusExpired')} · {adminStatusCounts.expired}
+                      </span>
+                    )}
                     <span className="text-ink-muted ml-auto">
                       {t('today.allTasks')} · {allAdminRows.length}
                     </span>

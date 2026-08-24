@@ -6,6 +6,7 @@ import * as path from 'path';
 import PDFDocument = require('pdfkit');
 import { PrismaService } from '../prisma/prisma.service';
 import { toDateOnly } from '../common/kpi.constants';
+import { evalTaskWindow } from '../common/task-window';
 
 type AnalyticsOpts = {
   from: string;
@@ -108,7 +109,14 @@ export class ReportsService {
       }),
       this.prisma.kpiCatalogNode.findMany({
         where: { active: true, frequency: freq, inputType: { not: KpiInputType.GROUP } },
-        select: { key: true, titleUz: true, titleRu: true, parentKey: true },
+        select: {
+          key: true,
+          titleUz: true,
+          titleRu: true,
+          parentKey: true,
+          windowStartMin: true,
+          windowEndMin: true,
+        },
       }),
     ]);
 
@@ -121,7 +129,11 @@ export class ReportsService {
       assignedByBranch.get(a.branchId)!.add(a.nodeKey);
     }
 
-    const freqEntries = entries.filter((e) => catalogKeys.has(e.nodeKey));
+    const freqEntries = entries.filter((e) => {
+      if (!catalogKeys.has(e.nodeKey)) return false;
+      const assigned = assignedByBranch.get(e.branchId);
+      return assigned ? assigned.has(e.nodeKey) : false;
+    });
 
     // —— Summary
     const workingScores = scores.filter(
@@ -147,12 +159,6 @@ export class ReportsService {
       else statusCount.other++;
     }
 
-    const doneEntries = freqEntries.filter((e) => e.done).length;
-    const totalEntries = freqEntries.length;
-    const completionPct = totalEntries
-      ? Math.round((doneEntries / totalEntries) * 1000) / 10
-      : 0;
-
     let proofApproved = 0;
     let proofPending = 0;
     let proofRejected = 0;
@@ -165,38 +171,80 @@ export class ReportsService {
     }
     const proofTotal = proofApproved + proofPending + proofRejected;
 
-    // —— By branch
+    // —— By branch (bajarilish = done / assigned×davr, 100% fake emas)
     const byBranch = branches.map((b) => {
       const bScores = workingScores.filter((s) => s.branchId === b.id);
       const bEntries = freqEntries.filter((e) => e.branchId === b.id);
       const assigned = assignedByBranch.get(b.id)?.size || 0;
       const done = bEntries.filter((e) => e.done).length;
+      const dayCount =
+        freq === KpiFrequency.DAILY
+          ? Math.max(1, bScores.length || (opts.from === opts.to ? 1 : 0))
+          : 1;
+      const expected = assigned > 0 ? assigned * dayCount : bEntries.length;
       const avg = bScores.length
         ? Math.round((bScores.reduce((s, x) => s + x.totalScore, 0) / bScores.length) * 10) / 10
         : 0;
-      const green = bScores.filter((s) => s.colorStatus === 'green').length;
-      const red = bScores.filter((s) => s.colorStatus === 'red').length;
+      const latestScore = bScores.length ? bScores[bScores.length - 1].totalScore : null;
       return {
         branchId: b.id,
         name: b.name,
         avgScore: avg,
+        score: latestScore ?? avg,
         days: bScores.length,
-        greenDays: green,
-        redDays: red,
-        entriesDone: done,
-        entriesTotal: bEntries.length,
-        completionPct: bEntries.length
-          ? Math.round((done / bEntries.length) * 1000) / 10
-          : 0,
+        entriesDone: Math.min(done, expected || done),
+        entriesTotal: expected,
         assignedTasks: assigned,
+        completionPct: expected
+          ? Math.round((Math.min(done, expected) / expected) * 1000) / 10
+          : 0,
         managers: b.managers
           .filter((m) => m.user?.active !== false)
           .map((m) => ({ id: m.userId, name: m.user?.name || m.userId })),
       };
     });
-    byBranch.sort((a, b) => b.avgScore - a.avgScore);
+    byBranch.sort((a, b) => b.score - a.score || b.entriesDone - a.entriesDone);
 
-    // —— By manager
+    const totalEntries = byBranch.reduce((s, b) => s + b.entriesTotal, 0);
+    const totalDone = byBranch.reduce((s, b) => s + b.entriesDone, 0);
+    const completionPct = totalEntries
+      ? Math.round((Math.min(totalDone, totalEntries) / totalEntries) * 1000) / 10
+      : 0;
+
+    const doneSet = new Set(
+      freqEntries
+        .filter((e) => e.done)
+        .map((e) => `${e.branchId}|${e.date.toISOString().slice(0, 10)}|${e.nodeKey}`),
+    );
+    let missedOnTime = 0;
+    const missedSamples: Array<{ title: string; branch: string; date: string }> = [];
+    if (freq === KpiFrequency.DAILY) {
+      const windowed = catalog.filter(
+        (c) => c.windowStartMin != null && c.windowEndMin != null,
+      );
+      for (let t = start.getTime(); t <= end.getTime(); t += 24 * 3600 * 1000) {
+        const dayISO = new Date(t).toISOString().slice(0, 10);
+        for (const b of branches) {
+          const assigned = assignedByBranch.get(b.id);
+          if (!assigned?.size) continue;
+          for (const node of windowed) {
+            if (!assigned.has(node.key)) continue;
+            const w = evalTaskWindow(node.windowStartMin, node.windowEndMin, {
+              dateISO: dayISO,
+            });
+            if (w.status !== 'expired') continue;
+            const k = `${b.id}|${dayISO}|${node.key}`;
+            if (doneSet.has(k)) continue;
+            missedOnTime += 1;
+            if (missedSamples.length < 12) {
+              missedSamples.push({ title: node.titleUz, branch: b.name, date: dayISO });
+            }
+          }
+        }
+      }
+    }
+
+    // —— By manager (filiallari boʻyicha: assigned vs done)
     const managerMap = new Map<
       string,
       {
@@ -213,9 +261,11 @@ export class ReportsService {
         pending: number;
       }
     >();
-    for (const b of branches) {
-      for (const m of b.managers) {
-        if (!m.user) continue;
+    for (const b of byBranch) {
+      const branch = branches.find((x) => x.id === b.branchId);
+      if (!branch) continue;
+      for (const m of branch.managers) {
+        if (!m.user || m.user.active === false) continue;
         if (!managerMap.has(m.userId)) {
           managerMap.set(m.userId, {
             id: m.userId,
@@ -231,39 +281,26 @@ export class ReportsService {
             pending: 0,
           });
         }
-        managerMap.get(m.userId)!.branches.add(b.name);
+        const row = managerMap.get(m.userId)!;
+        row.branches.add(b.name);
+        row.done += b.entriesDone;
+        row.total += b.entriesTotal;
+        if (b.avgScore > 0) {
+          row.scoreSum += b.avgScore;
+          row.scoreN++;
+        }
       }
     }
     for (const e of freqEntries) {
-      if (!e.userId) continue;
-      let row = managerMap.get(e.userId);
-      if (!row) {
-        if (!e.user) continue;
-        row = {
-          id: e.userId,
-          name: e.user.name,
-          email: e.user.email,
-          branches: new Set([e.branch?.name || '']),
-          done: 0,
-          total: 0,
-          scoreSum: 0,
-          scoreN: 0,
-          approved: 0,
-          rejected: 0,
-          pending: 0,
-        };
-        managerMap.set(e.userId, row);
+      const managers = branches.find((b) => b.id === e.branchId)?.managers || [];
+      for (const m of managers) {
+        const row = managerMap.get(m.userId);
+        if (!row) continue;
+        const p = e.proofs[0];
+        if (p?.aiStatus === 'APPROVED') row.approved++;
+        else if (p?.aiStatus === 'REJECTED') row.rejected++;
+        else if (p?.aiStatus === 'PENDING') row.pending++;
       }
-      row.total++;
-      if (e.done) row.done++;
-      if (typeof e.score === 'number') {
-        row.scoreSum += e.score;
-        row.scoreN++;
-      }
-      const p = e.proofs[0];
-      if (p?.aiStatus === 'APPROVED') row.approved++;
-      else if (p?.aiStatus === 'REJECTED') row.rejected++;
-      else if (p?.aiStatus === 'PENDING') row.pending++;
     }
     const byManager = [...managerMap.values()]
       .map((m) => ({
@@ -273,7 +310,7 @@ export class ReportsService {
         branches: [...m.branches].filter(Boolean),
         done: m.done,
         total: m.total,
-        completionPct: m.total ? Math.round((m.done / m.total) * 1000) / 10 : 0,
+        completionPct: m.total ? Math.round((Math.min(m.done, m.total) / m.total) * 1000) / 10 : 0,
         avgTaskScore: m.scoreN ? Math.round((m.scoreSum / m.scoreN) * 10) / 10 : 0,
         proofsApproved: m.approved,
         proofsRejected: m.rejected,
@@ -428,8 +465,10 @@ export class ReportsService {
         branches: branches.length,
         managers: byManager.length,
         completionPct,
-        entriesDone: doneEntries,
+        entriesDone: totalDone,
         entriesTotal: totalEntries,
+        missedOnTime,
+        missedOnTimeSamples: missedSamples,
         statusCount,
         proofs: {
           approved: proofApproved,
@@ -497,13 +536,32 @@ export class ReportsService {
     }
     ws.addRow({});
     ws.addRow({ date: "O'rtacha", score: data.avg });
+
+    const analytics = await this.analytics({ from, to, branchId, frequency: KpiFrequency.DAILY });
+    const missed = analytics.summary?.missedOnTime ?? 0;
+    const samples = analytics.summary?.missedOnTimeSamples || [];
+    const ws2 = wb.addWorksheet('Vaqtida yopilmagan');
+    ws2.columns = [
+      { header: 'Sana', key: 'date', width: 14 },
+      { header: 'Filial', key: 'branch', width: 22 },
+      { header: 'Ish', key: 'title', width: 50 },
+    ];
+    ws2.getRow(1).font = { bold: true };
+    ws2.addRow({ date: 'Jami', title: String(missed) });
+    for (const x of samples) {
+      ws2.addRow({ date: x.date, branch: x.branch, title: x.title });
+    }
+
     const buf = await wb.xlsx.writeBuffer();
     return Buffer.from(buf);
   }
 
   async pdf(from: string, to: string, branchId?: string): Promise<Buffer> {
     const data = await this.getRange(from, to, branchId);
+    const analytics = await this.analytics({ from, to, branchId, frequency: KpiFrequency.DAILY });
     const font = this.fontPath();
+    const missed = analytics.summary?.missedOnTime ?? 0;
+    const samples = analytics.summary?.missedOnTimeSamples || [];
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50, size: 'A4' });
@@ -522,6 +580,7 @@ export class ReportsService {
       doc.fontSize(12).text(`Davr: ${from} — ${to}`);
       doc.text(`O'rtacha ball: ${data.avg}%`);
       doc.text(`Yozuvlar: ${data.scores.length}`);
+      doc.text(`Vaqtida yopilmagan: ${missed}`);
       doc.moveDown();
       doc.fontSize(11).text("Kunlik natijalar:", { underline: true });
       doc.moveDown(0.5);
@@ -531,6 +590,15 @@ export class ReportsService {
         doc.fontSize(10).text(
           `${s.date.toISOString().slice(0, 10)}${branch}  |  ${s.totalScore}%  |  ${s.colorStatus}`,
         );
+      }
+
+      if (samples.length) {
+        doc.moveDown();
+        doc.fontSize(11).fillColor('#000').text('Vaqtida yopilmagan ishlar:', { underline: true });
+        doc.moveDown(0.5);
+        for (const x of samples) {
+          doc.fontSize(10).text(`${x.date} | ${x.branch} | ${x.title}`);
+        }
       }
 
       doc.moveDown();

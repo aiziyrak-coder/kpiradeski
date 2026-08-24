@@ -22,6 +22,11 @@ import { openaiCoachManagerSubmit, openaiVisionProof, type AiCoachResult } from 
 import { colorStatus, toDateOnly } from '../common/kpi.constants';
 import { CalendarService } from '../common/calendar.service';
 import { seedKpiCatalog } from '../../prisma/seed-catalog';
+import { ATTENDANCE_NODE_KEY } from '../attendance/attendance.constants';
+import { isCompanyWideTaskKey } from '../common/company-wide-tasks';
+import { evalTaskWindow, formatHm, tashkentClock } from '../common/task-window';
+import { cheapFingerprint, readJpegExifLocal, sha256Hex } from '../common/proof-integrity';
+import { ensureJpegBuffer, isHeicBuffer } from '../common/heic-to-jpeg';
 
 type CatalogNode = {
   key: string;
@@ -122,6 +127,35 @@ export class ManagerKpiService implements OnModuleInit {
     try {
       await seedKpiCatalog(this.prisma as any, { syncExisting: false });
       this.logger.log('KPI katalog sync (create-missing only)');
+      // Har bir leaf ish uchun rasm+izoh majburiy
+      const updated = await this.prisma.kpiCatalogNode.updateMany({
+        where: {
+          inputType: { not: KpiInputType.GROUP },
+          NOT: { key: ATTENDANCE_NODE_KEY },
+        },
+        data: { proofRequired: true },
+      });
+      if (updated.count) this.logger.log(`proofRequired=true: ${updated.count} vazifa`);
+      const shared = await this.prisma.kpiCatalogNode.updateMany({
+        where: {
+          inputType: { not: KpiInputType.GROUP },
+          OR: [
+            { key: { startsWith: 'smm.' } },
+            { key: { startsWith: 'smm_w.' } },
+            { key: { startsWith: 'smm_m.' } },
+            { key: { startsWith: 'marketing.' } },
+            { key: { startsWith: 'marketing_w.' } },
+            { key: { startsWith: 'marketing_m.' } },
+            { key: { startsWith: 'seo.' } },
+            { key: { contains: '.seo.' } },
+            { key: { endsWith: '.seo' } },
+          ],
+        },
+        data: { sharedAcrossBranches: true },
+      });
+      if (shared.count) this.logger.log(`sharedAcrossBranches: ${shared.count} SEO/SMM/marketing`);
+      await this.migrateCadenceAssignments();
+      await this.restoreDailySeoAssignments();
       await this.extendSeoAssignments();
       await this.recalcOpenPeriods();
     } catch (e) {
@@ -143,6 +177,295 @@ export class ManagerKpiService implements OnModuleInit {
           this.logger.warn(`recalc ${b.id} ${freq}: ${e}`);
         }
       }
+    }
+  }
+
+  /**
+   * Kunlikda qolgan post/SEO/kontent ishlarini haftalik/oylikka koʻchirish.
+   * Eski topshiriq o‘chadi, yangi chastotada ochiladi.
+   */
+  private async migrateCadenceAssignments() {
+    const moves: Array<{ from: string; to: string; toFreq: KpiFrequency }> = [
+      { from: 'smm.seo.content', to: 'smm_m.strategy.content_plan', toFreq: KpiFrequency.MONTHLY },
+      { from: 'smm.seo.article', to: 'smm_w.seo.articles_week', toFreq: KpiFrequency.WEEKLY },
+      { from: 'smm.seo.video', to: 'smm_w.seo.videos_week', toFreq: KpiFrequency.WEEKLY },
+      { from: 'smm.seo.faq_schema', to: 'smm_m.seo.schema', toFreq: KpiFrequency.MONTHLY },
+      { from: 'smm.social.ig_post', to: 'smm_w.content.ig_post', toFreq: KpiFrequency.WEEKLY },
+      { from: 'smm.social.tg', to: 'smm_w.content.tg', toFreq: KpiFrequency.WEEKLY },
+      { from: 'smm.social.stats', to: 'smm_w.content.analytics', toFreq: KpiFrequency.WEEKLY },
+      { from: 'marketing.offline.partners', to: 'marketing_w.growth.partners', toFreq: KpiFrequency.WEEKLY },
+      { from: 'marketing.offline.promo', to: 'marketing_w.growth.ads_report', toFreq: KpiFrequency.WEEKLY },
+    ];
+
+    const fromKeys = moves.map((m) => m.from);
+    const rows = await this.prisma.kpiAssignmentTemplate.findMany({
+      where: { nodeKey: { in: fromKeys }, active: true, frequency: KpiFrequency.DAILY },
+      select: { id: true, branchId: true, nodeKey: true },
+    });
+    if (!rows.length) return;
+
+    const toByFrom = new Map(moves.map((m) => [m.from, m]));
+    let n = 0;
+    for (const row of rows) {
+      const spec = toByFrom.get(row.nodeKey);
+      if (!spec) continue;
+      await this.prisma.kpiAssignmentTemplate.upsert({
+        where: {
+          branchId_frequency_nodeKey: {
+            branchId: row.branchId,
+            frequency: spec.toFreq,
+            nodeKey: spec.to,
+          },
+        },
+        create: {
+          branchId: row.branchId,
+          frequency: spec.toFreq,
+          nodeKey: spec.to,
+          active: true,
+        },
+        update: { active: true },
+      });
+      if (row.nodeKey === 'smm.social.ig_post') {
+        await this.prisma.kpiAssignmentTemplate.upsert({
+          where: {
+            branchId_frequency_nodeKey: {
+              branchId: row.branchId,
+              frequency: KpiFrequency.WEEKLY,
+              nodeKey: 'smm_w.content.reels',
+            },
+          },
+          create: {
+            branchId: row.branchId,
+            frequency: KpiFrequency.WEEKLY,
+            nodeKey: 'smm_w.content.reels',
+            active: true,
+          },
+          update: { active: true },
+        });
+      }
+      await this.prisma.kpiAssignmentTemplate.update({
+        where: { id: row.id },
+        data: { active: false },
+      });
+      n += 1;
+    }
+    if (n) this.logger.log(`Cadence migrate: ${n} kunlik topshiriq → hafta/oy`);
+
+    const weeklyPosts = await this.prisma.kpiAssignmentTemplate.findMany({
+      where: {
+        frequency: KpiFrequency.WEEKLY,
+        active: true,
+        nodeKey: 'smm_w.content.ig_post',
+      },
+      select: { branchId: true },
+    });
+    for (const { branchId } of weeklyPosts) {
+      await this.prisma.kpiAssignmentTemplate.upsert({
+        where: {
+          branchId_frequency_nodeKey: {
+            branchId,
+            frequency: KpiFrequency.WEEKLY,
+            nodeKey: 'smm_w.content.reels',
+          },
+        },
+        create: {
+          branchId,
+          frequency: KpiFrequency.WEEKLY,
+          nodeKey: 'smm_w.content.reels',
+          active: true,
+        },
+        update: { active: true },
+      });
+    }
+
+    const weeklyPlans = await this.prisma.kpiAssignmentTemplate.findMany({
+      where: {
+        frequency: KpiFrequency.WEEKLY,
+        active: true,
+        nodeKey: 'smm_w.content.plan',
+      },
+      select: { id: true, branchId: true },
+    });
+    for (const row of weeklyPlans) {
+      await this.prisma.kpiAssignmentTemplate.upsert({
+        where: {
+          branchId_frequency_nodeKey: {
+            branchId: row.branchId,
+            frequency: KpiFrequency.MONTHLY,
+            nodeKey: 'smm_m.strategy.content_plan',
+          },
+        },
+        create: {
+          branchId: row.branchId,
+          frequency: KpiFrequency.MONTHLY,
+          nodeKey: 'smm_m.strategy.content_plan',
+          active: true,
+        },
+        update: { active: true },
+      });
+      await this.prisma.kpiAssignmentTemplate.update({
+        where: { id: row.id },
+        data: { active: false },
+      });
+    }
+    if (weeklyPlans.length) {
+      this.logger.log(`Kontent-reja: ${weeklyPlans.length} topshiriq → oylik`);
+    }
+
+    const smmBranches = await this.prisma.kpiAssignmentTemplate.findMany({
+      where: {
+        active: true,
+        OR: [{ nodeKey: { startsWith: 'smm_w.' } }, { nodeKey: { startsWith: 'smm_m.' } }, { nodeKey: { startsWith: 'smm.' } }],
+      },
+      select: { branchId: true },
+      distinct: ['branchId'],
+    });
+    for (const { branchId } of smmBranches) {
+      await this.prisma.kpiAssignmentTemplate.upsert({
+        where: {
+          branchId_frequency_nodeKey: {
+            branchId,
+            frequency: KpiFrequency.MONTHLY,
+            nodeKey: 'smm_m.strategy.content_plan',
+          },
+        },
+        create: {
+          branchId,
+          frequency: KpiFrequency.MONTHLY,
+          nodeKey: 'smm_m.strategy.content_plan',
+          active: true,
+        },
+        update: { active: true },
+      });
+    }
+
+    // Uniforma haftalik → oylik
+    const uniformMoves = [
+      { from: 'uniform_w.stock.count', to: 'uniform_m.stock.count' },
+      { from: 'uniform_w.stock.laundry', to: 'uniform_m.stock.laundry' },
+      { from: 'uniform_w.stock.order', to: 'uniform_m.stock.order' },
+    ];
+    const uniRows = await this.prisma.kpiAssignmentTemplate.findMany({
+      where: {
+        nodeKey: { in: uniformMoves.map((m) => m.from) },
+        active: true,
+        frequency: KpiFrequency.WEEKLY,
+      },
+      select: { id: true, branchId: true, nodeKey: true },
+    });
+    const uniMap = new Map(uniformMoves.map((m) => [m.from, m.to]));
+    for (const row of uniRows) {
+      const toKey = uniMap.get(row.nodeKey);
+      if (!toKey) continue;
+      await this.prisma.kpiAssignmentTemplate.upsert({
+        where: {
+          branchId_frequency_nodeKey: {
+            branchId: row.branchId,
+            frequency: KpiFrequency.MONTHLY,
+            nodeKey: toKey,
+          },
+        },
+        create: {
+          branchId: row.branchId,
+          frequency: KpiFrequency.MONTHLY,
+          nodeKey: toKey,
+          active: true,
+        },
+        update: { active: true },
+      });
+      await this.prisma.kpiAssignmentTemplate.update({
+        where: { id: row.id },
+        data: { active: false },
+      });
+    }
+    if (uniRows.length) {
+      this.logger.log(`Uniforma: ${uniRows.length} haftalik → oylik`);
+    }
+
+    // Barcha uniforma filiallariga oylik stock assign
+    const uniBranches = await this.prisma.kpiAssignmentTemplate.findMany({
+      where: {
+        active: true,
+        nodeKey: { startsWith: 'uniform' },
+      },
+      select: { branchId: true },
+      distinct: ['branchId'],
+    });
+    for (const { branchId } of uniBranches) {
+      for (const key of ['uniform_m.stock.count', 'uniform_m.stock.laundry', 'uniform_m.stock.order']) {
+        await this.prisma.kpiAssignmentTemplate.upsert({
+          where: {
+            branchId_frequency_nodeKey: {
+              branchId,
+              frequency: KpiFrequency.MONTHLY,
+              nodeKey: key,
+            },
+          },
+          create: { branchId, frequency: KpiFrequency.MONTHLY, nodeKey: key, active: true },
+          update: { active: true },
+        });
+      }
+    }
+  }
+
+  /** Kunlik SEO tekshiruvlarini qayta ochish (maqola/video/reja haftalikda qoladi). */
+  private async restoreDailySeoAssignments() {
+    const dailyKeys = [
+      'smm.seo.speed',
+      'smm.seo.links',
+      'smm.seo.meta',
+      'smm.seo.images_alt',
+      'smm.seo.search_console',
+      'smm.seo.internal_links',
+    ];
+    const weeklyDupes = [
+      'smm_w.seo.speed',
+      'smm_w.seo.links',
+      'smm_w.seo.meta',
+      'smm_w.seo.images_alt',
+      'smm_w.seo.search_console',
+      'smm_w.seo.internal_links',
+    ];
+    const branchRows = await this.prisma.kpiAssignmentTemplate.findMany({
+      where: {
+        active: true,
+        OR: [
+          { nodeKey: { startsWith: 'smm.' } },
+          { nodeKey: { startsWith: 'smm_w.' } },
+          { nodeKey: { startsWith: 'smm_m.' } },
+        ],
+      },
+      select: { branchId: true },
+      distinct: ['branchId'],
+    });
+    let n = 0;
+    for (const { branchId } of branchRows) {
+      for (const nodeKey of dailyKeys) {
+        await this.prisma.kpiAssignmentTemplate.upsert({
+          where: {
+            branchId_frequency_nodeKey: {
+              branchId,
+              frequency: KpiFrequency.DAILY,
+              nodeKey,
+            },
+          },
+          create: {
+            branchId,
+            frequency: KpiFrequency.DAILY,
+            nodeKey,
+            active: true,
+          },
+          update: { active: true },
+        });
+        n += 1;
+      }
+    }
+    const off = await this.prisma.kpiAssignmentTemplate.updateMany({
+      where: { nodeKey: { in: weeklyDupes }, frequency: KpiFrequency.WEEKLY },
+      data: { active: false },
+    });
+    if (n || off.count) {
+      this.logger.log(`Daily SEO restore: ${n} kunlik, ${off.count} dublikat haftalik o‘chirildi`);
     }
   }
 
@@ -278,6 +601,12 @@ export class ManagerKpiService implements OnModuleInit {
       where: { active: true },
       orderBy: { sortOrder: 'asc' },
     });
+    const assignments = await this.prisma.kpiAssignmentTemplate.findMany({
+      where: { branchId, frequency, active: true },
+    });
+    const assignedKeys = new Set(assignments.map((a) => a.nodeKey));
+    await this.syncSharedInbound(branchId, date, frequency, [...assignedKeys]);
+
     const roots = allNodes.filter((c) => !c.parentKey && c.frequency === frequency);
 
     const entries = await this.prisma.kpiDayEntry.findMany({
@@ -291,6 +620,7 @@ export class ManagerKpiService implements OnModuleInit {
             id: true,
             fileName: true,
             mimeType: true,
+            path: true,
             aiStatus: true,
             aiNote: true,
             aiFeedback: true,
@@ -353,11 +683,6 @@ export class ManagerKpiService implements OnModuleInit {
       });
     };
 
-    const assignments = await this.prisma.kpiAssignmentTemplate.findMany({
-      where: { branchId, frequency, active: true },
-    });
-    const assignedKeys = new Set(assignments.map((a) => a.nodeKey));
-
     const markAssigned = (nodes: any[]): any[] =>
       nodes.map((n) => ({
         ...n,
@@ -366,6 +691,18 @@ export class ManagerKpiService implements OnModuleInit {
       }));
 
     const tree = markAssigned(buildTree(null));
+
+    const attTotal = await this.prisma.branchEmployee.count({
+      where: { branchId, active: true },
+    });
+    const attRows = await this.prisma.employeeAttendance.findMany({
+      where: { branchId, date },
+      select: { status: true },
+    });
+    const attArrived = attRows.filter(
+      (a) => a.status === 'ON_TIME' || a.status === 'LATE',
+    ).length;
+    const attLate = attRows.filter((a) => a.status === 'LATE').length;
 
     const leaves = allNodes.filter(
       (n) => n.frequency === frequency && n.inputType !== KpiInputType.GROUP,
@@ -401,23 +738,27 @@ export class ManagerKpiService implements OnModuleInit {
         const approvedProof = proofs.find((p) => p.aiStatus === AiProofStatus.APPROVED);
         const pendingProof = proofs.find((p) => p.aiStatus === AiProofStatus.PENDING);
         const rejectedProof = proofs.find((p) => p.aiStatus === AiProofStatus.REJECTED);
-        // Eng yaxshi holat: APPROVED > PENDING > entry.done > REJECTED > TODO
-        // (oxirgi rad etilgan izoh eski tasdiqlangan rasmni yashirmasin)
-        let status: 'TODO' | 'PENDING' | 'REJECTED' | 'DONE' = 'TODO';
-        if (approvedProof || entry?.done) status = 'DONE';
-        else if (pendingProof) status = 'PENDING';
-        else if (rejectedProof) status = 'REJECTED';
-        else status = 'TODO';
-
         const displayProof = approvedProof || pendingProof || rejectedProof || proofs[0] || null;
         const realFiles = proofs.filter(
           (p) =>
             p.mimeType !== 'text/plain' &&
             p.fileName !== 'izoh.txt' &&
-            !String(p.fileName || '').endsWith('.txt'),
+            !String(p.fileName || '').endsWith('.txt') &&
+            !String(p.path || '').startsWith('note-only/'),
         );
         const titles = titleOf(n.key);
-        // Ochish tugmasi uchun haqiqiy fayl (izoh.txt emas)
+        const dateISO = date.toISOString().slice(0, 10);
+        const window = evalTaskWindow(n.windowStartMin, n.windowEndMin, { dateISO });
+        let status: 'TODO' | 'PENDING' | 'REJECTED' | 'DONE' | 'EXPIRED' = 'TODO';
+        if (approvedProof || entry?.done) status = 'DONE';
+        else if (pendingProof) status = 'PENDING';
+        else if (rejectedProof) status = 'REJECTED';
+        else if (window.status === 'expired') status = 'EXPIRED';
+        else status = 'TODO';
+
+        const isAttendance = n.key === ATTENDANCE_NODE_KEY;
+        if (isAttendance && attArrived > 0) status = 'DONE';
+
         const viewProof =
           realFiles.find((p) => p.aiStatus === AiProofStatus.APPROVED) ||
           realFiles.find((p) => p.aiStatus === AiProofStatus.PENDING) ||
@@ -427,6 +768,8 @@ export class ManagerKpiService implements OnModuleInit {
         return {
           key: n.key,
           ...titles,
+          descriptionUz: n.descriptionUz || null,
+          descriptionRu: n.descriptionRu || null,
           inputType: n.inputType,
           proofRequired: n.proofRequired,
           done: status === 'DONE',
@@ -436,13 +779,13 @@ export class ManagerKpiService implements OnModuleInit {
           aiStatus: displayProof?.aiStatus ?? null,
           aiNote: displayProof?.aiNote ?? null,
           aiFeedback: displayProof?.aiFeedback ?? null,
-          proof: (viewProof || displayProof)
+          proof: viewProof
             ? {
-                id: (viewProof || displayProof)!.id,
-                fileName: (viewProof || displayProof)!.fileName,
-                mimeType: (viewProof || displayProof)!.mimeType,
-                aiStatus: (viewProof || displayProof)!.aiStatus,
-                createdAt: (viewProof || displayProof)!.createdAt,
+                id: viewProof.id,
+                fileName: viewProof.fileName,
+                mimeType: viewProof.mimeType,
+                aiStatus: viewProof.aiStatus,
+                createdAt: viewProof.createdAt,
               }
             : null,
           proofs: realFiles.map((p) => ({
@@ -459,11 +802,30 @@ export class ManagerKpiService implements OnModuleInit {
               : null,
           submittedBy: (entry as any)?.user?.name || null,
           submittedById: (entry as any)?.user?.id || null,
+          window,
+          isAttendance,
+          sharedAcrossBranches: !!n.sharedAcrossBranches,
+          sharedFromOtherBranch: !!(
+            entry?.value &&
+            typeof entry.value === 'object' &&
+            (entry.value as any).shared &&
+            (entry.value as any).sourceBranchId &&
+            (entry.value as any).sourceBranchId !== branchId
+          ),
+          attendance: isAttendance
+            ? { arrived: attArrived, total: attTotal, late: attLate }
+            : undefined,
+          canSubmit: isAttendance
+            ? true
+            : status === 'TODO' || status === 'REJECTED'
+              ? window.status === 'none' || window.status === 'open'
+              : false,
         };
       });
 
     const isManager = user.role === Role.MANAGER;
     const pending = rows.filter((r) => r.status === 'TODO' || r.status === 'REJECTED');
+    const expired = rows.filter((r) => r.status === 'EXPIRED');
     const inReview = rows.filter((r) => r.status === 'PENDING');
     const completed = rows.filter((r) => r.status === 'DONE');
 
@@ -491,6 +853,7 @@ export class ManagerKpiService implements OnModuleInit {
       tree,
       rows,
       pending,
+      expired,
       inReview,
       completed,
       assignedCount: assignedKeys.size,
@@ -664,7 +1027,10 @@ export class ManagerKpiService implements OnModuleInit {
   private inferDone(type: KpiInputType, value: any): boolean {
     if (value == null) return false;
     if (type === KpiInputType.CHECKBOX) return value === true || value?.checked === true;
-    if (type === KpiInputType.NUMBER) return Number(value?.count ?? value) > 0;
+    if (type === KpiInputType.NUMBER) {
+      const n = Number(value?.count ?? value);
+      return Number.isFinite(n) && n >= 0 && value?.count !== undefined && value?.count !== '';
+    }
     if (type === KpiInputType.RATIO) {
       const calls = Number(value?.calls ?? value?.a ?? 0);
       return calls > 0;
@@ -679,12 +1045,10 @@ export class ManagerKpiService implements OnModuleInit {
     if (!done) return 0;
     if (type === KpiInputType.CHECKBOX) return 100;
     if (type === KpiInputType.NUMBER) {
+      if (!done) return 0;
       const n = Number(value?.count ?? value ?? 0);
-      if (!n) return 0;
-      if (n >= 4) return 100;
-      if (n === 3) return 80;
-      if (n === 2) return 60;
-      return 40;
+      if (!Number.isFinite(n) || n < 0) return 70;
+      return 100;
     }
     if (type === KpiInputType.RATIO) {
       const calls = Number(value?.calls ?? value?.a ?? 0);
@@ -1111,6 +1475,10 @@ export class ManagerKpiService implements OnModuleInit {
       throw new BadRequestException('Guruh uchun dalil yuborilmaydi');
     }
 
+    if (node.key === ATTENDANCE_NODE_KEY) {
+      throw new BadRequestException('Davomat skaner orqali yopiladi — rasm/izoh yuborilmaydi');
+    }
+
     const files = (data.files?.length ? data.files : data.file ? [data.file] : []).slice(0, 8);
     if (!files.length) throw new BadRequestException('Fayl yuklanmadi');
 
@@ -1125,6 +1493,19 @@ export class ManagerKpiService implements OnModuleInit {
     });
     if (!assigned) {
       throw new ForbiddenException('Bu ish sizga topshirilmagan');
+    }
+
+    const dateISO = date.toISOString().slice(0, 10);
+    const window = evalTaskWindow(node.windowStartMin, node.windowEndMin, { dateISO });
+    if (window.status === 'upcoming') {
+      throw new BadRequestException(
+        `Bu ishni hozir yopib boʻlmaydi. Vaqt: ${window.startLabel}–${window.endLabel} (Toshkent). Hali ochilmagan.`,
+      );
+    }
+    if (window.status === 'expired') {
+      throw new BadRequestException(
+        `Vaqtidan oʻtib ketti (${window.startLabel}–${window.endLabel}). Bu ishni endi yopib boʻlmaydi.`,
+      );
     }
 
     let value = data.value ?? null;
@@ -1145,8 +1526,11 @@ export class ManagerKpiService implements OnModuleInit {
       value = { ...value, calls, booked: Number(value?.booked ?? 0) };
     }
     if (node.inputType === KpiInputType.NUMBER) {
-      const count = Number(value?.count ?? value ?? 0);
-      if (!count) throw new BadRequestException('Sonini kiriting');
+      const raw = value?.count ?? value;
+      const count = Number(raw);
+      if (raw === '' || raw == null || !Number.isFinite(count) || count < 0) {
+        throw new BadRequestException('Sonini kiriting (0 ham boʻlishi mumkin)');
+      }
       value = { ...value, count };
     }
 
@@ -1195,10 +1579,32 @@ export class ManagerKpiService implements OnModuleInit {
       size: number;
       buffer: Buffer;
       rel: string;
+      contentHash?: string | null;
+      phash?: string | null;
     }> = [];
 
     for (const file of files) {
-      const buf = file.buffer;
+      let buf = file.buffer;
+      let mime = String(file.mimetype || '').toLowerCase().trim();
+      let originalname = file.originalname || 'photo.jpg';
+
+      if (
+        isHeicBuffer(buf, `${mime} ${originalname}`) ||
+        mime === 'image/heic' ||
+        mime === 'image/heif'
+      ) {
+        try {
+          const jpeg = await ensureJpegBuffer(buf, `${mime} ${originalname}`);
+          buf = jpeg.buffer;
+          mime = 'image/jpeg';
+          originalname = originalname.replace(/\.[^.]+$/, '') + '.jpg';
+        } catch (e) {
+          throw new BadRequestException(
+            `iPhone HEIC ochilmadi: ${e instanceof Error ? e.message : 'qayta yuboring'}`,
+          );
+        }
+      }
+
       const isJpeg = buf.length > 2 && buf[0] === 0xff && buf[1] === 0xd8;
       const isPng =
         buf.length > 4 &&
@@ -1224,16 +1630,7 @@ export class ManagerKpiService implements OnModuleInit {
         buf[1] === 0x50 &&
         buf[2] === 0x44 &&
         buf[3] === 0x46;
-      const isHeic =
-        buf.length > 12 &&
-        buf[4] === 0x66 &&
-        buf[5] === 0x74 &&
-        buf[6] === 0x79 &&
-        buf[7] === 0x70 &&
-        ((buf[8] === 0x68 && buf[9] === 0x65 && buf[10] === 0x69) ||
-          (buf[8] === 0x6d && buf[9] === 0x69 && buf[10] === 0x66));
 
-      let mime = String(file.mimetype || '').toLowerCase().trim();
       // iPhone baʼzan boʻsh yoki notoʻgʻri MIME yuboradi — magic bytes bilan aniqlaymiz
       if (!mime || mime === 'application/octet-stream') {
         if (isJpeg) mime = 'image/jpeg';
@@ -1241,43 +1638,129 @@ export class ManagerKpiService implements OnModuleInit {
         else if (isGif) mime = 'image/gif';
         else if (isWebp) mime = 'image/webp';
         else if (isPdf) mime = 'application/pdf';
-        else if (/\.jpe?g$/i.test(file.originalname)) mime = 'image/jpeg';
-        else if (/\.png$/i.test(file.originalname)) mime = 'image/png';
-        else if (/\.webp$/i.test(file.originalname)) mime = 'image/webp';
-        else if (/\.gif$/i.test(file.originalname)) mime = 'image/gif';
-        else if (/\.pdf$/i.test(file.originalname)) mime = 'application/pdf';
+        else if (/\.jpe?g$/i.test(originalname)) mime = 'image/jpeg';
+        else if (/\.png$/i.test(originalname)) mime = 'image/png';
+        else if (/\.webp$/i.test(originalname)) mime = 'image/webp';
+        else if (/\.gif$/i.test(originalname)) mime = 'image/gif';
+        else if (/\.pdf$/i.test(originalname)) mime = 'application/pdf';
       }
       if (mime === 'image/jpg') mime = 'image/jpeg';
 
-      if (isHeic || mime === 'image/heic' || mime === 'image/heif') {
-        throw new BadRequestException(
-          'iPhone HEIC format qoʻllab-quvvatlanmaydi. Sozlamalar → Kamera → Formatlar → «Eng mos» (JPEG) qiling yoki JPEG/PNG yuboring.',
-        );
-      }
-
       if (!ALLOWED_MIME.has(mime) || mime === 'image/svg+xml') {
         throw new BadRequestException(
-          'Ruxsat etilmagan fayl turi — faqat rasm (JPEG/PNG/WebP/GIF) yoki PDF/DOC/XLS',
+          'Ruxsat etilmagan fayl turi — faqat rasm (JPEG/PNG/WebP/GIF/HEIC) yoki PDF/DOC/XLS',
         );
       }
       const claimsImage = mime.startsWith('image/');
       if (claimsImage && !(isJpeg || isPng || isGif || isWebp)) {
-        throw new BadRequestException('Fayl rasm emas yoki buzilgan');
+        throw new BadRequestException(
+          'Rasm ochilmadi. JPEG/PNG/HEIC qilib yuboring.',
+        );
       }
       if (mime === 'application/pdf' && !isPdf) {
         throw new BadRequestException('PDF fayl notoʻgʻri');
       }
-      const safeName = `${Date.now()}-${validated.length}-${file.originalname.replace(/[^\w.\-]+/g, '_')}`;
+
+      if (claimsImage) {
+        const contentHash = sha256Hex(buf);
+        const fp = cheapFingerprint(buf);
+        const shared = node.sharedAcrossBranches || isCompanyWideTaskKey(data.nodeKey);
+        const periodTask =
+          node.frequency === KpiFrequency.WEEKLY || node.frequency === KpiFrequency.MONTHLY;
+        const planKeys = new Set([
+          'smm.seo.content',
+          'smm_w.content.plan',
+          'smm_m.strategy.content_plan',
+          'smm_m.strategy.calendar',
+          'smm_m.seo.plan_next',
+        ]);
+        const dup = await this.prisma.kpiProof.findFirst({
+          where: {
+            OR: periodTask || planKeys.has(data.nodeKey) ? [{ contentHash }] : [{ contentHash }, { phash: fp }],
+            NOT: {
+              entry: {
+                branchId: data.branchId,
+                date,
+                nodeKey: data.nodeKey,
+              },
+            },
+          },
+          include: { entry: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (dup) {
+          const sameTask = dup.entry.nodeKey === data.nodeKey;
+          const samePlanFamily = planKeys.has(dup.entry.nodeKey) && planKeys.has(data.nodeKey);
+          const sameDay = dup.entry.date.getTime() === date.getTime();
+          if (shared && sameTask && dup.entry.branchId !== data.branchId) {
+            const src = await this.prisma.kpiDayEntry.findUnique({
+              where: { id: dup.entry.id },
+              include: { proofs: true },
+            });
+            if (src && (src.done || src.proofs.length)) {
+              await this.copySharedEntryToBranch(src, data.branchId, user.id);
+              await this.recalculate(data.branchId, date, node.frequency);
+              const copied = await this.prisma.kpiProof.findFirst({
+                where: {
+                  entry: { branchId: data.branchId, date, nodeKey: data.nodeKey },
+                },
+                orderBy: { createdAt: 'desc' },
+              });
+              return {
+                ...(copied || dup),
+                proofs: copied ? [copied] : [dup],
+                filesCount: 1,
+                sharedCopied: true,
+              };
+            }
+          }
+          if (!sameTask && !samePlanFamily) {
+            throw new BadRequestException(
+              'Bu rasm boshqa ish uchun allaqachon yuborilgan. Har bir vazifa uchun alohida yangi foto/skrin oling.',
+            );
+          }
+          if (!sameDay && !periodTask && !samePlanFamily) {
+            throw new BadRequestException(
+              'Bu fayl oldingi kunda allaqachon yuborilgan. Bugungi vazifa uchun yangi foto/skrinshot oling.',
+            );
+          }
+          if (!shared && dup.entry.branchId !== data.branchId) {
+            throw new BadRequestException(
+              'Bu rasm boshqa filialda yuborilgan. Har filial o‘z dalilini oladi.',
+            );
+          }
+        }
+
+        const taken = readJpegExifLocal(buf);
+        if (!periodTask && !planKeys.has(data.nodeKey) && taken && taken.dateISO < dateISO) {
+          const takenMs = Date.parse(`${taken.dateISO}T00:00:00Z`);
+          const taskMs = Date.parse(`${dateISO}T00:00:00Z`);
+          // 1 kun farq — telefon TZ/soat xatosi; 2+ kun — aniq eski rasm
+          if (Number.isFinite(takenMs) && Number.isFinite(taskMs) && taskMs - takenMs >= 2 * 86400000) {
+            throw new BadRequestException(
+              `Rasm sanasi ${taken.dateISO}. Kechagi emas — bugungi yangi foto oling.`,
+            );
+          }
+        }
+        (file as any)._contentHash = contentHash;
+        (file as any)._phash = fp;
+        (file as any)._jpegBuf = buf;
+      }
+
+      const outBuf: Buffer = (file as any)._jpegBuf || buf;
+      const safeName = `${Date.now()}-${validated.length}-${originalname.replace(/[^\w.\-]+/g, '_')}`;
       const rel = path.join(data.branchId, date.toISOString().slice(0, 10), safeName);
       const full = path.join(this.uploadRoot, rel);
       fs.mkdirSync(path.dirname(full), { recursive: true });
-      fs.writeFileSync(full, file.buffer);
+      fs.writeFileSync(full, outBuf);
       validated.push({
-        originalname: file.originalname,
+        originalname,
         mimetype: mime,
-        size: file.size,
-        buffer: file.buffer,
+        size: outBuf.length,
+        buffer: outBuf,
         rel: rel.replace(/\\/g, '/'),
+        contentHash: (file as any)._contentHash || null,
+        phash: (file as any)._phash || null,
       });
     }
 
@@ -1289,7 +1772,13 @@ export class ManagerKpiService implements OnModuleInit {
     let aiScore = 0;
 
     const imageFiles = validated.filter((f) => f.mimetype.startsWith('image/'));
-    const noteStr = value?.note ? String(value.note) : null;
+    const noteStr = value?.note != null ? String(value.note).trim() : '';
+    if (!noteStr || noteStr.length < 8) {
+      throw new BadRequestException('Izoh kamida 8 belgi — nima qilganingizni yozing');
+    }
+    if (!imageFiles.length) {
+      throw new BadRequestException('Kamida 1 ta rasm yuklash majburiy');
+    }
 
     if (imageFiles.length) {
       const vision = await openaiVisionProof({
@@ -1301,6 +1790,14 @@ export class ManagerKpiService implements OnModuleInit {
         })),
         frequency: node.frequency,
         managerNote: noteStr,
+        windowLabel:
+          window.startLabel && window.endLabel
+            ? `${window.startLabel}–${window.endLabel}`
+            : null,
+        nowLabel: (() => {
+          const c = tashkentClock();
+          return `${c.dateISO} ${formatHm(c.minutes)}`;
+        })(),
       });
 
       if (vision) {
@@ -1341,6 +1838,8 @@ export class ManagerKpiService implements OnModuleInit {
           mimeType: f.mimetype,
           path: f.rel,
           size: f.size,
+          contentHash: f.contentHash || null,
+          phash: f.phash || (f.contentHash ? f.contentHash.slice(0, 16) : null),
           aiStatus,
           aiNote,
           aiFeedback,
@@ -1399,6 +1898,9 @@ export class ManagerKpiService implements OnModuleInit {
     }
 
     await this.recalculate(data.branchId, date, node.frequency);
+    if (node.sharedAcrossBranches) {
+      await this.propagateSharedCompletion(data.branchId, date, data.nodeKey, user.id);
+    }
 
     const coach = await this.coachAfterSubmit({
       userId: user.id,
@@ -1433,134 +1935,10 @@ export class ManagerKpiService implements OnModuleInit {
       throw new BadRequestException('Guruh uchun yuborilmaydi');
     }
 
-    const date = periodDate(node.frequency, data.date);
-    const assigned = await this.prisma.kpiAssignmentTemplate.findFirst({
-      where: {
-        branchId: data.branchId,
-        frequency: node.frequency,
-        nodeKey: data.nodeKey,
-        active: true,
-      },
-    });
-    if (!assigned) {
-      throw new ForbiddenException('Bu ish sizga topshirilmagan');
-    }
-    if (node.proofRequired) {
-      throw new BadRequestException(
-        'Bu ish uchun dalil (rasm/hujjat) majburiy — fayl yuklab yuboring',
-      );
-    }
-
-    let value = data.value ?? {};
-    if (typeof value === 'string') {
-      try {
-        value = JSON.parse(value);
-      } catch {
-        value = { note: value };
-      }
-    }
-    if (typeof value !== 'object' || value == null) value = {};
-
-    const note = String(value.note || '').trim();
-    if (!note) {
-      throw new BadRequestException('Izoh yozish majburiy (yoki dalil yuklang)');
-    }
-
-    if (node.inputType === KpiInputType.CHECKBOX || node.inputType === KpiInputType.NOTE_CHECK) {
-      value = { ...value, checked: true, note };
-    } else if (node.inputType === KpiInputType.RATIO) {
-      const calls = Number(value?.calls ?? 0);
-      if (!calls) throw new BadRequestException('Qoʻngʻiroq sonini kiriting');
-      value = { ...value, note, calls, booked: Number(value?.booked ?? 0) };
-    } else if (node.inputType === KpiInputType.NUMBER) {
-      const count = Number(value?.count ?? 0);
-      if (!count) throw new BadRequestException('Sonini kiriting');
-      value = { ...value, note, count };
-    } else {
-      value = { ...value, note };
-    }
-
-    const leafScore = this.scoreLeaf(node.inputType, value, true);
-    const entry = await this.prisma.kpiDayEntry.upsert({
-      where: {
-        branchId_date_nodeKey: {
-          branchId: data.branchId,
-          date,
-          nodeKey: data.nodeKey,
-        },
-      },
-      create: {
-        branchId: data.branchId,
-        date,
-        nodeKey: data.nodeKey,
-        value: value as any,
-        done: true,
-        score: leafScore || 100,
-        userId: user.id,
-      },
-      update: {
-        value: value as any,
-        done: true,
-        score: leafScore || 100,
-        userId: user.id,
-      },
-    });
-
-    // Coach — faqat maslahat; boshqa ochiq ishlar uchun RAD QILINMAYDI
-    const coach = await this.coachAfterSubmit({
-      userId: user.id,
-      branchId: data.branchId,
-      date,
-      frequency: node.frequency,
-      nodeKey: data.nodeKey,
-      nodeTitle: node.titleUz || node.titleRu,
-      nodeDescription: node.descriptionUz || node.descriptionRu,
-      note,
-      proofStatus: 'NOTE_ONLY',
-    });
-
-    const feedbackParts = [
-      coach?.summary,
-      coach?.incompleteHint,
-      coach?.issues?.length ? `Eslatma: ${coach.issues.join('; ')}` : '',
-      coach?.nextActions?.length ? `Qadamlar: ${coach.nextActions.join('; ')}` : '',
-    ].filter(Boolean);
-    const aiFeedback = feedbackParts.join(' — ').slice(0, 1500) || null;
-    const aiStatus = AiProofStatus.APPROVED;
-    const aiNote = coach?.praise || coach?.summary || 'Tasdiqlandi';
-
-    const proof = await this.prisma.kpiProof.create({
-      data: {
-        entryId: entry.id,
-        userId: user.id,
-        fileName: 'izoh.txt',
-        mimeType: 'text/plain',
-        path: `note-only/${entry.id}/${Date.now()}`,
-        size: Buffer.byteLength(note, 'utf8'),
-        aiStatus,
-        aiNote,
-        aiFeedback,
-        aiAction: AiAction.NONE,
-        aiPenalty: 0,
-      },
-    });
-
-    if (node.parentKey) {
-      await this.rollupParents(data.branchId, date, data.nodeKey, user.id);
-    }
-
-    const dayScore = await this.recalculate(data.branchId, date, node.frequency);
-
-    return {
-      entry: { ...entry, done: true, score: leafScore || 100 },
-      proof,
-      dayScore,
-      status: 'DONE',
-      aiStatus,
-      aiNote,
-      aiFeedback,
-      aiCoach: coach,
-    };
+    // Har bir ish: rasm + izoh majburiy — faqat izoh bilan yakunlash mumkin emas
+    throw new BadRequestException(
+      'Har bir ish uchun rasm va izoh majburiy — rasm yuklab yuboring',
+    );
   }
 
   async setAssignments(
@@ -1670,6 +2048,7 @@ export class ManagerKpiService implements OnModuleInit {
       titleRu: root.titleRu,
       pathUz: pathOf(root.key, 'uz'),
       pathRu: pathOf(root.key, 'ru'),
+      companyWide: isCompanyWideTaskKey(root.key),
       subs: underRoot(root.key).map((s) => ({
         key: s.key,
         parentKey: s.parentKey,
@@ -1677,6 +2056,7 @@ export class ManagerKpiService implements OnModuleInit {
         titleRu: s.titleRu,
         pathUz: pathOf(s.key, 'uz'),
         pathRu: pathOf(s.key, 'ru'),
+        companyWide: isCompanyWideTaskKey(s.key),
       })),
     }));
   }
@@ -1692,6 +2072,7 @@ export class ManagerKpiService implements OnModuleInit {
       parentKey: string;
       proofRequired?: boolean;
       inputType?: string;
+      sharedAcrossBranches?: boolean;
     },
   ) {
     if (user.role === Role.MANAGER) {
@@ -1750,9 +2131,13 @@ export class ManagerKpiService implements OnModuleInit {
         inputType,
         frequency: data.frequency,
         sortOrder: siblings + 1,
-        proofRequired: !!data.proofRequired,
+        proofRequired: true,
         weight: 0,
         active: true,
+        sharedAcrossBranches:
+          typeof data.sharedAcrossBranches === 'boolean'
+            ? data.sharedAcrossBranches
+            : isCompanyWideTaskKey(key) || isCompanyWideTaskKey(parent.key),
       },
     });
 
@@ -1831,6 +2216,14 @@ export class ManagerKpiService implements OnModuleInit {
         user.id,
       );
       await this.recalculate(proof.entry.branchId, proof.entry.date, node.frequency);
+      if (node.sharedAcrossBranches) {
+        await this.propagateSharedCompletion(
+          proof.entry.branchId,
+          proof.entry.date,
+          proof.entry.nodeKey,
+          user.id,
+        );
+      }
     }
 
     if (!data.approve) {
@@ -1847,13 +2240,199 @@ export class ManagerKpiService implements OnModuleInit {
     return { ok: true, aiStatus };
   }
 
+  private async syncSharedInbound(
+    branchId: string,
+    date: Date,
+    frequency: KpiFrequency,
+    assignedKeys: string[],
+  ) {
+    if (!assignedKeys.length) return;
+    const shared = await this.prisma.kpiCatalogNode.findMany({
+      where: {
+        sharedAcrossBranches: true,
+        frequency,
+        active: true,
+        key: { in: assignedKeys },
+      },
+      select: { key: true },
+    });
+    if (!shared.length) return;
+    const keys = shared.map((s) => s.key);
+    const localEntries = await this.prisma.kpiDayEntry.findMany({
+      where: { branchId, date, nodeKey: { in: keys } },
+      include: { proofs: { take: 1, select: { id: true } } },
+    });
+    const localByKey = new Map(localEntries.map((e) => [e.nodeKey, e]));
+    const need = keys.filter((k) => {
+      const loc = localByKey.get(k);
+      if (!loc) return true;
+      if (loc.done) return false;
+      return true;
+    });
+    if (!need.length) return;
+
+    const sources = await this.prisma.kpiDayEntry.findMany({
+      where: {
+        date,
+        nodeKey: { in: need },
+        branchId: { not: branchId },
+        OR: [{ done: true }, { proofs: { some: {} } }],
+      },
+      include: { proofs: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+    const byKey = new Map<string, (typeof sources)[0]>();
+    for (const s of sources) {
+      const prev = byKey.get(s.nodeKey);
+      if (!prev || (s.done && !prev.done)) byKey.set(s.nodeKey, s);
+    }
+    if (!byKey.size) return;
+    let copied = 0;
+    for (const src of byKey.values()) {
+      const loc = localByKey.get(src.nodeKey);
+      if (!src.done && loc?.proofs?.length) continue;
+      await this.copySharedEntryToBranch(src, branchId, src.userId || undefined);
+      copied += 1;
+    }
+    if (copied) await this.recalculate(branchId, date, frequency);
+  }
+
+  private async propagateSharedCompletion(
+    sourceBranchId: string,
+    date: Date,
+    nodeKey: string,
+    userId: string,
+  ) {
+    const node = await this.prisma.kpiCatalogNode.findUnique({
+      where: { key: nodeKey },
+      select: { sharedAcrossBranches: true, frequency: true },
+    });
+    if (!node?.sharedAcrossBranches) return;
+    const source = await this.prisma.kpiDayEntry.findUnique({
+      where: {
+        branchId_date_nodeKey: { branchId: sourceBranchId, date, nodeKey },
+      },
+      include: { proofs: true },
+    });
+    if (!source || (!source.done && !source.proofs.length)) return;
+    const others = await this.prisma.kpiAssignmentTemplate.findMany({
+      where: {
+        nodeKey,
+        frequency: node.frequency,
+        active: true,
+        branchId: { not: sourceBranchId },
+      },
+      select: { branchId: true },
+    });
+    for (const o of others) {
+      await this.copySharedEntryToBranch(source, o.branchId, userId);
+      await this.recalculate(o.branchId, date, node.frequency);
+    }
+  }
+
+  private async copySharedEntryToBranch(
+    source: {
+      branchId: string;
+      date: Date;
+      nodeKey: string;
+      value: any;
+      done?: boolean;
+      score: number | null;
+      userId: string | null;
+      proofs: Array<{
+        userId: string;
+        fileName: string;
+        mimeType: string;
+        path: string;
+        size: number;
+        contentHash: string | null;
+        phash: string | null;
+        aiStatus: AiProofStatus;
+        aiNote: string | null;
+        aiFeedback: string | null;
+        aiAction: AiAction;
+        aiPenalty: number;
+      }>;
+    },
+    targetBranchId: string,
+    userId?: string,
+  ) {
+    if (targetBranchId === source.branchId) return;
+    const uid = userId || source.userId;
+    const done = !!source.done;
+    const value =
+      source.value && typeof source.value === 'object'
+        ? { ...(source.value as object), shared: true, sourceBranchId: source.branchId }
+        : { shared: true, sourceBranchId: source.branchId, note: (source.value as any)?.note };
+    const entry = await this.prisma.kpiDayEntry.upsert({
+      where: {
+        branchId_date_nodeKey: {
+          branchId: targetBranchId,
+          date: source.date,
+          nodeKey: source.nodeKey,
+        },
+      },
+      create: {
+        branchId: targetBranchId,
+        date: source.date,
+        nodeKey: source.nodeKey,
+        value: value as any,
+        done,
+        score: done ? source.score ?? 100 : source.score ?? 0,
+        userId: uid,
+      },
+      update: {
+        done,
+        score: done ? source.score ?? 100 : source.score ?? 0,
+        userId: uid,
+        value: value as any,
+      },
+    });
+    await this.prisma.kpiProof.deleteMany({ where: { entryId: entry.id } });
+    if (source.proofs?.length) {
+      for (const p of source.proofs) {
+        await this.prisma.kpiProof.create({
+          data: {
+            entryId: entry.id,
+            userId: p.userId,
+            fileName: p.fileName,
+            mimeType: p.mimeType,
+            path: p.path,
+            size: p.size,
+            contentHash: p.contentHash,
+            phash: p.phash,
+            aiStatus: p.aiStatus,
+            aiNote: p.aiNote,
+            aiFeedback: p.aiFeedback,
+            aiAction: p.aiAction,
+            aiPenalty: p.aiPenalty,
+          },
+        });
+      }
+    }
+    await this.rollupParents(targetBranchId, source.date, source.nodeKey, uid || targetBranchId);
+  }
+
   async getProofFile(proofId: string, user: { id: string; role: Role }) {
     const proof = await this.prisma.kpiProof.findUnique({
       where: { id: proofId },
       include: { entry: true },
     });
     if (!proof) throw new NotFoundException();
-    await this.branches.assertCanAccessBranch(user.id, user.role, proof.entry.branchId);
+    const sharedNode = await this.prisma.kpiCatalogNode.findUnique({
+      where: { key: proof.entry.nodeKey },
+      select: { sharedAcrossBranches: true },
+    });
+    if (sharedNode?.sharedAcrossBranches) {
+      if (user.role !== Role.ADMIN && user.role !== Role.SUPER_ADMIN) {
+        const link = await this.prisma.branchManager.findFirst({
+          where: { userId: user.id },
+        });
+        if (!link) throw new ForbiddenException('Ruxsat yoʻq');
+      }
+    } else {
+      await this.branches.assertCanAccessBranch(user.id, user.role, proof.entry.branchId);
+    }
 
     // Virtual izoh.txt — diskda fayl yoʻq; shu entrydagi haqiqiy rasmni qaytaramiz
     const isVirtualNote =

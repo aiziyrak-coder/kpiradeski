@@ -15,7 +15,7 @@ EXCLUDE = {"node_modules", ".next", "dist", ".git", "uploads", "__pycache__", "s
 
 c = paramiko.SSHClient()
 c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-c.connect("87.192.230.208", port=2222, username="admin_root", password=P, timeout=30)
+c.connect("192.168.0.101", port=22, username="admin_root", password=P, timeout=30)
 sftp = c.open_sftp()
 
 tmp = Path(tempfile.gettempdir()) / "kpiradeski-api-sync.tar.gz"
@@ -58,7 +58,7 @@ compose = (
     f"cd {APP} && docker compose -f docker-compose.yml "
     f"-f docker-compose.prod.yml -f docker-compose.server.yml"
 )
-run(f"{S} bash -lc '{compose} build api --no-cache'", t=1200)
+run(f"{S} bash -lc '{compose} build api'", t=1200)
 run(f"{S} bash -lc '{compose} up -d api'", t=180)
 time.sleep(12)
 run(f"{S} bash -lc '{compose} ps'")

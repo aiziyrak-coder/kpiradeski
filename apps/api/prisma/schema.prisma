@@ -64,6 +64,13 @@ enum KpiInputType {
   NOTE_CHECK
 }
 
+enum AttendanceStatus {
+  PENDING
+  ON_TIME
+  LATE
+  ABSENT
+}
+
 enum AiProofStatus {
   PENDING
   APPROVED
@@ -142,6 +149,7 @@ model User {
   kpiProofs       KpiProof[]
   kpiAssignments  KpiTaskAssignment[]
   kpiTemplates    KpiAssignmentTemplate[]
+  attendanceScans EmployeeAttendance[]
 }
 
 model Branch {
@@ -160,6 +168,8 @@ model Branch {
   dailyScores     DailyScore[]
   kpiAssignments  KpiTaskAssignment[]
   kpiTemplates    KpiAssignmentTemplate[]
+  employees       BranchEmployee[]
+  attendances     EmployeeAttendance[]
 }
 
 model BranchManager {
@@ -188,6 +198,11 @@ model KpiCatalogNode {
   weight      Float        @default(0)
   sortOrder   Int          @default(0)
   proofRequired Boolean    @default(false)
+  /** Toshkent vaqti: kun boshidan daqiqa (08:00 = 480). Null = kun boʻyi */
+  windowStartMin Int?
+  windowEndMin   Int?
+  /** Filialga bogʻliq emas: bitta joyda yopilsa — barcha filiallarda yopiladi */
+  sharedAcrossBranches Boolean @default(false)
   active      Boolean      @default(true)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -264,6 +279,8 @@ model KpiProof {
   mimeType   String
   path       String
   size       Int
+  contentHash String?
+  phash       String?
   aiStatus   AiProofStatus @default(PENDING)
   aiNote     String?
   aiFeedback String?
@@ -275,6 +292,8 @@ model KpiProof {
   user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([entryId, aiStatus])
+  @@index([contentHash])
+  @@index([phash])
 }
 
 model Doctor {
@@ -700,6 +719,59 @@ model MonthlyEmployeeScore {
 
   @@unique([userId, year, month])
   @@index([year, month])
+}
+
+model BranchEmployee {
+  id                String   @id @default(cuid())
+  branchId          String
+  firstName         String
+  lastName          String
+  position          String?
+  photoPath         String
+  /// Dushanba–Juma (yoki asosiy) kelish — daqiqa 0..1439
+  expectedArriveMin Int
+  /// Asosiy ketish vaqti
+  expectedLeaveMin  Int?
+  /// Ish kunlari: "1,2,3,4,5" (Du–Ju) yoki "1,2,3,4,5,6" (Du–Sha). 1=Du … 7=Ya
+  workDays          String   @default("1,2,3,4,5,6")
+  /// Shanba boshqa boʻlsa — kelish
+  satArriveMin      Int?
+  /// Shanba boshqa boʻlsa — ketish
+  satLeaveMin       Int?
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  branch      Branch                @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  attendances EmployeeAttendance[]
+
+  @@index([branchId, active])
+  @@index([lastName, firstName])
+}
+
+model EmployeeAttendance {
+  id          String            @id @default(cuid())
+  employeeId  String
+  branchId    String
+  date        DateTime          @db.Date
+  arrivedAt   DateTime?
+  expectedMin Int
+  status      AttendanceStatus  @default(PENDING)
+  scanPath    String?
+  livenessOk  Boolean           @default(false)
+  matchScore  Int?
+  scannedById String?
+  note        String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  employee  BranchEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  branch    Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  scannedBy User?          @relation(fields: [scannedById], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, date])
+  @@index([branchId, date])
+  @@index([status, date])
 }
 
 model StaffMonthlyReport {

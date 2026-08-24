@@ -6,40 +6,17 @@ import { ScoringService } from '../kpi/scoring.service';
 import { CalendarService } from '../common/calendar.service';
 import { toDateOnly } from '../common/kpi.constants';
 import { openaiIntegrationsAudit } from '../common/openai';
+import {
+  defaultIntegrations,
+  normalizeIntegrations,
+  type IntegrationsConfig,
+  type WebsiteIntegration,
+} from './integrations.types';
+
+export type { IntegrationsConfig, WebsiteIntegration };
 
 const INTEGRATIONS_KEY = 'integrations';
 const INTEGRATIONS_AUDIT_KEY = 'integrations_last_audit';
-
-export type WebsiteIntegration = {
-  id: string;
-  name: string;
-  url: string;
-  enabled: boolean;
-};
-
-export type IntegrationsConfig = {
-  telegram: {
-    enabled: boolean;
-    channelUrl: string;
-    botUsername: string;
-    notes: string;
-  };
-  instagram: {
-    enabled: boolean;
-    username: string;
-    profileUrl: string;
-    notes: string;
-  };
-  websites: WebsiteIntegration[];
-};
-
-function defaultIntegrations(): IntegrationsConfig {
-  return {
-    telegram: { enabled: false, channelUrl: '', botUsername: '', notes: '' },
-    instagram: { enabled: false, username: '', profileUrl: '', notes: '' },
-    websites: [],
-  };
-}
 
 function stripHtml(html: string) {
   return html
@@ -252,13 +229,9 @@ export class SettingsService {
     const audit = await this.prisma.appSetting.findUnique({
       where: { key: INTEGRATIONS_AUDIT_KEY },
     });
-    const base = defaultIntegrations();
-    const saved = (row?.value as Partial<IntegrationsConfig>) || {};
-    const config: IntegrationsConfig = {
-      telegram: { ...base.telegram, ...(saved.telegram || {}) },
-      instagram: { ...base.instagram, ...(saved.instagram || {}) },
-      websites: Array.isArray(saved.websites) ? saved.websites : [],
-    };
+    const config = normalizeIntegrations(
+      (row?.value as Partial<IntegrationsConfig>) || defaultIntegrations(),
+    );
     return {
       config,
       runtime: {
@@ -271,44 +244,64 @@ export class SettingsService {
 
   async updateIntegrations(input: Partial<IntegrationsConfig>) {
     const current = await this.getIntegrations();
-    const next: IntegrationsConfig = {
+    const merged: Partial<IntegrationsConfig> = {
+      ...current.config,
+      ...input,
       telegram: {
         ...current.config.telegram,
         ...(input.telegram || {}),
-        enabled: !!(input.telegram?.enabled ?? current.config.telegram.enabled),
-        channelUrl: String(input.telegram?.channelUrl ?? current.config.telegram.channelUrl).trim(),
         botUsername: String(
           input.telegram?.botUsername ?? current.config.telegram.botUsername,
         ).trim(),
-        notes: String(input.telegram?.notes ?? current.config.telegram.notes).trim(),
       },
-      instagram: {
-        ...current.config.instagram,
-        ...(input.instagram || {}),
-        enabled: !!(input.instagram?.enabled ?? current.config.instagram.enabled),
-        username: String(input.instagram?.username ?? current.config.instagram.username)
-          .trim()
-          .replace(/^@/, ''),
-        profileUrl: String(
-          input.instagram?.profileUrl ?? current.config.instagram.profileUrl,
-        ).trim(),
-        notes: String(input.instagram?.notes ?? current.config.instagram.notes).trim(),
-      },
-      websites: Array.isArray(input.websites)
-        ? input.websites
-            .filter((w) => w?.url)
-            .map((w, i) => ({
-              id: w.id || `web_${Date.now()}_${i}`,
-              name: String(w.name || 'Sayt').trim() || 'Sayt',
-              url: String(w.url).trim(),
-              enabled: w.enabled !== false,
-            }))
-        : current.config.websites,
+      telegramChannels: Array.isArray(input.telegramChannels)
+        ? input.telegramChannels
+        : current.config.telegramChannels,
+      instagramProfiles: Array.isArray(input.instagramProfiles)
+        ? input.instagramProfiles
+        : current.config.instagramProfiles,
+      websites: Array.isArray(input.websites) ? input.websites : current.config.websites,
     };
 
-    if (next.instagram.username && !next.instagram.profileUrl) {
-      next.instagram.profileUrl = `https://instagram.com/${next.instagram.username}`;
+    // Agar faqat legacy single telegram yuborilsa — massivga koʻchir
+    if (
+      !Array.isArray(input.telegramChannels) &&
+      input.telegram?.channelUrl &&
+      !merged.telegramChannels?.length
+    ) {
+      merged.telegramChannels = [
+        {
+          id: 'tg_main',
+          name: 'Asosiy kanal',
+          url: String(input.telegram.channelUrl).trim(),
+          enabled: input.telegram.enabled !== false,
+          notes: String(input.telegram.notes || '').trim(),
+        },
+      ];
     }
+    if (
+      !Array.isArray(input.instagramProfiles) &&
+      (input.instagram?.profileUrl || input.instagram?.username) &&
+      !merged.instagramProfiles?.length
+    ) {
+      const username = String(input.instagram.username || '')
+        .trim()
+        .replace(/^@/, '');
+      merged.instagramProfiles = [
+        {
+          id: 'ig_main',
+          name: username || 'Instagram',
+          username,
+          profileUrl:
+            String(input.instagram.profileUrl || '').trim() ||
+            (username ? `https://instagram.com/${username}` : ''),
+          enabled: input.instagram.enabled !== false,
+          notes: String(input.instagram.notes || '').trim(),
+        },
+      ];
+    }
+
+    const next = normalizeIntegrations(merged);
 
     await this.prisma.appSetting.upsert({
       where: { key: INTEGRATIONS_KEY },
@@ -357,6 +350,21 @@ export class SettingsService {
     }
   }
 
+  /** t.me/xxx → preview URL (ochiq kanallar uchun) */
+  private telegramPreviewUrl(url: string): string | null {
+    try {
+      const u = new URL(url);
+      if (!/(^|\.)t\.me$/i.test(u.hostname)) return null;
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (!parts.length || parts[0] === 's') return url;
+      const handle = parts[0].replace(/^@/, '');
+      if (!handle || handle === 'joinchat' || handle === 'c') return null;
+      return `https://t.me/s/${handle}`;
+    } catch {
+      return null;
+    }
+  }
+
   async runIntegrationsAiAudit(reason = 'manual') {
     const { config, runtime } = await this.getIntegrations();
 
@@ -378,20 +386,26 @@ export class SettingsService {
       }),
     ]);
 
+    const enabledTg = config.telegramChannels.filter((c) => c.enabled && c.url);
+    const enabledIg = config.instagramProfiles.filter(
+      (p) => p.enabled && (p.profileUrl || p.username),
+    );
+    const enabledSites = config.websites.filter((w) => w.enabled && w.url);
+    const hasLinks = enabledTg.length > 0 || enabledIg.length > 0 || enabledSites.length > 0;
     const hasOperationalData = social.length > 0 || seo.length > 0 || doneKpi > 0;
 
-    // Real maʼlumot yoʻq — AI chaqirmaymiz, uydirma ball/item YOʻQ
-    if (!hasOperationalData) {
+    if (!hasLinks) {
       const stored = {
         at: new Date().toISOString(),
         reason,
         score: 0,
         overview:
-          'Ish hali boshlanmagan — integratsiya balli 0/100. KPI, SEO yoki social yozuvlar paydo boʻlgach baholanadi.',
+          'Integratsiya linklari yoʻq. Telegram kanal, Instagram sahifa yoki sayt (radeski.uz) qoʻshing — keyin AI tahlil qiladi.',
         items: [] as any[],
-        priorities: [] as string[],
+        priorities: ['Telegram/Instagram/sayt linklarini Integratsiyalar sahifasida qoʻshing'],
         siteCount: 0,
         hasOperationalData: false,
+        hasLinks: false,
         fallback: false,
       };
       await this.prisma.appSetting.upsert({
@@ -402,43 +416,67 @@ export class SettingsService {
       if (reason === 'manual') {
         await this.notifications.createForRoles(
           ['ADMIN', 'SUPER_ADMIN'],
-          'AI integratsiya · ish boshlanmagan (0/100)',
+          'AI integratsiya · linklar yoʻq',
           stored.overview,
           'AI_REPORT',
           { telegram: false },
         );
       }
-      this.logger.log(`Integrations AI audit skipped (${reason}) — no operational data`);
       return stored;
     }
 
-    const enabledSites = config.websites.filter((w) => w.enabled && w.url);
     const siteSnapshots: any[] = [];
-    for (const site of enabledSites.slice(0, 5)) {
+    for (const site of enabledSites.slice(0, 6)) {
       siteSnapshots.push({
         name: site.name,
         ...(await this.snapshotWebsite(site.url)),
       });
     }
 
+    const telegramSnapshots: any[] = [];
+    for (const ch of enabledTg.slice(0, 5)) {
+      const preview = this.telegramPreviewUrl(ch.url);
+      telegramSnapshots.push({
+        name: ch.name,
+        url: ch.url,
+        notes: ch.notes || '',
+        preview: preview ? await this.snapshotWebsite(preview) : { url: ch.url, note: 'preview yoʻq' },
+      });
+    }
+
+    const instagramSnapshots = enabledIg.slice(0, 5).map((p) => ({
+      name: p.name,
+      username: p.username,
+      profileUrl: p.profileUrl,
+      notes: p.notes || '',
+      note: 'Instagram HTML odatda bloklanadi — URL/username va izohlar asosida baholang',
+    }));
+
     const payload = {
       reason,
       clinic: 'Radeski Skin Clinic',
-      hasOperationalData: true,
-      note: 'Operatsion metrikalar bor — faqat shu asosida baholang, uydirma raqam BERMANG.',
-      telegram: {
-        ...config.telegram,
+      hasLinks: true,
+      hasOperationalData,
+      note: hasOperationalData
+        ? 'Kanal linklari + operatsion metrikalar bor. Uydirma follower/like BERMANG.'
+        : 'Kanal linklari va sayt snapshotlari asosida tahlil qiling. Follower/like uydirmang.',
+      telegramBot: {
         runtimeBot: runtime.telegramBotConfigured,
         runtimeChat: runtime.telegramChatConfigured,
+        botUsername: config.telegram.botUsername || null,
       },
-      instagram: config.instagram,
+      telegramChannels: telegramSnapshots,
+      instagramProfiles: instagramSnapshots,
       websites: siteSnapshots,
       recentSocialStats: social,
       recentSeoChecks: seo,
       doneKpiEntries14d: doneKpi,
     };
 
-    const audit = await openaiIntegrationsAudit(payload, { hasOperationalData: true });
+    const audit = await openaiIntegrationsAudit(payload, {
+      hasOperationalData,
+      hasLinks: true,
+    });
     const score = audit?.score ?? 0;
     const overview = audit?.overview || null;
 
@@ -450,8 +488,26 @@ export class SettingsService {
       items: audit?.items ?? [],
       priorities: audit?.priorities ?? [],
       siteCount: siteSnapshots.length,
-      hasOperationalData: true,
+      telegramCount: telegramSnapshots.length,
+      instagramCount: instagramSnapshots.length,
+      hasOperationalData,
+      hasLinks: true,
       fallback: !audit,
+      channels: {
+        websites: siteSnapshots.map((s) => ({
+          name: s.name,
+          url: s.url,
+          ok: s.ok,
+          title: s.title,
+          error: s.error,
+        })),
+        telegram: enabledTg.map((c) => ({ name: c.name, url: c.url })),
+        instagram: enabledIg.map((p) => ({
+          name: p.name,
+          username: p.username,
+          profileUrl: p.profileUrl,
+        })),
+      },
     };
 
     await this.prisma.appSetting.upsert({
@@ -460,41 +516,18 @@ export class SettingsService {
       update: { value: stored as any },
     });
 
-    const critical = (stored.items || []).filter(
-      (i: any) => i.severity === 'critical' || i.severity === 'high',
-    );
-    const shouldTelegram = critical.length > 0 || score < 50;
-
-    if (overview && shouldTelegram) {
-      const msg = [
-        `Ball: ${score}/100`,
-        overview,
-        critical.length
-          ? `Muhim:\n• ${critical
-              .slice(0, 5)
-              .map((c: any) => `${c.title}: ${c.action}`)
-              .join('\n• ')}`
-          : '',
-        stored.priorities?.length
-          ? `Prioritetlar: ${stored.priorities.slice(0, 4).join('; ')}`
-          : '',
-      ]
-        .filter(Boolean)
-        .join('\n\n')
-        .slice(0, 1800);
-
+    // Faqat ichki bildirishnoma — Telegram spam yoʻq (soʻralganda AI javob beradi)
+    if (reason === 'manual' && overview) {
       await this.notifications.createForRoles(
         ['ADMIN', 'SUPER_ADMIN', 'DIRECTOR'],
         `AI integratsiya auditi · ${score}/100`,
-        msg,
+        overview.slice(0, 500),
         'AI_REPORT',
-        { telegram: true, emoji: '📡' },
+        { telegram: false, emoji: '📡' },
       );
     }
 
-    this.logger.log(
-      `Integrations AI audit done (${reason}) score=${stored.score} tg=${shouldTelegram}`,
-    );
+    this.logger.log(`Integrations AI audit done (${reason}) score=${stored.score}`);
     return stored;
   }
 
@@ -503,9 +536,9 @@ export class SettingsService {
     try {
       const { config } = await this.getIntegrations();
       const any =
-        config.telegram.enabled ||
-        config.instagram.enabled ||
-        config.websites.some((w) => w.enabled);
+        config.telegramChannels.some((c) => c.enabled && c.url) ||
+        config.instagramProfiles.some((p) => p.enabled && (p.profileUrl || p.username)) ||
+        config.websites.some((w) => w.enabled && w.url);
       if (!any) return;
       await this.runIntegrationsAiAudit('cron');
     } catch (e) {

@@ -167,23 +167,26 @@ export async function openaiSpeak(
   }
 }
 
-const AI_SUPERVISOR = `Siz «Radeski KPI» dalil tekshiruvchisiz — adolatli, amaliy.
-Menejer klinikada ish bajarganini foto/dalil bilan koʻrsatadi.
+const AI_SUPERVISOR = `Siz «Radeski KPI» dalil tekshiruvchisiz — adolatli va yumshoq.
 
-TASDIQLANG (approved:true) agar:
-- Rasm(lar) vazifa mavzusiga mos yoki mantiqan bogʻliq boʻlsa (eshik/deraza, xona, stol, hujjat, ekran, odam ish joyida va h.k.)
-- Bir nechta rasm boʻlsa — ularning birortasi yetarli dalil bersa
-- Sifat oʻrtacha boʻlsa ham (biroz qorongʻi/burchak) — ish bajarilgani koʻrinsa TASDIQ
-- Shubha boʻlsa HAM — TASDIQ (approved:true), feedback da yumshoq maslahat; action=WARN yoki NONE
+Menejer ishni foto/skrinshot bilan topshiradi. Maqsad: ISHNI TOʻXTATMASLIK.
 
-RAD ETING (approved:false) FAQAT aniq holatda:
-- Boʻsh/qora/buzilgan rasm
-- Mutlaqo boshqa mavzu (meme, oziq-ovqat, random screenshot vazifaga aloqasiz)
-- Aniq soxta yoki vazifani inkor qiluvchi kontent
+TASDIQLANG (approved:true) DEYARLI HAR DOIM:
+- Klinika xonasi, stol, sochiq, qogʻoz, lavabo, kassa, forma, poyabzal — qorongʻi/qiyshiq boʻlsa ham
+- Telefon/kompyuter SKRINSHOTI: Instagram, Telegram, sayt, Gmail, Search Console, PageSpeed, Excel, Notion, Canva, kontent-kalendar, jadval — bu NORMAL dalil
+- Oylik/haftalik kontent-reja: jadval, kalendar, reja skrinshoti — TASDIQLANG
+- Bir xil xona har kuni bir xil koʻrinadi — bu yangi foto boʻlishi oddiy
+- Mavzu 100% aniq boʻlmasa ham — TASDIQLANG
 
-Muhim: «aniqroq dalil kerak» deb RAD QILMANG — klinikada telefon rasmi yetarli.
+RAD ETING (approved:false) FAQAT:
+- Boʻsh, qora, umuman buzilgan fayl
+- Ovqat, meme, random oyoq/selfi, porno
+- Galereya ilovasi ochiq (thumbnail paneli) — ish emas, galereya UI
+
+HECH QACHON rad qilmang: «eski rasm», «qayta ishlatilgan», «ekrandagi rasm», «vazifaga mos emas», «axlat koʻrinadi», «TV koʻrinmaydi».
+Shubha = approved:true.
 Javob FAQAT JSON:
-{"approved":true|false,"note":"qisqa holat","feedback":"nima yaxshi / nima yaxshilash","action":"NONE|RESUBMIT|WARN|PENALTY","penalty":0-20,"score":0-100}`;
+{"approved":true|false,"note":"qisqa holat","feedback":"nima koʻrindi","action":"NONE|RESUBMIT|WARN|PENALTY","penalty":0-20,"score":0-100}`;
 
 export type AiCoachResult = {
   summary: string;
@@ -216,16 +219,16 @@ export async function openaiCoachManagerSubmit(opts: {
     lang === 'ru'
       ? `Ты — AI-наставник клиники Radeski.
 Менеджер только что сдал ОДНУ задачу. Оцени ТОЛЬКО её.
-approved=true если по этой задаче есть нормальный комментарий/доказательство.
-approved=false ТОЛЬКО если эта задача явно не сделана или комментарий пустой/фиктивный.
+Если proofStatus=APPROVED — approved=true обязательно. Не отклоняй как «старое фото».
+approved=false ТОЛЬКО если proofStatus=REJECTED или комментарий пустой.
 НЕ отклоняй из-за других незакрытых задач — их пиши в incompleteHint.
 По-русски. JSON только:
 {"summary":"...","quality":"excellent|good|weak|poor","approved":true|false,"issues":["..."],"nextActions":["..."],"incompleteHint":"...","praise":"..."}`
       : `Siz Radeski klinikasi AI murabbiysisiz — qatʼiy, lekin adolatli.
 Menejer HOZIRGI bitta ishni yubordi. Faqat SHU ishni baholang.
-approved=true — izoh/dalil shu ish uchun yetarli (formal emas).
-approved=false — FAQAT shu ishning o‘zi bajarilmagan yoki izoh bo‘sh/soxta.
-MUHIM: boshqa bajarilmagan ishlar roʻyxati borligi uchun RAD QILMANG — ularni incompleteHint ga yozing.
+proofStatus=APPROVED boʻlsa — approved=true QILISH SHART. «Eski rasm» deb rad qilmang.
+approved=false — FAQAT proofStatus=REJECTED yoki izoh boʻsh/soxta boʻlsa.
+MUHIM: boshqa bajarilmagan ishlar uchun RAD QILMANG — ularni incompleteHint ga yozing.
 Oʻzbekcha. FAQAT JSON:
 {"summary":"...","quality":"excellent|good|weak|poor","approved":true|false,"issues":["..."],"nextActions":["..."],"incompleteHint":"...","praise":"..."}`;
 
@@ -254,13 +257,20 @@ Oʻzbekcha. FAQAT JSON:
   try {
     const p = JSON.parse(raw) as Partial<AiCoachResult>;
     const q = String(p.quality || 'good');
-    const quality = (['excellent', 'good', 'weak', 'poor'].includes(q)
+    let quality = (['excellent', 'good', 'weak', 'poor'].includes(q)
       ? q
       : 'good') as AiCoachResult['quality'];
-    const approved =
+    let approved =
       typeof p.approved === 'boolean'
         ? p.approved
         : quality === 'excellent' || quality === 'good';
+    if (String(opts.proofStatus || '').toUpperCase() === 'APPROVED') {
+      approved = true;
+      if (quality === 'poor' || quality === 'weak') quality = 'good';
+    }
+    if (String(opts.proofStatus || '').toUpperCase() === 'REJECTED') {
+      approved = false;
+    }
     return {
       summary: String(p.summary || ''),
       quality,
@@ -293,21 +303,22 @@ export type IntegrationAuditResult = {
 /** Telegram / Instagram / sayt kontentini AI audit */
 export async function openaiIntegrationsAudit(
   payload: unknown,
-  opts?: { hasOperationalData?: boolean },
+  opts?: { hasOperationalData?: boolean; hasLinks?: boolean },
 ): Promise<IntegrationAuditResult | null> {
-  const fresh = opts?.hasOperationalData === false;
+  const hasLinks = opts?.hasLinks !== false;
+  const fresh = !hasLinks;
   const system = fresh
     ? `Siz Radeski Skin Clinic digital audit AI sisiz.
-Operatsion maʼlumot YOʻQ (KPI ishlari, SEO check, social stats hali yoʻq — ish boshlanmagan).
-Uydirma ball BERMANG. score majburan 0. overview da aniq yozing: ish hali boshlanmagan, ball berilmaydi.
-Faqat sozlama/ulanish boʻyicha past priority maslahat (severity=low|mid). critical/high YOʻQ.
+Kanal linklari YOʻQ. score=0. overview da link qoʻshishni soʻrang.
 Oʻzbekcha. FAQAT JSON:
-{"overview":"...","score":0,"items":[{"channel":"telegram|instagram|website|general","severity":"low|mid","title":"...","detail":"...","action":"..."}],"priorities":["..."]}`
+{"overview":"...","score":0,"items":[],"priorities":["..."]}`
     : `Siz Radeski Skin Clinic brendi uchun bosh marketing + digital direktor AI sisiz.
-Telegram kanal, Instagram va veb-sayt(lar) holatini tahlil qiling.
-Ballni FAQAT berilgan operatsion metrikalar (social stats, SEO check, KPI) asosida qoʻying.
-Agar metrikalar boʻsh/zaif boʻlsa — past ball; veb HTML dan taxminiy 60–70 uydirma ball BERMANG.
-Oʻzbekcha yozing. FAQAT JSON:
+Telegram kanallar, Instagram sahifalar va veb-sayt(lar) (masalan radeski.uz) holatini tahlil qiling.
+Sayt HTML snapshot (title, description, h1, textSample, status) asosida SEO/CTA/kontent sifatini baholang.
+Telegram preview (agar bor) va Instagram URL/username/izohlar asosida kanal holatini yozing.
+Follower/like/reach raqamlarini UYDIRMANG. Faqat berilgan maʼlumotdan foydalaning.
+Ball 0–100: sayt ochilishi, kontent sifat, kanallar ulanganligi, izchillik.
+Oʻzbekcha. FAQAT JSON:
 {"overview":"...","score":0-100,"items":[{"channel":"telegram|instagram|website|general","severity":"critical|high|mid|low","title":"...","detail":"...","action":"..."}],"priorities":["..."]}`;
 
   const raw = await openaiChatMessages(
@@ -326,7 +337,7 @@ Oʻzbekcha yozing. FAQAT JSON:
       overview: String(
         p.overview ||
           (fresh
-            ? 'Ish hali boshlanmagan — integratsiya balli berilmaydi (0/100).'
+            ? 'Integratsiya linklari yoʻq — ball berilmaydi.'
             : ''),
       ),
       score,
@@ -355,10 +366,11 @@ export async function openaiVisionProof(opts: {
   description?: string | null;
   mimeType?: string;
   base64?: string;
-  /** Bir nechta rasm — birgalikda baholanadi */
   images?: Array<{ mimeType: string; base64: string }>;
   frequency?: string;
   managerNote?: string | null;
+  windowLabel?: string | null;
+  nowLabel?: string | null;
 }): Promise<AiProofVerdict | null> {
   const key = apiKey();
   if (!key) return null;
@@ -425,9 +437,13 @@ export async function openaiVisionProof(opts: {
                 text: `Vazifa: ${opts.title}
 Tavsif: ${opts.description || '—'}
 Chastota: ${opts.frequency || 'DAILY'}
+Hozirgi vaqt (Toshkent): ${opts.nowLabel || '—'}
+Vazifa vaqt oynasi: ${opts.windowLabel || 'kun boʻyi'}
 Menejer izohi: ${opts.managerNote || '—'}
 Rasm soni: ${visionImages.length}
-Dalil(lar)ni baholang. Shubhada — TASDIQLANG.`,
+Eski/qayta ishlatilgan deb TAXMIN QILMANG va RAD QILMANG.
+Hash/EXIF allaqachon tekshirilgan. Mavzu mos boʻlsa TASDIQLANG.
+Shubha = approved:true.`,
               },
               ...imageParts,
             ],
@@ -460,7 +476,29 @@ Dalil(lar)ni baholang. Shubhada — TASDIQLANG.`,
     const parsed = JSON.parse(match[0]) as Partial<AiProofVerdict> & {
       approved?: boolean;
     };
-    const approved = parsed.approved !== false; // default true if missing
+    let approved = parsed.approved !== false;
+    let note = parsed.note || (approved ? 'Tasdiqlandi' : 'Rad etildi');
+    let feedback =
+      parsed.feedback ||
+      (approved ? 'Yaxshi' : 'Qayta topshiring — aniqroq dalil kerak');
+
+    const guess = `${note} ${feedback}`.toLowerCase();
+    const hardReject =
+      /boʻsh rasm|bush rasm|qora ekran|buzilgan fayl|meme|ovqat|porno|galereya ilovasi|thumbnail/.test(
+        guess,
+      );
+    const pickyReject =
+      /eski|qayta ishlat|reuse|old photo|galereya|kechagi|yangi emas|mos emas|koʻrsatilmagan|ko'rsatilmagan|koʻrinmay|ko'rinmay|ekranidagi|skrin|screenshot|gmail|search console|axlat|не нов|повторн/.test(
+        guess,
+      );
+    if (!approved && !hardReject) {
+      approved = true;
+      if (pickyReject) {
+        note = 'Dalil qabul qilindi';
+        feedback = 'Rasm yuklandi va qabul qilindi.';
+      }
+    }
+
     const action = (['NONE', 'RESUBMIT', 'WARN', 'PENALTY'].includes(String(parsed.action))
       ? parsed.action
       : approved
@@ -473,16 +511,95 @@ Dalil(lar)ni baholang. Shubhada — TASDIQLANG.`,
     );
     return {
       approved,
-      note: parsed.note || (approved ? 'Tasdiqlandi' : 'Rad etildi'),
-      feedback:
-        parsed.feedback ||
-        (approved ? 'Yaxshi' : 'Qayta topshiring — aniqroq dalil kerak'),
+      note,
+      feedback,
       action: approved && action === 'RESUBMIT' ? 'WARN' : action,
       penalty: approved ? Math.min(penalty, 10) : penalty,
       score: approved ? Math.max(score, 60) : score,
     };
   } catch (e) {
     console.warn('OpenAI vision failed', e);
+    return null;
+  }
+}
+
+export async function openaiFaceMatch(opts: {
+  name: string;
+  reference: { mimeType: string; base64: string };
+  live: { mimeType: string; base64: string };
+  live2?: { mimeType: string; base64: string } | null;
+}): Promise<{ match: boolean; live: boolean; score: number; note: string } | null> {
+  const key = apiKey();
+  if (!key) return null;
+
+  const extra = opts.live2
+    ? [
+        {
+          type: 'image_url' as const,
+          image_url: { url: `data:${opts.live2.mimeType};base64,${opts.live2.base64}` },
+        },
+      ]
+    : [];
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: chatModel(),
+        temperature: 0,
+        max_tokens: 220,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Siz yuz solishtirish va jonlilik tekshiruvchisisiz. 1-rasm: bazadagi hodim fotosi. Keyingilari: kameradan jonli skaner. FAQAT JSON.',
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `Hodim: ${opts.name}
+1-rasm = bazadagi etalon foto.
+Keyingi rasm(lar) = hozirgi kamera kadri.
+match=true faqat bir xil odam boʻlsa.
+live=true faqat jonli yuz (ekran/qogʻoz/rasm-koʻrsatish emas).
+JSON: {"match":true|false,"live":true|false,"score":0-100,"note":"qisqa"}`,
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${opts.reference.mimeType};base64,${opts.reference.base64}`,
+                },
+              },
+              {
+                type: 'image_url',
+                image_url: { url: `data:${opts.live.mimeType};base64,${opts.live.base64}` },
+              },
+              ...extra,
+            ],
+          },
+        ],
+      }),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const text = String(json?.choices?.[0]?.message?.content || '');
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    const parsed = JSON.parse(m[0]);
+    return {
+      match: !!parsed.match,
+      live: parsed.live !== false,
+      score: Math.max(0, Math.min(100, Number(parsed.score) || 0)),
+      note: String(parsed.note || ''),
+    };
+  } catch (e) {
+    console.warn('OpenAI face match failed', e);
     return null;
   }
 }

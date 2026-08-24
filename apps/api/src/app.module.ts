@@ -16,6 +16,7 @@ import { CalendarModule } from './common/calendar.module';
 import { StaffModule } from './staff/staff.module';
 import { BranchesModule } from './branches/branches.module';
 import { AssistantModule } from './assistant/assistant.module';
+import { AttendanceModule } from './attendance/attendance.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { AssistantModule } from './assistant/assistant.module';
     AuditModule,
     StaffModule,
     AssistantModule,
+    AttendanceModule,
   ],
 })
 export class AppModule {}

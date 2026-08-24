@@ -51,7 +51,7 @@ export class ScoringService {
     const setting = await this.prisma.appSetting.findUnique({ where: { key: 'rest_weekdays' } });
     const restWeekdays = Array.isArray(setting?.value)
       ? (setting!.value as number[])
-      : [0, 6];
+      : [0];
     const holiday = await this.prisma.holiday.findUnique({ where: { date } });
     if (restWeekdays.includes(weekday) || holiday) {
       const branch = await this.prisma.branch.findFirst({

@@ -12,7 +12,7 @@ const PAGES: Record<string, string> = {
   dashboard: '/dashboard',
   today: '/today',
   ishlar: '/today',
-  задачичи: '/today',
+  задачи: '/today',
   reports: '/reports',
   отчёт: '/reports',
   отчеты: '/reports',
@@ -31,11 +31,16 @@ const PAGES: Record<string, string> = {
   'ai assistant': '/assistant',
   notifications: '/notifications',
   account: '/account',
-  settings: '/settings',
-  sozlamalar: '/settings',
-  настройки: '/settings',
-  integrations: '/settings',
-  интеграц: '/settings',
+  settings: '/integrations',
+  sozlamalar: '/integrations',
+  настройки: '/integrations',
+  integrations: '/integrations',
+  integratsiya: '/integrations',
+  интеграц: '/integrations',
+  telegram: '/integrations',
+  instagram: '/integrations',
+  сайт: '/integrations',
+  sayt: '/integrations',
   marketing: '/marketing',
   маркетинг: '/marketing',
 };
@@ -201,13 +206,28 @@ export class AssistantService {
         : 0,
       integrations: integrations
         ? {
+            telegramChannels: (integrations?.telegramChannels || []).map((c: any) => ({
+              name: c.name,
+              url: c.url,
+              enabled: c.enabled !== false,
+              notes: c.notes || null,
+            })),
+            instagramProfiles: (integrations?.instagramProfiles || []).map((p: any) => ({
+              name: p.name,
+              username: p.username || null,
+              profileUrl: p.profileUrl || null,
+              enabled: p.enabled !== false,
+              notes: p.notes || null,
+            })),
             telegram: {
               enabled: !!integrations?.telegram?.enabled,
               channelUrl: integrations?.telegram?.channelUrl || null,
+              botUsername: integrations?.telegram?.botUsername || null,
             },
             instagram: {
               enabled: !!integrations?.instagram?.enabled,
               username: integrations?.instagram?.username || null,
+              profileUrl: integrations?.instagram?.profileUrl || null,
             },
             websites: (integrations?.websites || []).map((w: any) => ({
               name: w.name,
@@ -216,13 +236,15 @@ export class AssistantService {
             })),
           }
         : null,
-      integrationsAudit: lastAudit?.hasOperationalData
+      integrationsAudit: lastAudit
         ? {
             at: lastAudit.at,
             score: lastAudit.score,
             overview: lastAudit.overview,
             priorities: lastAudit.priorities,
             topIssues: (lastAudit.items || []).slice(0, 8),
+            channels: lastAudit.channels || null,
+            hasLinks: lastAudit.hasLinks !== false,
           }
         : null,
       recentProofReviews: recentProofs.map((p) => ({
@@ -313,8 +335,8 @@ Javob JSON: {"items":[{"title":"...","detail":"...","priority":"high|mid|low","n
     if (/открой|och|open/.test(lower) && /филиал|branch/.test(lower)) return '/branches';
     if (/открой|och|open/.test(lower) && /dashboard|дашборд|holat/.test(lower))
       return '/dashboard';
-    if (/открой|och|open|sozlama|настрой|integrat/.test(lower) && /setting|sozlama|настрой|integrat|telegram|instagram|сайт|sayt/.test(lower))
-      return '/settings';
+    if (/открой|och|open|sozlama|настрой|integrat/.test(lower) && /setting|sozlama|настрой|integrat|telegram|instagram|сайт|sayt|radeski/.test(lower))
+      return '/integrations';
     return null;
   }
 
@@ -354,8 +376,10 @@ CONTEXT содержит реальное состояние: KPI, тренды,
 2) Коучинг менеджеров — как говорить с командой, что требовать сегодня
 3) Маркетинг/бренд — Instagram, Telegram, сайт: контент, SEO, CTA, ритм публикаций
 4) Стратегия роста — конверсия звонков, сервис, HR, выручка, репутация
-5) Навигация — открывай /settings, /today, /reports, /marketing, /assistant и др.
+5) Навигация — открывай /integrations, /today, /reports, /marketing, /assistant и др.
 6) Честные жёсткие выводы без воды — как топ-консультант сети клиник
+
+Если спрашивают про сайт (radeski.uz), Telegram или Instagram — отвечай по CONTEXT.integrations и integrationsAudit (ссылки, аудит, проблемы). Не выдумывай подписчиков.
 
 Формат строго JSON:
 {"reply":"развёрнутый полезный ответ","navigate":"/path или null","suggestions":["следующий вопрос 1","..."]}
@@ -364,7 +388,8 @@ CONTEXT содержит реальное состояние: KPI, тренды,
 Mahsulot nomi: «AI assistant».
 Foydalanuvchi qaysi tilda yozsa — SHU tilda javob bering (uz/ru).
 
-CONTEXT dagi real KPI, bajarilmagan ishlar, dalillar, haftalik trend, (agar boʻlsa) marketing kanallari holatidan foydalaning.
+CONTEXT dagi real KPI, bajarilmagan ishlar, dalillar, haftalik trend, marketing kanallari (Telegram/Instagram/sayt) va integrationsAudit dan foydalaning.
+Sayt/Telegram/Instagram soʻralsa — CONTEXT.integrations va oxirgi audit asosida javob bering.
 Siz:
 - ish yuborilganda sifatni baholaysiz va kamchilikni ochiq aytasiz
 - qilinmagan ishlarni prioritetlab, nima qilishni aniq buyurasiz

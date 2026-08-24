@@ -1248,16 +1248,16 @@ export class StaffService implements OnModuleInit {
     }
     await this.telegram.notify(
       'Ish kuni boshlandi',
-      `${staff} xodim · yangi: ${created}\nEslatma 09:00–22:00 · AI 19:00`,
+      `${staff} xodim · yangi: ${created}\nEslatma har 2 soatda (09:00–21:00) — bajarilmagan kunlik ishlar roʻyxati.`,
       '☀️',
       { category: '08:00', meta: [day.date], buttons: false },
     );
   }
 
-  /** 19:00 — AI kunlik nazorat (faqat ish kunlari) */
+  /** 19:00 — AI kunlik nazorat (faqat ichki; Telegramga yuborilmaydi) */
   @Cron('0 19 * * *', { timeZone: BUSINESS_TZ })
   async aiDailyMonitorCron() {
-    await this.runAiDailyMonitor('19:00-cron');
+    await this.runAiDailyMonitor('19:00-cron', { skipTelegram: true });
   }
 
   async runAiDailyMonitor(reason = 'manual', opts?: { skipTelegram?: boolean }) {
@@ -1506,7 +1506,7 @@ Ma'lumot:\n${raw || 'Maʼlumot yoʻq'}`;
       schedule: [
         '08:00 — ish kuni: kunlik vazifalar ochiladi',
         'Dam olish kunlari — vazifa yoʻq, hisoblanmaydi',
-        '09:00–22:00 — soatlik qisqa eslatma (Telegram)',
+        '09:00–21:00 — har 2 soat: holat + bajarilmagan kunlik ishlar (Telegram)',
         '19:00 — AI kunlik nazorat',
         'Har 2 soat — 24 soatlik isbotlarni avto-tasdiq',
         'Oy 1-kun 10:00 — oylik 100 ballik KPI + AI',

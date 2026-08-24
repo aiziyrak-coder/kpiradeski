@@ -22,7 +22,13 @@ EXCLUDE = {"node_modules", ".next", "dist", ".git", "uploads", "__pycache__"}
 
 c = paramiko.SSHClient()
 c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-c.connect("87.192.230.208", port=2222, username="admin_root", password=P, timeout=30)
+c.connect(
+    os.environ.get("DEPLOY_SSH_HOST", "192.168.0.101"),
+    port=int(os.environ.get("DEPLOY_SSH_PORT", "22")),
+    username="admin_root",
+    password=P,
+    timeout=30,
+)
 sftp = c.open_sftp()
 
 tmp = Path(tempfile.gettempdir()) / "kpiradeski-sync.tar.gz"

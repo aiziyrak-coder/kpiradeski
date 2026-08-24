@@ -2,53 +2,32 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import { AppShell } from '@/components/AppShell';
 import { RoleGate } from '@/components/RoleGate';
-import { Button, Input, SectionHeader, Select } from '@/components/ui';
+import { Button, SectionHeader, Select } from '@/components/ui';
 import { useToast } from '@/components/Toast';
 import { useI18n } from '@/lib/i18n';
 import { api, downloadReport } from '@/lib/api';
-import { formatTashkent, todayISO, type Role } from '@/types';
+import { formatTashkent, todayISO, weekStartISO } from '@/types';
 import { cn } from '@/lib/utils';
 
-function daysBefore(n: number) {
-  const [y, m, d] = todayISO().split('-').map(Number);
-  const utc = new Date(Date.UTC(y, m - 1, d));
-  utc.setUTCDate(utc.getUTCDate() - n);
-  return utc.toISOString().slice(0, 10);
-}
-
+type Freq = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 type Tab = 'analytics' | 'audit';
 
-const PIE_COLORS = ['#0F766E', '#D97706', '#E11D48'];
-const LINE_COLORS = ['#0F766E', '#2563EB', '#C026D3', '#EA580C', '#0891B2'];
+function monthStartISO(iso: string) {
+  const [y, m] = iso.split('-').map(Number);
+  return `${y}-${String(m).padStart(2, '0')}-01`;
+}
 
-const CAT_LABEL: Record<string, { uz: string; ru: string }> = {
-  clinic: { uz: 'Klinika', ru: 'Клиника' },
-  reception: { uz: 'Administrator', ru: 'Администратор' },
-  calls: { uz: 'Qoʻngʻiroqlar', ru: 'Звонки' },
-  reviews: { uz: 'Sharhlar', ru: 'Отзывы' },
-  uniform: { uz: 'Uniforma', ru: 'Униформа' },
-  smm: { uz: 'SMM / SEO', ru: 'SMM / SEO' },
-  marketing: { uz: 'Marketing', ru: 'Маркетинг' },
-};
+function monthEndISO(iso: string) {
+  const [y, m] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+}
+
+function weekEndISO(from: string) {
+  const [y, m, d] = weekStartISO(from).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 6)).toISOString().slice(0, 10);
+}
 
 export default function ReportsPage() {
   return (
@@ -60,16 +39,15 @@ export default function ReportsPage() {
 
 function ReportsInner() {
   const toast = useToast();
-  const { t, lang, roleLabel } = useI18n();
+  const { t, roleLabel } = useI18n();
   const search = useSearchParams();
   const router = useRouter();
   const initialTab = (search.get('tab') === 'audit' ? 'audit' : 'analytics') as Tab;
   const [tab, setTab] = useState<Tab>(initialTab);
 
-  const [from, setFrom] = useState(daysBefore(30));
-  const [to, setTo] = useState(todayISO());
+  const [freq, setFreq] = useState<Freq>('DAILY');
+  const [date, setDate] = useState(todayISO());
   const [branchId, setBranchId] = useState('');
-  const [frequency, setFrequency] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY');
   const [branches, setBranches] = useState<any[]>([]);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -82,6 +60,17 @@ function ReportsInner() {
   const [aFrom, setAFrom] = useState('');
   const [aTo, setATo] = useState('');
   const [openMeta, setOpenMeta] = useState<string | null>(null);
+
+  const range = useMemo(() => {
+    if (freq === 'WEEKLY') {
+      const from = weekStartISO(date);
+      return { from, to: weekEndISO(date) };
+    }
+    if (freq === 'MONTHLY') {
+      return { from: monthStartISO(date), to: monthEndISO(date) };
+    }
+    return { from: date, to: date };
+  }, [freq, date]);
 
   useEffect(() => {
     setTab(search.get('tab') === 'audit' ? 'audit' : 'analytics');
@@ -101,7 +90,11 @@ function ReportsInner() {
   async function loadAnalytics() {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ from, to, frequency });
+      const params = new URLSearchParams({
+        from: range.from,
+        to: range.to,
+        frequency: freq,
+      });
       if (branchId) params.set('branchId', branchId);
       setData(await api(`/reports/analytics?${params}`));
     } catch (e: any) {
@@ -126,16 +119,18 @@ function ReportsInner() {
 
   useEffect(() => {
     if (tab === 'analytics') loadAnalytics();
-  }, [from, to, branchId, frequency, tab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range.from, range.to, branchId, freq, tab]);
 
   useEffect(() => {
     if (tab === 'audit') loadAudit(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, tab]);
 
   async function exportFile(kind: 'excel' | 'pdf') {
     setBusy(true);
     try {
-      await downloadReport(kind, from, to);
+      await downloadReport(kind, range.from, range.to);
       toast.success(t('reports.exportOk'));
     } catch (e: any) {
       toast.error(t('reports.exportFail'), e.message);
@@ -145,80 +140,14 @@ function ReportsInner() {
   }
 
   const s = data?.summary;
-  const catLabel = (key: string) => {
-    const L = CAT_LABEL[key];
-    if (!L) return key;
-    return lang === 'ru' ? L.ru : L.uz;
-  };
-
-  const branchBars = useMemo(
-    () =>
-      (data?.byBranch || []).map((b: any) => ({
-        name: b.name.length > 14 ? b.name.slice(0, 12) + '…' : b.name,
-        full: b.name,
-        score: b.avgScore,
-        completion: b.completionPct,
-      })),
-    [data],
-  );
-
-  const managerBars = useMemo(
-    () =>
-      (data?.byManager || []).slice(0, 10).map((m: any) => ({
-        name: m.name.length > 12 ? m.name.slice(0, 10) + '…' : m.name,
-        full: m.name,
-        completion: m.completionPct,
-        done: m.done,
-        score: m.avgTaskScore,
-      })),
-    [data],
-  );
-
-  const categoryBars = useMemo(
-    () =>
-      (data?.byCategory || []).map((c: any) => ({
-        name: catLabel(c.key),
-        score: c.avgScore,
-        completion: c.completionPct,
-      })),
-    [data, lang],
-  );
-
-  const multiTrend = useMemo(() => {
-    const bt = data?.branchTrend || {};
-    const names = Object.keys(bt);
-    const dateSet = new Set<string>();
-    for (const n of names) for (const p of bt[n] || []) dateSet.add(p.date);
-    const dates = [...dateSet].sort();
-    return dates.map((date) => {
-      const row: Record<string, string | number> = { date: date.slice(5) };
-      for (const n of names) {
-        const hit = (bt[n] || []).find((x: any) => x.date === date);
-        if (hit) row[n] = hit.score;
-      }
-      return row;
-    });
-  }, [data]);
-
-  const branchTrendNames = Object.keys(data?.branchTrend || {});
-
-  function statusLabel(color: string) {
-    if (color === 'green') return t('reports.good');
-    if (color === 'yellow') return t('reports.mid');
-    if (color === 'red') return t('reports.low');
-    return color;
-  }
+  const periodLabel =
+    range.from === range.to ? range.from : `${range.from} — ${range.to}`;
 
   function actionLabel(a: string) {
     return t(`reports.actions.${a}`) !== `reports.actions.${a}`
       ? t(`reports.actions.${a}`)
       : a;
   }
-
-  const pieData = (data?.statusPie || []).map((x: any) => ({
-    ...x,
-    label: statusLabel(x.name),
-  }));
 
   return (
     <AppShell>
@@ -264,26 +193,43 @@ function ReportsInner() {
 
         {tab === 'analytics' && (
           <>
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-teal-950/[0.05] mb-4">
+              {(['DAILY', 'WEEKLY', 'MONTHLY'] as Freq[]).map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setFreq(id)}
+                  className={cn(
+                    'rounded-lg py-2.5 text-sm font-semibold transition',
+                    freq === id
+                      ? id === 'DAILY'
+                        ? 'bg-teal-800 text-white shadow-sm'
+                        : id === 'WEEKLY'
+                          ? 'bg-amber-700 text-white shadow-sm'
+                          : 'bg-indigo-800 text-white shadow-sm'
+                      : 'text-ink-muted',
+                  )}
+                >
+                  {id === 'DAILY'
+                    ? t('today.daily')
+                    : id === 'WEEKLY'
+                      ? t('today.weekly')
+                      : t('today.monthly')}
+                </button>
+              ))}
+            </div>
+
             <div className="rounded-2xl border border-teal-100 bg-white/90 p-4 mb-5 grid grid-cols-1 sm:flex sm:flex-wrap gap-3 items-end">
               <label className="text-sm w-full sm:w-auto">
-                <span className="text-ink-muted block mb-1">{t('common.from')}</span>
+                <span className="text-ink-muted block mb-1">{t('reports.pickDate')}</span>
                 <input
                   type="date"
-                  value={from}
-                  onChange={(e) => setFrom(e.target.value)}
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
                   className="h-11 w-full sm:w-auto px-3 rounded-xl border border-teal-200 bg-white"
                 />
               </label>
-              <label className="text-sm w-full sm:w-auto">
-                <span className="text-ink-muted block mb-1">{t('common.to')}</span>
-                <input
-                  type="date"
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                  className="h-11 w-full sm:w-auto px-3 rounded-xl border border-teal-200 bg-white"
-                />
-              </label>
-              <div className="w-full sm:min-w-[160px] sm:w-auto">
+              <div className="w-full sm:min-w-[180px] sm:w-auto">
                 <Select
                   label={t('branches.branch')}
                   value={branchId}
@@ -297,24 +243,7 @@ function ReportsInner() {
                   ))}
                 </Select>
               </div>
-              <div className="w-full sm:min-w-[140px] sm:w-auto">
-                <Select
-                  label={t('reports.frequency')}
-                  value={frequency}
-                  onChange={(e) => setFrequency(e.target.value as any)}
-                >
-                  <option value="DAILY">{t('today.daily')}</option>
-                  <option value="WEEKLY">{t('today.weekly')}</option>
-                  <option value="MONTHLY">{t('today.monthly')}</option>
-                </Select>
-              </div>
-              <div className="flex gap-2 w-full sm:w-auto overflow-x-auto">
-                {[7, 30, 90].map((n) => (
-                  <Button key={n} variant="ghost" size="sm" onClick={() => setFrom(daysBefore(n))}>
-                    {t('reports.days', { n })}
-                  </Button>
-                ))}
-              </div>
+              <p className="text-sm text-ink-muted sm:ml-auto tabular-nums">{periodLabel}</p>
             </div>
 
             {loading && (
@@ -323,530 +252,283 @@ function ReportsInner() {
 
             {!loading && data && (
               <div className="space-y-5">
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <StatCard
-                    label={t('reports.avg')}
-                    value={`${s?.avgScore ?? 0}%`}
-                    tone="teal"
-                  />
-                  <StatCard
-                    label={t('reports.completion')}
-                    value={`${s?.completionPct ?? 0}%`}
-                    hint={`${s?.entriesDone ?? 0}/${s?.entriesTotal ?? 0}`}
-                  />
-                  <StatCard
-                    label={t('reports.proofRate')}
-                    value={`${s?.proofs?.approveRate ?? 0}%`}
-                    hint={`${s?.proofs?.approved ?? 0}✓ / ${s?.proofs?.rejected ?? 0}✗`}
-                  />
-                  <StatCard
-                    label={t('reports.tracked')}
-                    value={String(s?.daysTracked ?? 0)}
-                    hint={`${s?.branches ?? 0} ${t('reports.branchesUnit')} · ${s?.managers ?? 0} ${t('reports.managersUnit')}`}
-                  />
-                </div>
-
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
-                    <p className="text-xs font-semibold text-emerald-900 uppercase tracking-wide">
-                      {t('reports.bestDay')}
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <div className="rounded-2xl border border-teal-100 bg-white p-4">
+                    <p className="text-xs uppercase tracking-wide text-teal-700 font-semibold">
+                      {t('reports.tasksDone')}
                     </p>
-                    <p className="font-display text-3xl mt-1 tabular-nums text-emerald-950">
-                      {s?.bestScore != null ? `${s.bestScore}%` : '—'}
+                    <p className="font-display text-3xl mt-1 tabular-nums">
+                      {s?.entriesDone ?? 0}
+                      <span className="text-lg text-ink-muted font-sans font-semibold">
+                        /{s?.entriesTotal ?? 0}
+                      </span>
                     </p>
-                    <p className="text-xs text-emerald-800/80 mt-1">
-                      {[s?.bestDate, s?.bestBranch].filter(Boolean).join(' · ') || '—'}
+                    <p className="text-xs text-ink-muted mt-1">
+                      {t('reports.completion')}: {s?.completionPct ?? 0}%
                     </p>
                   </div>
-                  <div className="rounded-2xl border border-rose-100 bg-rose-50/60 p-4">
-                    <p className="text-xs font-semibold text-rose-900 uppercase tracking-wide">
-                      {t('reports.worstDay')}
+                  <div className="rounded-2xl border border-teal-100 bg-white p-4">
+                    <p className="text-xs uppercase tracking-wide text-teal-700 font-semibold">
+                      {t('reports.avgScore')}
+                    </p>
+                    <p className="font-display text-3xl mt-1 tabular-nums">
+                      {s?.avgScore ?? 0}
+                    </p>
+                    <p className="text-xs text-ink-muted mt-1">/ 100</p>
+                  </div>
+                  <div className="rounded-2xl border border-teal-100 bg-white p-4">
+                    <p className="text-xs uppercase tracking-wide text-teal-700 font-semibold">
+                      {t('reports.scope')}
+                    </p>
+                    <p className="font-display text-3xl mt-1 tabular-nums">
+                      {s?.branches ?? 0}
+                    </p>
+                    <p className="text-xs text-ink-muted mt-1">
+                      {t('reports.managersUnit')}: {s?.managers ?? 0}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-rose-100 bg-rose-50/40 p-4 sm:col-span-3">
+                    <p className="text-xs uppercase tracking-wide text-rose-800 font-semibold">
+                      {t('reports.missedOnTime')}
                     </p>
                     <p className="font-display text-3xl mt-1 tabular-nums text-rose-950">
-                      {s?.worstScore != null ? `${s.worstScore}%` : '—'}
+                      {s?.missedOnTime ?? 0}
                     </p>
-                    <p className="text-xs text-rose-800/80 mt-1">
-                      {[s?.worstDate, s?.worstBranch].filter(Boolean).join(' · ') || '—'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid lg:grid-cols-3 gap-4">
-                  <div className="lg:col-span-2 rounded-2xl border border-teal-100 bg-white p-4">
-                    <p className="text-sm font-semibold mb-3">{t('reports.trend')}</p>
-                    <div className="h-56">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={data.trend || []}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#D5EBE6" />
-                          <XAxis
-                            dataKey="date"
-                            tick={{ fontSize: 11 }}
-                            tickFormatter={(v) => String(v).slice(5)}
-                          />
-                          <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-                          <Tooltip />
-                          <Area
-                            type="monotone"
-                            dataKey="score"
-                            name={t('reports.score')}
-                            stroke="#0F5F54"
-                            fill="#99F6E4"
-                            fillOpacity={0.35}
-                            strokeWidth={2}
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-teal-100 bg-white p-4">
-                    <p className="text-sm font-semibold mb-3">{t('reports.statusSplit')}</p>
-                    <div className="h-56">
-                      {pieData.length === 0 ? (
-                        <div className="h-full grid place-items-center text-ink-muted text-sm">
-                          {t('reports.noData')}
-                        </div>
-                      ) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={pieData}
-                              dataKey="value"
-                              nameKey="label"
-                              innerRadius={48}
-                              outerRadius={78}
-                              paddingAngle={2}
-                            >
-                              {pieData.map((_: any, i: number) => (
-                                <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                              ))}
-                            </Pie>
-                            <Tooltip />
-                            <Legend />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      )}
-                    </div>
-                    <div className="flex justify-around text-xs mt-1 text-ink-muted">
-                      <span>🟢 {s?.statusCount?.green ?? 0}</span>
-                      <span>🟡 {s?.statusCount?.yellow ?? 0}</span>
-                      <span>🔴 {s?.statusCount?.red ?? 0}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {multiTrend.length > 0 && branchTrendNames.length > 1 && (
-                  <div className="rounded-2xl border border-teal-100 bg-white p-4">
-                    <p className="text-sm font-semibold mb-3">{t('reports.branchTrend')}</p>
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={multiTrend}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#D5EBE6" />
-                          <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                          <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-                          <Tooltip />
-                          <Legend />
-                          {branchTrendNames.map((name, i) => (
-                            <Line
-                              key={name}
-                              type="monotone"
-                              dataKey={name}
-                              stroke={LINE_COLORS[i % LINE_COLORS.length]}
-                              strokeWidth={2}
-                              dot={false}
-                            />
-                          ))}
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid lg:grid-cols-2 gap-4">
-                  <div className="rounded-2xl border border-teal-100 bg-white p-4">
-                    <p className="text-sm font-semibold mb-3">{t('reports.byBranch')}</p>
-                    <div className="h-64">
-                      {branchBars.length === 0 ? (
-                        <Empty />
-                      ) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={branchBars} layout="vertical" margin={{ left: 8 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#D5EBE6" />
-                            <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} />
-                            <YAxis
-                              type="category"
-                              dataKey="name"
-                              width={90}
-                              tick={{ fontSize: 11 }}
-                            />
-                            <Tooltip
-                              formatter={(v: any, _n: any, p: any) => [
-                                `${v}%`,
-                                p?.payload?.full || '',
-                              ]}
-                            />
-                            <Bar dataKey="score" name={t('reports.score')} fill="#0F766E" radius={4} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-teal-100 bg-white p-4">
-                    <p className="text-sm font-semibold mb-3">{t('reports.byManager')}</p>
-                    <div className="h-64">
-                      {managerBars.length === 0 ? (
-                        <Empty />
-                      ) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={managerBars}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#D5EBE6" />
-                            <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
-                            <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-                            <Tooltip
-                              formatter={(v: any, name: any, p: any) => [
-                                `${v}${name === 'done' ? '' : '%'}`,
-                                p?.payload?.full || name,
-                              ]}
-                            />
-                            <Bar
-                              dataKey="completion"
-                              name={t('reports.completion')}
-                              fill="#2563EB"
-                              radius={4}
-                            />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-teal-100 bg-white p-4">
-                  <p className="text-sm font-semibold mb-3">{t('reports.byCategory')}</p>
-                  <div className="h-56">
-                    {categoryBars.length === 0 ? (
-                      <Empty />
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={categoryBars}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#D5EBE6" />
-                          <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                          <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-                          <Tooltip />
-                          <Legend />
-                          <Bar dataKey="score" name={t('reports.score')} fill="#0F766E" radius={4} />
-                          <Bar
-                            dataKey="completion"
-                            name={t('reports.completion')}
-                            fill="#99F6E4"
-                            radius={4}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
+                    <p className="text-xs text-ink-muted mt-1">{t('reports.missedOnTimeHint')}</p>
+                    {(s?.missedOnTimeSamples || []).length > 0 && (
+                      <ul className="mt-3 space-y-1 text-sm text-rose-950">
+                        {s.missedOnTimeSamples.map(
+                          (x: { title: string; branch: string; date: string }, i: number) => (
+                            <li key={`${x.date}-${x.branch}-${i}`}>
+                              {x.date} · {x.branch}: {x.title}
+                            </li>
+                          ),
+                        )}
+                      </ul>
                     )}
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-teal-100 bg-white overflow-hidden">
-                  <div className="px-4 py-3 border-b border-teal-50 flex items-center justify-between">
-                    <p className="text-sm font-semibold">{t('reports.incompleteTitle')}</p>
-                    <span className="text-xs text-ink-muted">
-                      {(data.incompleteTasks || []).length} {t('reports.tasksUnit')}
-                    </span>
+                <section className="rounded-2xl border border-teal-100 bg-white overflow-hidden">
+                  <div className="px-4 py-3 border-b border-teal-50">
+                    <h2 className="text-sm font-semibold">{t('reports.byBranch')}</h2>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm min-w-[640px]">
+                    <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-left text-ink-muted border-b border-teal-50">
-                          <th className="p-3">#</th>
-                          <th className="p-3">{t('reports.task')}</th>
-                          <th className="p-3">{t('reports.missPct')}</th>
-                          <th className="p-3">{t('reports.missed')}</th>
-                          <th className="p-3">{t('branches.branch')}</th>
+                        <tr className="text-left text-xs text-ink-muted bg-teal-950/[0.03]">
+                          <th className="p-3 font-medium">{t('branches.branch')}</th>
+                          <th className="p-3 font-medium">{t('reports.tasksDone')}</th>
+                          <th className="p-3 font-medium">{t('reports.avgScore')}</th>
+                          <th className="p-3 font-medium">{t('reports.managers')}</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {(data.incompleteTasks || []).length === 0 && (
+                        {(data.byBranch || []).length === 0 && (
                           <tr>
-                            <td colSpan={5} className="py-10 text-center text-ink-muted">
-                              {t('reports.noIncomplete')}
+                            <td colSpan={4} className="p-6 text-center text-ink-muted">
+                              {t('reports.noData')}
                             </td>
                           </tr>
                         )}
-                        {(data.incompleteTasks || []).map((row: any, i: number) => (
-                          <tr key={row.nodeKey} className="border-b border-teal-50/80">
-                            <td className="px-3 py-2.5 text-ink-muted">{i + 1}</td>
-                            <td className="px-3 py-2.5 font-medium">
-                              {lang === 'ru' ? row.titleRu : row.titleUz}
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <span
-                                className={cn(
-                                  'tabular-nums font-semibold',
-                                  row.missPct >= 70
-                                    ? 'text-rose-700'
-                                    : row.missPct >= 40
-                                      ? 'text-amber-700'
-                                      : 'text-teal-800',
-                                )}
-                              >
-                                {row.missPct}%
+                        {(data.byBranch || []).map((b: any) => (
+                          <tr key={b.branchId} className="border-t border-teal-900/[0.06]">
+                            <td className="p-3 font-medium">{b.name}</td>
+                            <td className="p-3 tabular-nums">
+                              {b.entriesDone}/{b.entriesTotal}
+                              <span className="text-ink-muted text-xs ml-1">
+                                ({b.completionPct}%)
                               </span>
                             </td>
-                            <td className="px-3 py-2.5 tabular-nums">
-                              {row.missed}/{row.opportunities}
+                            <td className="p-3 tabular-nums font-semibold">
+                              {b.score ?? b.avgScore ?? '—'}
                             </td>
-                            <td className="px-3 py-2.5 text-xs text-ink-muted">
-                              {(row.branches || []).slice(0, 3).join(', ')}
-                              {(row.branches || []).length > 3 ? '…' : ''}
+                            <td className="p-3 text-xs text-ink-muted">
+                              {(b.managers || []).map((m: any) => m.name).join(', ') || '—'}
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                </div>
+                </section>
 
-                <div className="grid lg:grid-cols-2 gap-4">
-                  <div className="rounded-2xl border border-teal-100 bg-white overflow-hidden">
-                    <div className="px-4 py-3 border-b border-teal-50">
-                      <p className="text-sm font-semibold">{t('reports.branchTable')}</p>
-                    </div>
-                    <div className="overflow-x-auto max-h-80 overflow-y-auto">
-                      <table className="w-full text-sm">
-                        <thead className="sticky top-0 bg-white">
-                          <tr className="text-left text-ink-muted border-b border-teal-50">
-                            <th className="p-3">{t('branches.branch')}</th>
-                            <th className="p-3">{t('reports.score')}</th>
-                            <th className="p-3">{t('reports.completion')}</th>
-                            <th className="p-3">{t('reports.managersUnit')}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(data.byBranch || []).map((b: any) => (
-                            <tr key={b.branchId} className="border-b border-teal-50/80">
-                              <td className="px-3 py-2.5 font-medium">{b.name}</td>
-                              <td className="px-3 py-2.5 tabular-nums font-semibold">
-                                {b.avgScore}%
-                              </td>
-                              <td className="px-3 py-2.5 tabular-nums">{b.completionPct}%</td>
-                              <td className="px-3 py-2.5 text-xs text-ink-muted">
-                                {(b.managers || []).map((m: any) => m.name).join(', ') || '—'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                <section className="rounded-2xl border border-teal-100 bg-white overflow-hidden">
+                  <div className="px-4 py-3 border-b border-teal-50">
+                    <h2 className="text-sm font-semibold">{t('reports.byManager')}</h2>
                   </div>
-
-                  <div className="rounded-2xl border border-teal-100 bg-white overflow-hidden">
-                    <div className="px-4 py-3 border-b border-teal-50">
-                      <p className="text-sm font-semibold">{t('reports.managerTable')}</p>
-                    </div>
-                    <div className="overflow-x-auto max-h-80 overflow-y-auto">
-                      <table className="w-full text-sm">
-                        <thead className="sticky top-0 bg-white">
-                          <tr className="text-left text-ink-muted border-b border-teal-50">
-                            <th className="p-3">{t('branches.manager')}</th>
-                            <th className="p-3">{t('reports.completion')}</th>
-                            <th className="p-3">{t('reports.done')}</th>
-                            <th className="p-3">{t('reports.proofs')}</th>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-ink-muted bg-teal-950/[0.03]">
+                          <th className="p-3 font-medium">{t('reports.manager')}</th>
+                          <th className="p-3 font-medium">{t('branches.branch')}</th>
+                          <th className="p-3 font-medium">{t('reports.tasksDone')}</th>
+                          <th className="p-3 font-medium">{t('reports.avgScore')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(data.byManager || []).length === 0 && (
+                          <tr>
+                            <td colSpan={4} className="p-6 text-center text-ink-muted">
+                              {t('reports.noData')}
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {(data.byManager || []).map((m: any) => (
-                            <tr key={m.id} className="border-b border-teal-50/80">
-                              <td className="px-3 py-2.5">
-                                <p className="font-medium">{m.name}</p>
-                                <p className="text-[11px] text-ink-muted">
-                                  {(m.branches || []).join(', ')}
-                                </p>
-                              </td>
-                              <td className="px-3 py-2.5 tabular-nums font-semibold">
-                                {m.completionPct}%
-                              </td>
-                              <td className="px-3 py-2.5 tabular-nums">
-                                {m.done}/{m.total}
-                              </td>
-                              <td className="px-3 py-2.5 text-xs">
-                                <span className="text-teal-800">{m.proofsApproved}✓</span>
-                                {' · '}
-                                <span className="text-amber-700">{m.proofsPending}…</span>
-                                {' · '}
-                                <span className="text-rose-700">{m.proofsRejected}✗</span>
-                              </td>
-                            </tr>
-                          ))}
-                          {(data.byManager || []).length === 0 && (
-                            <tr>
-                              <td colSpan={4} className="py-8 text-center text-ink-muted">
-                                {t('reports.noData')}
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                        )}
+                        {(data.byManager || []).map((m: any) => (
+                          <tr key={m.id} className="border-t border-teal-900/[0.06]">
+                            <td className="p-3 font-medium">{m.name}</td>
+                            <td className="p-3 text-xs text-ink-muted">
+                              {(m.branches || []).join(', ') || '—'}
+                            </td>
+                            <td className="p-3 tabular-nums">
+                              {m.done}/{m.total}
+                              <span className="text-ink-muted text-xs ml-1">
+                                ({m.completionPct}%)
+                              </span>
+                            </td>
+                            <td className="p-3 tabular-nums font-semibold">
+                              {m.avgTaskScore || '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                </div>
+                </section>
               </div>
             )}
           </>
         )}
 
         {tab === 'audit' && (
-          <>
-            <div className="rounded-2xl border border-teal-100 bg-white p-4 mb-4 grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              <Input
-                label={t('reports.auditSearch')}
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-              />
-              <Input
-                label={t('reports.auditAction')}
-                value={action}
-                onChange={(e) => setAction(e.target.value)}
-              />
-              <Input
-                label={t('common.from')}
-                type="date"
-                value={aFrom}
-                onChange={(e) => setAFrom(e.target.value)}
-              />
-              <Input
-                label={t('common.to')}
-                type="date"
-                value={aTo}
-                onChange={(e) => setATo(e.target.value)}
-              />
-              <div className="flex items-end">
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-teal-100 bg-white/90 p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <label className="text-sm">
+                <span className="text-ink-muted block mb-1">{t('reports.auditSearch')}</span>
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  className="h-11 w-full px-3 rounded-xl border border-teal-200"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="text-ink-muted block mb-1">{t('reports.auditAction')}</span>
+                <input
+                  value={action}
+                  onChange={(e) => setAction(e.target.value)}
+                  className="h-11 w-full px-3 rounded-xl border border-teal-200"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="text-ink-muted block mb-1">{t('common.from')}</span>
+                <input
+                  type="date"
+                  value={aFrom}
+                  onChange={(e) => setAFrom(e.target.value)}
+                  className="h-11 w-full px-3 rounded-xl border border-teal-200"
+                />
+              </label>
+              <div className="flex items-end gap-2">
+                <label className="text-sm flex-1">
+                  <span className="text-ink-muted block mb-1">{t('common.to')}</span>
+                  <input
+                    type="date"
+                    value={aTo}
+                    onChange={(e) => setATo(e.target.value)}
+                    className="h-11 w-full px-3 rounded-xl border border-teal-200"
+                  />
+                </label>
                 <Button
-                  className="w-full min-h-11"
                   onClick={() => {
                     setPage(1);
                     loadAudit(1);
                   }}
                 >
-                  {t('common.filter')}
+                  {t('common.search')}
                 </Button>
               </div>
             </div>
 
-            <div className="space-y-2">
-              {(audit?.items || []).length === 0 && (
-                <div className="rounded-2xl border border-dashed border-teal-200 p-10 text-center text-ink-muted">
-                  {t('reports.auditEmpty')}
+            <div className="rounded-2xl border border-teal-100 bg-white overflow-hidden">
+              <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="text-left text-xs text-ink-muted border-b">
+                      <th className="p-3">{t('common.date')}</th>
+                      <th className="p-3">{t('reports.auditAction')}</th>
+                      <th className="p-3">{t('users.name')}</th>
+                      <th className="p-3" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(audit?.items || []).length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="p-8 text-center text-ink-muted">
+                          {t('reports.auditEmpty')}
+                        </td>
+                      </tr>
+                    )}
+                    {(audit?.items || []).map((row: any) => (
+                      <tr key={row.id} className="border-t border-teal-900/[0.06] align-top">
+                        <td className="p-3 text-xs tabular-nums whitespace-nowrap">
+                          {formatTashkent(row.createdAt)}
+                        </td>
+                        <td className="p-3">{actionLabel(row.action)}</td>
+                        <td className="p-3 text-xs">
+                          {row.user?.name || '—'}
+                          {row.user?.role ? (
+                            <span className="text-ink-muted"> · {roleLabel(row.user.role)}</span>
+                          ) : null}
+                        </td>
+                        <td className="p-3">
+                          <button
+                            type="button"
+                            className="text-xs text-teal-800 underline"
+                            onClick={() =>
+                              setOpenMeta((id) => (id === row.id ? null : row.id))
+                            }
+                          >
+                            {openMeta === row.id ? t('reports.metaHide') : t('reports.metaShow')}
+                          </button>
+                          {openMeta === row.id && (
+                            <pre className="mt-2 text-[11px] bg-sand-50 rounded-xl p-3 overflow-x-auto text-ink-soft">
+                              {JSON.stringify(row.meta || {}, null, 2)}
+                            </pre>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {(audit?.pages || 0) > 1 && (
+                <div className="flex justify-center gap-2 p-3 border-t">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => p - 1)}
+                  >
+                    ‹
+                  </Button>
+                  <span className="text-sm tabular-nums self-center">
+                    {page}/{audit.pages}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={page >= audit.pages}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    ›
+                  </Button>
                 </div>
               )}
-              {(audit?.items || []).map((a: any) => (
-                <article
-                  key={a.id}
-                  className="rounded-xl border border-teal-100 bg-white p-4"
-                >
-                  <div className="flex flex-wrap justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-ink">{actionLabel(a.action)}</p>
-                      <p className="text-xs text-ink-muted mt-0.5">
-                        {a.user?.name || '—'}
-                        {a.user?.role ? ` · ${roleLabel(a.user.role as Role)}` : ''}
-                      </p>
-                    </div>
-                    <p className="text-xs text-ink-muted whitespace-nowrap">
-                      {formatTashkent(a.createdAt)}
-                    </p>
-                  </div>
-                  <p className="text-xs text-teal-800 mt-2">
-                    {a.entity}
-                    {a.entityId ? ` · ${String(a.entityId).slice(0, 12)}…` : ''}
-                  </p>
-                  {a.meta && (
-                    <button
-                      type="button"
-                      className="text-xs text-teal-700 underline mt-2"
-                      onClick={() => setOpenMeta(openMeta === a.id ? null : a.id)}
-                    >
-                      {openMeta === a.id ? t('reports.metaHide') : t('reports.metaShow')}
-                    </button>
-                  )}
-                  {openMeta === a.id && a.meta && (
-                    <pre className="mt-2 text-[11px] bg-sand-50 rounded-xl p-3 overflow-x-auto text-ink-soft">
-                      {JSON.stringify(a.meta, null, 2)}
-                    </pre>
-                  )}
-                </article>
-              ))}
             </div>
-
-            <div className="flex items-center justify-between mt-4">
-              <p className="text-xs text-ink-muted">
-                {t('common.total')}: {audit?.total ?? 0}
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  {t('common.prev')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={page >= (audit?.pages || 1)}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  {t('common.next')}
-                </Button>
-              </div>
-            </div>
-          </>
+          </div>
         )}
       </RoleGate>
     </AppShell>
   );
-}
-
-function StatCard({
-  label,
-  value,
-  hint,
-  tone,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  tone?: 'teal';
-}) {
-  return (
-    <div
-      className={cn(
-        'rounded-2xl border p-4',
-        tone === 'teal'
-          ? 'border-teal-800/20 bg-gradient-to-br from-teal-800 to-teal-900 text-white'
-          : 'border-teal-100 bg-white',
-      )}
-    >
-      <p
-        className={cn(
-          'text-xs font-semibold uppercase tracking-wide',
-          tone === 'teal' ? 'text-teal-100/80' : 'text-ink-muted',
-        )}
-      >
-        {label}
-      </p>
-      <p className="font-display text-3xl mt-1 tabular-nums">{value}</p>
-      {hint && (
-        <p className={cn('text-xs mt-1', tone === 'teal' ? 'text-teal-100/70' : 'text-ink-muted')}>
-          {hint}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function Empty() {
-  const { t } = useI18n();
-  return <div className="h-full grid place-items-center text-ink-muted text-sm">{t('reports.noData')}</div>;
 }
