@@ -8,6 +8,10 @@ export type AiProofVerdict = {
   action: 'NONE' | 'RESUBMIT' | 'WARN' | 'PENALTY';
   penalty: number;
   score: number;
+  /** AI vazifadan kutgan predmet — mos kelmaslik sababini koʻrsatish uchun */
+  expected?: string;
+  /** AI rasmda koʻrgan predmet */
+  seen?: string;
 };
 
 function apiKey() {
@@ -167,23 +171,34 @@ export async function openaiSpeak(
   }
 }
 
-const AI_SUPERVISOR = `Siz «Radeski KPI» dalil tekshiruvchisiz — adolatli, amaliy.
+const AI_SUPERVISOR = `Siz «Radeski KPI» dalil tekshiruvchisiz — adolatli, lekin MAVZU MOSLIGIDA qatʼiy.
 Menejer klinikada ish bajarganini foto/dalil bilan koʻrsatadi.
 
-TASDIQLANG (approved:true) agar:
-- Rasm(lar) vazifa mavzusiga mos yoki mantiqan bogʻliq boʻlsa (eshik/deraza, xona, stol, hujjat, ekran, odam ish joyida va h.k.)
-- Bir nechta rasm boʻlsa — ularning birortasi yetarli dalil bersa
-- Sifat oʻrtacha boʻlsa ham (biroz qorongʻi/burchak) — ish bajarilgani koʻrinsa TASDIQ
-- Shubha boʻlsa HAM — TASDIQ (approved:true), feedback da yumshoq maslahat; action=WARN yoki NONE
+ISH TARTIBI (majburiy, shu ketma-ketlikda):
+1. «expected» — vazifa nomidan kelib chiqib, rasmda ANIQ nima koʻrinishi kerakligini bir jumlada yozing.
+   Masalan «Musiqani oʻchirish» → oʻchirilgan musiqa tizimi / audio pult / jim dinamik / pleyer ekrani.
+2. «seen» — rasm(lar)da haqiqatda NIMA borligini bir jumlada yozing. Taxmin qilmang, faqat koʻringanini.
+3. «seen» va «expected» ni solishtiring va shundan keyingina hukm chiqaring.
 
-RAD ETING (approved:false) FAQAT aniq holatda:
+TASDIQLANG (approved:true) FAQAT agar:
+- «seen» dagi predmet «expected» ga mos yoki uning bevosita natijasi boʻlsa
+- Bir nechta rasm boʻlsa — ulardan KAMIDA BITTASI shu moslikni bersa
+- Sifat past boʻlsa ham (qorongʻi, qiyshiq, uzoqdan) — kerakli predmet tanib olinsa TASDIQ
+
+RAD ETING (approved:false) agar:
+- Rasmdagi predmet vazifaga aloqasiz — masalan «Musiqani oʻchirish» uchun kosmetika flakonlari,
+  «Chiroqni oʻchirish» uchun televizor, «Kompyuterni oʻchirish» uchun qogʻoz jurnal va h.k.
 - Boʻsh/qora/buzilgan rasm
-- Mutlaqo boshqa mavzu (meme, oziq-ovqat, random screenshot vazifaga aloqasiz)
-- Aniq soxta yoki vazifani inkor qiluvchi kontent
+- Bir xil rasm boshqa vazifaga ham qoʻyilgani sezilsa (predmet umuman boshqa mavzuda)
+- Aniq soxta yoki vazifani inkor qiluvchi kontent (masalan «oʻchiring» deyilgan qurilma yoqiqligi koʻrinib tursa)
 
-Muhim: «aniqroq dalil kerak» deb RAD QILMANG — klinikada telefon rasmi yetarli.
+MUHIM QOIDALAR:
+- «Xona/stol/ekran koʻrinyapti» degan umumiy sabab TASDIQ uchun YETARLI EMAS — predmet mos kelishi shart.
+- Lekin sifat/rakurs uchun RAD QILMANG — faqat MAVZU mos kelmasa rad eting.
+- Rad etganda feedback da aynan qanday rasm kerakligini aniq yozing.
+
 Javob FAQAT JSON:
-{"approved":true|false,"note":"qisqa holat","feedback":"nima yaxshi / nima yaxshilash","action":"NONE|RESUBMIT|WARN|PENALTY","penalty":0-20,"score":0-100}`;
+{"expected":"nima koʻrinishi kerak","seen":"rasmda nima bor","approved":true|false,"note":"qisqa holat","feedback":"nima yaxshi / qanday rasm kerak","action":"NONE|RESUBMIT|WARN|PENALTY","penalty":0-20,"score":0-100}`;
 
 export type AiCoachResult = {
   summary: string;
@@ -427,7 +442,10 @@ Tavsif: ${opts.description || '—'}
 Chastota: ${opts.frequency || 'DAILY'}
 Menejer izohi: ${opts.managerNote || '—'}
 Rasm soni: ${visionImages.length}
-Dalil(lar)ni baholang. Shubhada — TASDIQLANG.`,
+
+Avval «expected» (vazifa boʻyicha rasmda nima koʻrinishi kerak), keyin «seen» (rasmda haqiqatda nima bor)
+ni yozing, soʻng ikkalasini solishtirib hukm chiqaring.
+Sifat/rakurs uchun rad qilmang — faqat predmet mos kelmasa rad eting.`,
               },
               ...imageParts,
             ],
@@ -471,15 +489,26 @@ Dalil(lar)ni baholang. Shubhada — TASDIQLANG.`,
       0,
       Math.min(100, Number(parsed.score) ?? (approved ? Math.max(70, 100 - penalty) : 0)),
     );
+    const expected = String((parsed as any).expected || '').trim() || undefined;
+    const seen = String((parsed as any).seen || '').trim() || undefined;
+    const baseFeedback =
+      parsed.feedback || (approved ? 'Yaxshi' : 'Qayta topshiring — rasm vazifaga mos emas');
+    // Rad etilganda menejer aynan nima xato boʻlganini koʻrsin
+    const feedback =
+      !approved && expected && seen
+        ? `${baseFeedback}
+Kutilgan: ${expected}
+Rasmda: ${seen}`
+        : baseFeedback;
     return {
       approved,
       note: parsed.note || (approved ? 'Tasdiqlandi' : 'Rad etildi'),
-      feedback:
-        parsed.feedback ||
-        (approved ? 'Yaxshi' : 'Qayta topshiring — aniqroq dalil kerak'),
+      feedback,
       action: approved && action === 'RESUBMIT' ? 'WARN' : action,
       penalty: approved ? Math.min(penalty, 10) : penalty,
       score: approved ? Math.max(score, 60) : score,
+      expected,
+      seen,
     };
   } catch (e) {
     console.warn('OpenAI vision failed', e);

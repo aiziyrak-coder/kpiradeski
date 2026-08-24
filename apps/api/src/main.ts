@@ -87,6 +87,12 @@ function globalRateLimit(req: any, res: any, next: () => void) {
     req.ip ||
     'unknown';
   const now = Date.now();
+  // Muddati oʻtgan bucketlarni tozalash — Map cheksiz oʻsmasin
+  if (rateBuckets.size > 10_000) {
+    for (const [k, v] of rateBuckets) {
+      if (v.resetAt < now) rateBuckets.delete(k);
+    }
+  }
   const row = rateBuckets.get(ip);
   if (!row || row.resetAt < now) {
     rateBuckets.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });

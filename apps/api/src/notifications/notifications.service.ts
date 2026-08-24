@@ -58,6 +58,7 @@ export class NotificationsService {
         'Dam olish (Sh/Ya + bayram) — vazifa yoʻq',
         '09:00–22:00 — soatlik qisqa eslatma',
         '19:00 — AI kunlik nazorat',
+        'Shanba 18:00 — haftalik vazifalar ijrosi hisoboti',
         'Buyruqlar: /bugun /holat /vazifalar /yordam',
       ],
     };

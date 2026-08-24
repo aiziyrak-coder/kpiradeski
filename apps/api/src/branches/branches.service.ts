@@ -119,7 +119,15 @@ export class BranchesService {
   }
 
   async assertCanAccessBranch(userId: string, role: Role, branchId: string) {
-    if (role === Role.SUPER_ADMIN || role === Role.ADMIN) return;
+    if (role === Role.SUPER_ADMIN || role === Role.ADMIN) {
+      // Admin ham mavjud boʻlmagan filial ustida ish qila olmasin
+      const exists = await this.prisma.branch.findUnique({
+        where: { id: branchId },
+        select: { id: true },
+      });
+      if (!exists) throw new NotFoundException('Filial topilmadi');
+      return;
+    }
     const link = await this.prisma.branchManager.findUnique({
       where: { branchId_userId: { branchId, userId } },
     });

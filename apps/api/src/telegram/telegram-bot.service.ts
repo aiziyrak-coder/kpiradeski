@@ -40,7 +40,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TelegramBotService.name);
   private offset = 0;
   private running = false;
-  private timer: NodeJS.Timeout | null = null;
+  private pollAbort: AbortController | null = null;
 
   constructor(
     private prisma: PrismaService,
@@ -91,14 +91,23 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy() {
     this.running = false;
-    if (this.timer) clearTimeout(this.timer);
+    // Uzun poll (25s) shutdownni ushlab qolmasin
+    this.pollAbort?.abort();
   }
 
-  private async api(method: string, body?: Record<string, unknown>) {
+  /** timeoutMs — Telegram javob bermasa soʻrov abadiy osilib qolmasin */
+  private async api(
+    method: string,
+    body?: Record<string, unknown>,
+    opts?: { timeoutMs?: number; signal?: AbortSignal },
+  ) {
+    const timeout = AbortSignal.timeout(opts?.timeoutMs ?? 20_000);
+    const signal = opts?.signal ? AbortSignal.any([timeout, opts.signal]) : timeout;
     const res = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body || {}),
+      signal,
     });
     return (await res.json()) as { ok: boolean; result?: any; description?: string };
   }
@@ -202,21 +211,28 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   private async pollLoop() {
     while (this.running) {
       try {
-        const json = await this.api('getUpdates', {
-          offset: this.offset,
-          timeout: 25,
-          allowed_updates: ['message'],
-        });
+        this.pollAbort = new AbortController();
+        const json = await this.api(
+          'getUpdates',
+          { offset: this.offset, timeout: 25, allowed_updates: ['message'] },
+          { timeoutMs: 35_000, signal: this.pollAbort.signal },
+        );
         if (json.ok && Array.isArray(json.result)) {
           for (const upd of json.result as TgUpdate[]) {
             this.offset = upd.update_id + 1;
-            await this.handleUpdate(upd);
+            // Bitta buyruq xato bersa — qolgan updatelar ham tushib qolmasin
+            try {
+              await this.handleUpdate(upd);
+            } catch (e) {
+              this.logger.warn(`handleUpdate ${upd.update_id}: ${e}`);
+            }
           }
         } else {
           this.logger.warn(`getUpdates ok=false: ${JSON.stringify(json).slice(0, 200)}`);
           await new Promise((r) => setTimeout(r, 5000));
         }
       } catch (e) {
+        if (!this.running) break;
         this.logger.warn(`Polling xato: ${e}`);
         await new Promise((r) => setTimeout(r, 3000));
       }
@@ -317,6 +333,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         '• <b>08:00</b> — vazifalar ochiladi',
         '• <b>09:00–22:00</b> — soatlik eslatma',
         '• <b>19:00</b> — AI yakuniy baho',
+        '• <b>Shanba 18:00</b> — haftalik vazifalar ijrosi',
         '',
         '<b>Buyruqlar</b>',
         '• /bugun — bugungi ball',
