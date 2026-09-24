@@ -26,6 +26,7 @@ import { scoreIcon, tgCard, tgEscape } from '../telegram/tg-format';
 import { CalendarService } from '../common/calendar.service';
 import { seedKpiCatalog } from '../../prisma/seed-catalog';
 import { ATTENDANCE_NODE_KEY } from '../attendance/attendance.constants';
+import { matchBranchHint } from '../attendance/employee-roster';
 import { isCompanyWideTaskKey } from '../common/company-wide-tasks';
 import { evalTaskWindow, formatHm, tashkentClock } from '../common/task-window';
 import { cheapFingerprint, readJpegExifLocal, sha256Hex } from '../common/proof-integrity';
@@ -161,9 +162,37 @@ export class ManagerKpiService implements OnModuleInit {
       await this.migrateCadenceAssignments();
       await this.restoreDailySeoAssignments();
       await this.extendSeoAssignments();
+      await this.ensureKokandPatientRebookAssignments();
       await this.recalcOpenPeriods();
     } catch (e) {
       this.logger.warn(`Catalog seed: ${e}`);
+    }
+  }
+
+  /**
+   * Qoʻqon: «Bemorlarni qayta yozish» ishlari kunlik topshiriqqa qoʻshiladi.
+   * Faqat yoʻq boʻlsa yaratiladi — admin oʻchirib qoʻysa, qayta yoqilmaydi.
+   */
+  private async ensureKokandPatientRebookAssignments() {
+    const keys = ['reception.patients.rebook_all', 'reception.patients.repeat_daily'];
+    const branches = await this.prisma.branch.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+    });
+    for (const b of branches.filter((x) => matchBranchHint(x.name, 'kokand'))) {
+      for (const nodeKey of keys) {
+        await this.prisma.kpiAssignmentTemplate.upsert({
+          where: {
+            branchId_frequency_nodeKey: {
+              branchId: b.id,
+              frequency: KpiFrequency.DAILY,
+              nodeKey,
+            },
+          },
+          create: { branchId: b.id, frequency: KpiFrequency.DAILY, nodeKey, active: true },
+          update: {},
+        });
+      }
     }
   }
 

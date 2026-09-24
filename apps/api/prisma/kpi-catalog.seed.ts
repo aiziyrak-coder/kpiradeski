@@ -333,6 +333,37 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   ),
   leaf('reception.evening.lock', 'reception.evening', 'Klinikani yopish', 'Закрыть клинику', 13),
 
+  // —— Bemorlarni qayta yozish (hozircha faqat Qoʻqon filialiga biriktiriladi)
+  group('reception.patients', 'reception', 'Bemorlarni qayta yozish', 'Перезапись пациентов', 4),
+  leaf(
+    'reception.patients.rebook_all',
+    'reception.patients',
+    'Barcha bemorlarni qayta yozish va fotohisobot',
+    'Перезапись всех пациентов и фотоотчёт',
+    1,
+    {
+      proofRequired: true,
+      descriptionUz:
+        'Masʼul: Toshbekova Iroda, Tursunaliyeva Aziza. Bugungi barcha bemorlar keyingi tashrifga qayta yozilsin; dalil — yozuvlar roʻyxati fotosi yoki skrinshoti.',
+      descriptionRu:
+        'Ответственные: Тошбекова Ирода, Турсуналиева Азиза. Перезаписать всех сегодняшних пациентов на следующий визит; доказательство — фото или скрин списка записей.',
+    },
+  ),
+  leaf(
+    'reception.patients.repeat_daily',
+    'reception.patients',
+    'Bemorlarni takroriy yozish (kunlik)',
+    'Повторная запись пациентов (ежедневно)',
+    2,
+    {
+      proofRequired: true,
+      descriptionUz:
+        'Masʼul: Islom aka. Har kuni bemorlarni takroriy qabulga yozish; dalil — yozuvlar skrinshoti.',
+      descriptionRu:
+        'Ответственный: Ислом ака. Ежедневно записывать пациентов на повторный приём; доказательство — скрин записей.',
+    },
+  ),
+
   // —— Calls daily
   {
     key: 'calls.new.ratio',
