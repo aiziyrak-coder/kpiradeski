@@ -6,6 +6,7 @@ import { ScoringService } from '../kpi/scoring.service';
 import { CalendarService } from '../common/calendar.service';
 import { toDateOnly } from '../common/kpi.constants';
 import { openaiIntegrationsAudit } from '../common/openai';
+import { snapshotWebsite } from '../common/website-snapshot';
 import {
   defaultIntegrations,
   normalizeIntegrations,
@@ -17,27 +18,6 @@ export type { IntegrationsConfig, WebsiteIntegration };
 
 const INTEGRATIONS_KEY = 'integrations';
 const INTEGRATIONS_AUDIT_KEY = 'integrations_last_audit';
-
-function stripHtml(html: string) {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function metaContent(html: string, name: string) {
-  const re = new RegExp(
-    `<meta[^>]+(?:name|property)=["']${name}["'][^>]+content=["']([^"']+)["']`,
-    'i',
-  );
-  const re2 = new RegExp(
-    `<meta[^>]+content=["']([^"']+)["'][^>]+(?:name|property)=["']${name}["']`,
-    'i',
-  );
-  return html.match(re)?.[1] || html.match(re2)?.[1] || '';
-}
 
 @Injectable()
 export class SettingsService {
@@ -312,42 +292,8 @@ export class SettingsService {
     return this.getIntegrations();
   }
 
-  private async snapshotWebsite(url: string) {
-    try {
-      const u = new URL(url);
-      if (!['http:', 'https:'].includes(u.protocol)) {
-        return { url, error: 'Faqat http/https' };
-      }
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(10000),
-        headers: {
-          'user-agent': 'RadeskiKPI-AI-Monitor/1.0',
-          accept: 'text/html,application/xhtml+xml',
-        },
-        redirect: 'follow',
-      });
-      const html = (await res.text()).slice(0, 120_000);
-      const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() || '';
-      const h1s = [...html.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/gi)]
-        .map((m) => stripHtml(m[1]).slice(0, 120))
-        .filter(Boolean)
-        .slice(0, 5);
-      return {
-        url,
-        status: res.status,
-        ok: res.ok,
-        title: stripHtml(title).slice(0, 200),
-        description: metaContent(html, 'description').slice(0, 300),
-        ogTitle: metaContent(html, 'og:title').slice(0, 200),
-        ogDescription: metaContent(html, 'og:description').slice(0, 300),
-        canonical:
-          html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)?.[1] || '',
-        h1s,
-        textSample: stripHtml(html).slice(0, 2500),
-      };
-    } catch (e: any) {
-      return { url, error: String(e?.message || e).slice(0, 200) };
-    }
+  private snapshotWebsite(url: string) {
+    return snapshotWebsite(url);
   }
 
   /** t.me/xxx → preview URL (ochiq kanallar uchun) */

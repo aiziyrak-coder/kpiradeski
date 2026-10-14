@@ -6,6 +6,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { StaffService } from '../staff/staff.service';
 import { pct, startOfWeek, toDateOnly } from '../common/kpi.constants';
 import { openaiChat } from '../common/openai';
+import { stripMarkdown } from '../common/website-snapshot';
 
 @Injectable()
 export class KpiService {
@@ -413,11 +414,11 @@ export class KpiService {
         ? Math.round((calls.reduce((s, c) => s + c.conversion, 0) / calls.length) * 10) / 10
         : 0;
       content = [
-        `# ${periodLabel} qo'ng'iroqlar tahlili`,
+        `${periodLabel} qo'ng'iroqlar tahlili`,
         `Davr: ${startIso} — ${endIso}`,
         `KPI o'rtacha: ${avgScore}% · Bajarilgan punktlar: ${doneCount}/${entries.length}`,
         ``,
-        `## Asosiy`,
+        `Asosiy:`,
         `- Qo'ng'iroqlar: ${total}`,
         `- Yozilganlar: ${booked}`,
         `- Konversiya: ${avgConv}%`,
@@ -432,53 +433,88 @@ export class KpiService {
       const pos = reviews.filter((r) => r.quality === 'POSITIVE').reduce((s, r) => s + r.count, 0);
       const totalR = reviews.reduce((s, r) => s + r.count, 0);
       content = [
-        `# ${periodLabel} xizmatlar / marketing tahlili`,
+        `${periodLabel} xizmatlar / marketing tahlili`,
         `Davr: ${startIso} — ${endIso}`,
         `KPI o'rtacha: ${avgScore}%`,
         ``,
-        `## Sharhlar: ${totalR}, ijobiy: ${pos}`,
+        `Sharhlar: ${totalR}, ijobiy: ${pos}`,
         ...social.map(
           (s) =>
             `- ${s.platform}: post ${s.posts}, stories ${s.stories}, reels ${s.reels}, +${s.newFollowers}`,
         ),
       ].join('\n');
     } else {
-      const byKey: Record<string, { done: number; total: number }> = {};
+      const [nodes, branchRows] = await Promise.all([
+        this.prisma.kpiCatalogNode.findMany({
+          select: { key: true, titleUz: true },
+        }),
+        this.prisma.branch.findMany({ select: { id: true, name: true } }),
+      ]);
+      const titleOf = new Map(nodes.map((n) => [n.key, n.titleUz]));
+      const branchName = new Map(branchRows.map((b) => [b.id, b.name]));
+
+      const byBlock: Record<string, { done: number; total: number }> = {};
+      const missed: Record<string, number> = {};
       for (const e of entries) {
         const root = e.nodeKey.split('.')[0];
-        if (!byKey[root]) byKey[root] = { done: 0, total: 0 };
-        byKey[root].total++;
-        if (e.done) byKey[root].done++;
+        const block = titleOf.get(root) || root;
+        if (!byBlock[block]) byBlock[block] = { done: 0, total: 0 };
+        byBlock[block].total++;
+        if (e.done) byBlock[block].done++;
+        else {
+          const t = titleOf.get(e.nodeKey) || e.nodeKey;
+          missed[t] = (missed[t] || 0) + 1;
+        }
       }
+      const byBranch: Record<string, number[]> = {};
+      for (const sc of scores) {
+        const name = (sc.branchId && branchName.get(sc.branchId)) || 'Umumiy';
+        (byBranch[name] ||= []).push(sc.totalScore);
+      }
+      const avgOf = (xs: number[]) =>
+        Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10;
+      const topMissed = Object.entries(missed)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8);
+
       content = [
-        `# ${periodLabel} KPI hisobot`,
+        `${periodLabel} KPI hisobot`,
         `Davr: ${startIso} — ${endIso}`,
-        `O'rtacha ball: ${avgScore}%`,
-        `Kunlar: ${scores.length}`,
-        `Bajarilgan: ${doneCount}/${entries.length}`,
+        `Oʻrtacha ball: ${avgScore}%`,
+        `Bajarilgan ishlar: ${doneCount}/${entries.length}`,
         ``,
-        `## Bo'limlar`,
-        ...Object.entries(byKey).map(
-          ([k, v]) => `- ${k}: ${v.done}/${v.total}`,
-        ),
+        `Filiallar:`,
+        ...Object.entries(byBranch).map(([n, xs]) => `- ${n}: ${avgOf(xs)}% (${xs.length} kun)`),
         ``,
-        `## Kunlik ballar`,
-        ...scores.map(
-          (s) => `- ${String(s.date).slice(0, 10)}: ${s.totalScore}% (${s.colorStatus})`,
-        ),
+        `Boʻlimlar:`,
+        ...Object.entries(byBlock).map(([k, v]) => `- ${k}: ${v.done}/${v.total}`),
+        ``,
+        `Eng koʻp bajarilmagan ishlar:`,
+        ...(topMissed.length ? topMissed.map(([t, n]) => `- ${t}: ${n} marta`) : ['- yoʻq']),
       ].join('\n');
     }
 
     const reportType = type === 'KPI' ? 'SERVICES' : type;
     const aiText = await openaiChat(
-      `Siz Radeski KPI manager system AI tahlilchisiz. O'zbek tilida qisqa, amaliy ${periodLabel.toLowerCase()} hisobot yozing. Raqamlarni saqlang, aniq tavsiyalar bering.\n\n${content}`,
+      `Quyidagi maʼlumot asosida ${periodLabel.toLowerCase()} hisobot yozing.\n\n${content}`,
       {
-        system:
-          'Siz Radeski KPI AI nazoratchisisiz. Hisobotni o‘zbek tilida, tuzilmali (sarlavha, raqamlar, tavsiyalar) yozing.',
-        maxTokens: 2200,
+        system: `Siz Radeski Skin Clinic rahbari uchun KPI tahlilchisiz. Oʻzbek tilida, QISQA va tushunarli yozing.
+Qatʼiy format (oddiy matn, markdown YOʻQ: ** , # , jadval ishlatmang):
+
+Xulosa: 1–2 gap — umumiy holat yaxshimi yoki yomonmi va nega.
+Raqamlar:
+- 3–4 ta eng muhim raqam (berilgan maʼlumotdan, oʻzgartirmasdan)
+Muammolar:
+- 1–3 ta eng katta muammo (aniq ish yoki filial nomi bilan)
+Nima qilish kerak:
+- 1–3 ta aniq harakat
+
+Jami 15 qatordan oshmasin. Maʼlumotda yoʻq narsani yozmang. Maʼlumot kam boʻlsa — buni bir gapda ayting.`,
+        maxTokens: 700,
+        temperature: 0.3,
       },
     );
-    if (aiText) content = aiText;
+    if (aiText) content = stripMarkdown(aiText);
 
     const existing = await this.prisma.aiWeeklyReport.findFirst({
       where: { weekStart: start, type: reportType as any, period },

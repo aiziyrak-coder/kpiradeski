@@ -15,3 +15,16 @@ export function statusDot(color?: string) {
   if (color === 'yellow') return 'bg-status-yellow';
   return 'bg-status-red';
 }
+
+/** AI matnidagi markdown belgilarini olib tashlash (eski hisobotlar ham toza koʻrinsin) */
+export function cleanAiText(text: string) {
+  return String(text || '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/^\s*[*•]\s+/gm, '- ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*{2,}/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}

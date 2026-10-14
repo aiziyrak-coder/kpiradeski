@@ -21,7 +21,7 @@ import { useToast } from '@/components/Toast';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
 import { api, getToken } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { cleanAiText, cn } from '@/lib/utils';
 
 type Msg = { role: 'user' | 'assistant'; content: string; transcript?: string };
 type SuggestItem = {
@@ -453,7 +453,7 @@ export default function AssistantPage() {
                         : 'mr-auto bg-teal-50 text-ink border border-teal-100',
                     )}
                   >
-                    {m.content}
+                    {m.role === 'assistant' ? cleanAiText(m.content) : m.content}
                   </div>
                 ))}
                 {busy && (

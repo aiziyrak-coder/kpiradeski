@@ -8,7 +8,7 @@ import { useToast } from '@/components/Toast';
 import { useI18n } from '@/lib/i18n';
 import { api } from '@/lib/api';
 import { todayISO, weekStartISO } from '@/types';
-import { cn } from '@/lib/utils';
+import { cleanAiText, cn } from '@/lib/utils';
 
 type Period = 'DAY' | 'WEEK' | 'MONTH' | 'YEAR' | 'CUSTOM';
 type ReportType = 'KPI' | 'CALLS' | 'SERVICES';
@@ -170,8 +170,22 @@ export default function AiPage() {
                   {r.periodEnd ? ` — ${String(r.periodEnd).slice(0, 10)}` : ''}
                 </span>
               </div>
-              <div className="text-sm text-ink-soft whitespace-pre-wrap leading-relaxed">
-                {r.content}
+              <div className="text-sm text-ink-soft leading-relaxed space-y-1">
+                {cleanAiText(r.content)
+                  .split('\n')
+                  .map((line, i) =>
+                    !line.trim() ? (
+                      <div key={i} className="h-2" />
+                    ) : /^[^-].{0,40}:\s*$|^(Xulosa|Вывод|Итог):/.test(line) ? (
+                      <p key={i} className="font-semibold text-ink pt-1">
+                        {line}
+                      </p>
+                    ) : (
+                      <p key={i} className={line.startsWith('- ') ? 'pl-3' : ''}>
+                        {line}
+                      </p>
+                    ),
+                  )}
               </div>
             </article>
           ))}

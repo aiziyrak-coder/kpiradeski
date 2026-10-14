@@ -7,6 +7,8 @@ import {
   openaiTranscribe,
 } from '../common/openai';
 import { toDateOnly } from '../common/kpi.constants';
+import { readSite, stripMarkdown } from '../common/website-snapshot';
+import { normalizeIntegrations } from '../settings/integrations.types';
 
 const PAGES: Record<string, string> = {
   dashboard: '/dashboard',
@@ -257,6 +259,19 @@ export class AssistantService {
     };
   }
 
+  /**
+   * Integratsiyalardagi saytlarning haqiqiy matni (bosh sahifa + xizmatlar/narx/kontakt).
+   * Assistant shu matndan javob beradi — faqat linkni emas, sayt mazmunini koʻradi.
+   */
+  private async siteContent() {
+    const row = await this.prisma.appSetting.findUnique({ where: { key: 'integrations' } });
+    if (!row?.value) return [];
+    const sites = normalizeIntegrations(row.value as any)
+      .websites.filter((w) => w.enabled && w.url)
+      .slice(0, 3);
+    return Promise.all(sites.map((w) => readSite(w.name, w.url)));
+  }
+
   async suggestions(user: { id: string; role: Role; name?: string }) {
     const ctx = await this.buildContext(user);
     const isAdmin = user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN;
@@ -352,7 +367,7 @@ Javob JSON: {"items":[{"title":"...","detail":"...","priority":"high|mid|low","n
     opts?: { wantAudio?: boolean; history?: Array<{ role: string; content: string }> },
   ): Promise<AssistantReply> {
     const isAdmin = user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN;
-    const ctx = await this.buildContext(user);
+    const [ctx, site] = await Promise.all([this.buildContext(user), this.siteContent()]);
     const navigateHint = this.detectNavigate(message);
 
     if (isAdmin && message.trim() && !this.looksRussian(message)) {
@@ -367,39 +382,36 @@ Javob JSON: {"items":[{"title":"...","detail":"...","priority":"high|mid|low","n
     }
 
     const system = isAdmin
-      ? `Ты — AI assistant Radeski: фантастически сильный бизнес-партнёр владельца (CEO + COO + CMO в одном).
-Говори ТОЛЬКО по-русски. Имя продукта: «AI assistant».
-CONTEXT содержит реальное состояние: KPI, тренды, незакрытые задачи, менеджеры, интеграции (Telegram/Instagram/сайты), AI-аудит каналов, доказательства.
+      ? `Ты — AI assistant клиники Radeski Skin Clinic (дерматология и косметология, филиалы Коканд и Фергана) внутри KPI-системы.
+Говори ТОЛЬКО по-русски.
 
-Твои сверхспособности:
-1) Операционный контроль — что не сделано, кто отстаёт, качество доказательств
-2) Коучинг менеджеров — как говорить с командой, что требовать сегодня
-3) Маркетинг/бренд — Instagram, Telegram, сайт: контент, SEO, CTA, ритм публикаций
-4) Стратегия роста — конверсия звонков, сервис, HR, выручка, репутация
-5) Навигация — открывай /integrations, /today, /reports, /marketing, /assistant и др.
-6) Честные жёсткие выводы без воды — как топ-консультант сети клиник
+Источники (только они, ничего не выдумывай):
+- SITE — реальный текст сайта клиники (услуги, цены, врачи, контакты). На вопросы о клинике, услугах, ценах, сайте отвечай по SITE и называй страницу. Если в SITE нет ответа или сайт не открылся — так и скажи.
+- CONTEXT — KPI, незакрытые задачи, менеджеры, интеграции, аудит каналов.
 
-Если спрашивают про сайт (radeski.uz), Telegram или Instagram — отвечай по CONTEXT.integrations и integrationsAudit (ссылки, аудит, проблемы). Не выдумывай подписчиков.
+Как отвечать:
+- Сразу по сути, без вступлений и «воды». Обычно 3–8 строк; длиннее — только если просят подробно.
+- Простой текст. НЕ используй markdown: никаких **, #, таблиц. Списки — строками с «- ».
+- Цифры бери из CONTEXT. Если данных нет — скажи прямо.
+- Если уместно — 1–3 конкретных действия.
 
 Формат строго JSON:
-{"reply":"развёрнутый полезный ответ","navigate":"/path или null","suggestions":["следующий вопрос 1","..."]}
-Структура reply: вердикт → цифры из CONTEXT → 2–4 действия. Не выдумывай данные вне CONTEXT.`
-      : `Siz Radeski Skin Clinic uchun kuchli AI murabbiy + biznes sheriksiz.
-Mahsulot nomi: «AI assistant».
+{"reply":"ответ","navigate":"/path или null","suggestions":["короткий следующий вопрос", "..."]}`
+      : `Siz Radeski Skin Clinic (dermatologiya va kosmetologiya, Qoʻqon va Fargʻona filiallari) KPI tizimidagi AI assistantsiz.
 Foydalanuvchi qaysi tilda yozsa — SHU tilda javob bering (uz/ru).
 
-CONTEXT dagi real KPI, bajarilmagan ishlar, dalillar, haftalik trend, marketing kanallari (Telegram/Instagram/sayt) va integrationsAudit dan foydalaning.
-Sayt/Telegram/Instagram soʻralsa — CONTEXT.integrations va oxirgi audit asosida javob bering.
-Siz:
-- ish yuborilganda sifatni baholaysiz va kamchilikni ochiq aytasiz
-- qilinmagan ishlarni prioritetlab, nima qilishni aniq buyurasiz
-- SMM/SEO/Telegram/sayt boʻyicha amaliy maslahat berasiz
-- menejerni ragʻbatlantirasiz, lekin yumshoq yolgʻon gapirmaysiz
-- platforma boʻlimlarini ochasiz (navigate)
+Manbalar (faqat shular, uydirmang):
+- SITE — klinika saytining haqiqiy matni (xizmatlar, narxlar, shifokorlar, kontaktlar). Klinika, xizmat, narx, sayt haqidagi savollarga SITE asosida javob bering va sahifani ayting. SITE da javob boʻlmasa yoki sayt ochilmasa — ochiq ayting.
+- CONTEXT — bugungi KPI, bajarilmagan ishlar, dalillar, marketing kanallari.
+
+Qanday javob berish:
+- Darhol mazmunga oʻting, kirish gaplarsiz. Odatda 3–8 qator; batafsil soʻralsa — uzunroq.
+- Oddiy matn. Markdown ISHLATMANG: ** , # , jadval yoʻq. Roʻyxat — «- » bilan.
+- Raqamlar faqat CONTEXT dan. Maʼlumot yoʻq boʻlsa — toʻgʻridan-toʻgʻri ayting.
+- Kerak boʻlsa 1–3 ta aniq keyingi qadam.
 
 Javob faqat JSON:
-{"reply":"...","navigate":"/path yoki null","suggestions":["..."]}
-Aniq, qisqa, amaliy. CONTEXT dan tashqari raqam uydirmang.`;
+{"reply":"...","navigate":"/path yoki null","suggestions":["qisqa keyingi savol", "..."]}`;
 
     const history = (opts?.history || [])
       .slice(-8)
@@ -414,7 +426,7 @@ Aniq, qisqa, amaliy. CONTEXT dan tashqari raqam uydirmang.`;
         ...history,
         {
           role: 'user',
-          content: `CONTEXT:\n${JSON.stringify(ctx)}\n\nUSER:\n${message}\n\nHint navigate: ${navigateHint || 'null'}`,
+          content: `SITE:\n${JSON.stringify(site)}\n\nCONTEXT:\n${JSON.stringify(ctx)}\n\nUSER:\n${message}\n\nHint navigate: ${navigateHint || 'null'}`,
         },
       ],
       { json: true, maxTokens: 2200, temperature: 0.35 },
@@ -434,9 +446,7 @@ Aniq, qisqa, amaliy. CONTEXT dan tashqari raqam uydirmang.`;
       /* plain text */
     }
 
-    if (isAdmin && !this.looksRussian(reply)) {
-      // force Russian feel if model drifted
-    }
+    reply = stripMarkdown(reply);
 
     let audioBase64: string | null = null;
     if (opts?.wantAudio !== false && (isAdmin || opts?.wantAudio)) {
