@@ -5,8 +5,20 @@ import { ScoringService, CLINIC_ITEMS, RECEPTION_ITEMS, UNIFORM_ITEMS } from './
 import { NotificationsService } from '../notifications/notifications.service';
 import { StaffService } from '../staff/staff.service';
 import { pct, startOfWeek, toDateOnly } from '../common/kpi.constants';
-import { openaiChat } from '../common/openai';
-import { stripMarkdown } from '../common/website-snapshot';
+import {
+  pctTone,
+  reportPreview,
+  rulesAiPart,
+  scoreTone,
+  writeAiPart,
+  type AiReportV2,
+  type ReportBar,
+  type ReportBranch,
+  type ReportDay,
+  type ReportMissed,
+  type ReportTile,
+  type Tone,
+} from './ai-report';
 
 @Injectable()
 export class KpiService {
@@ -391,9 +403,6 @@ export class KpiService {
       },
       orderBy: { date: 'asc' },
     });
-    const avgScore = scores.length
-      ? Math.round((scores.reduce((s, x) => s + x.totalScore, 0) / scores.length) * 10) / 10
-      : 0;
 
     const entries = await this.prisma.kpiDayEntry.findMany({
       where: {
@@ -401,63 +410,121 @@ export class KpiService {
         ...(opts?.branchId ? { branchId: opts.branchId } : {}),
       },
     });
-    const doneCount = entries.filter((e) => e.done).length;
+    const today = toDateOnly().toISOString().slice(0, 10);
+    const branchRows = await this.prisma.branch.findMany({ select: { id: true, name: true } });
+    const branchName = new Map(branchRows.map((b) => [b.id, b.name]));
+    const branchLabel = opts?.branchId ? branchName.get(opts.branchId) || null : null;
+    const r1 = (x: number) => Math.round(x * 10) / 10;
+    const avgOf = (xs: number[]) => (xs.length ? r1(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
 
-    let content = '';
+    // Kunlik ballar: filial tanlanmasa — filiallar oʻrtachasi. Bugun hali tugamagan.
+    const perDay = new Map<string, number[]>();
+    for (const sc of scores) {
+      if (!opts?.branchId && !sc.branchId) continue;
+      const d = sc.date.toISOString().slice(0, 10);
+      if (!perDay.has(d)) perDay.set(d, []);
+      perDay.get(d)!.push(sc.totalScore);
+    }
+    const days: ReportDay[] = [...perDay.entries()]
+      .sort((x, y) => x[0].localeCompare(y[0]))
+      .map(([date, xs]) => {
+        const score = avgOf(xs);
+        return { date, score, tone: scoreTone(score), ...(date === today ? { partial: true } : {}) };
+      });
+    const closedDays = days.filter((d) => !d.partial);
+    const scoreDays = closedDays.length ? closedDays : days;
+    const score = scoreDays.length ? avgOf(scoreDays.map((d) => d.score)) : null;
+
+    const base = {
+      v: 2 as const,
+      kind: type,
+      period,
+      start: startIso,
+      end: endIso,
+      branch: branchLabel,
+      score,
+      scoreTone: scoreTone(score),
+      tiles: [] as ReportTile[],
+      days,
+      bars: [] as ReportBar[],
+      missed: [] as ReportMissed[],
+      branches: [] as ReportBranch[],
+    };
+    const L = (uz: string, ru: string) => ({ uz, ru });
+
     if (type === 'CALLS') {
+      // Qoʻngʻiroqlar filialga bogʻlanmagan — butun klinika boʻyicha
+      base.branch = null;
       const calls = await this.prisma.callEntry.findMany({
         where: { date: { gte: start, lte: end } },
       });
-      const total = calls.reduce((s, c) => s + c.callsCount, 0);
-      const booked = calls.reduce((s, c) => s + c.bookedCount, 0);
-      const avgConv = calls.length
-        ? Math.round((calls.reduce((s, c) => s + c.conversion, 0) / calls.length) * 10) / 10
-        : 0;
-      content = [
-        `${periodLabel} qo'ng'iroqlar tahlili`,
-        `Davr: ${startIso} — ${endIso}`,
-        `KPI o'rtacha: ${avgScore}% · Bajarilgan punktlar: ${doneCount}/${entries.length}`,
-        ``,
-        `Asosiy:`,
-        `- Qo'ng'iroqlar: ${total}`,
-        `- Yozilganlar: ${booked}`,
-        `- Konversiya: ${avgConv}%`,
-      ].join('\n');
+      const sum = (t: string | null, f: (c: (typeof calls)[number]) => number) =>
+        calls.filter((c) => !t || c.type === t).reduce((acc, c) => acc + f(c), 0);
+      const total = sum(null, (c) => c.callsCount);
+      const booked = sum(null, (c) => c.bookedCount);
+      const conv = total ? r1((booked / total) * 100) : 0;
+      const missedCalls = sum('MISSED', (c) => c.callsCount);
+      const recalled = sum('MISSED', (c) => c.recalledCount || 0);
+      base.tiles = [
+        { label: L('Qoʻngʻiroqlar', 'Звонки'), value: String(total), tone: 'neutral' },
+        { label: L('Yozildi', 'Записано'), value: String(booked), tone: 'neutral' },
+        { label: L('Konversiya', 'Конверсия'), value: `${conv}%`, tone: conv >= 40 ? 'good' : conv >= 25 ? 'warn' : 'bad' },
+        {
+          label: L('Javobsiz → qayta', 'Пропущ. → перезвон'),
+          value: `${recalled}/${missedCalls}`,
+          tone: !missedCalls ? 'neutral' : pctTone((recalled / missedCalls) * 100),
+        },
+      ];
+      base.bars = (['NEW', 'REPEAT', 'MISSED'] as const).map((t) => {
+        const c = sum(t, (x) => x.callsCount);
+        const bk = sum(t, (x) => x.bookedCount);
+        const pct = c ? Math.round((bk / c) * 100) : 0;
+        const name = t === 'NEW' ? 'Yangi / Новые' : t === 'REPEAT' ? 'Takroriy / Повторные' : 'Javobsiz / Пропущенные';
+        return { name, done: bk, total: c, pct, tone: (!c ? 'neutral' : pct >= 40 ? 'good' : pct >= 25 ? 'warn' : 'bad') as Tone };
+      });
     } else if (type === 'SERVICES') {
-      const reviews = await this.prisma.review.findMany({
-        where: { date: { gte: start, lte: end } },
-      });
-      const social = await this.prisma.socialStats.findMany({
-        where: { date: { gte: start, lte: end } },
-      });
-      const pos = reviews.filter((r) => r.quality === 'POSITIVE').reduce((s, r) => s + r.count, 0);
-      const totalR = reviews.reduce((s, r) => s + r.count, 0);
-      content = [
-        `${periodLabel} xizmatlar / marketing tahlili`,
-        `Davr: ${startIso} — ${endIso}`,
-        `KPI o'rtacha: ${avgScore}%`,
-        ``,
-        `Sharhlar: ${totalR}, ijobiy: ${pos}`,
-        ...social.map(
-          (s) =>
-            `- ${s.platform}: post ${s.posts}, stories ${s.stories}, reels ${s.reels}, +${s.newFollowers}`,
-        ),
-      ].join('\n');
-    } else {
-      const [nodes, branchRows] = await Promise.all([
-        this.prisma.kpiCatalogNode.findMany({
-          select: { key: true, titleUz: true },
-        }),
-        this.prisma.branch.findMany({ select: { id: true, name: true } }),
+      base.branch = null;
+      const [reviews, social] = await Promise.all([
+        this.prisma.review.findMany({ where: { date: { gte: start, lte: end } } }),
+        this.prisma.socialStats.findMany({ where: { date: { gte: start, lte: end } } }),
       ]);
+      const totalR = reviews.reduce((acc, r) => acc + r.count, 0);
+      const pos = reviews.filter((r) => r.quality === 'POSITIVE').reduce((acc, r) => acc + r.count, 0);
+      const neg = totalR - pos;
+      const posPct = totalR ? Math.round((pos / totalR) * 100) : 0;
+      const followers = social.reduce((acc, x) => acc + (x.newFollowers || 0), 0);
+      const posts = social.reduce((acc, x) => acc + (x.posts || 0) + (x.reels || 0), 0);
+      base.tiles = [
+        { label: L('Sharhlar', 'Отзывы'), value: String(totalR), tone: totalR ? 'neutral' : 'warn' },
+        { label: L('Ijobiy', 'Позитивные'), value: totalR ? `${posPct}%` : '—', tone: totalR ? pctTone(posPct) : 'neutral' },
+        { label: L('Salbiy', 'Негативные'), value: String(neg), tone: neg ? 'bad' : 'good' },
+        { label: L('Yangi obunachi', 'Новые подписчики'), value: `+${followers}`, tone: 'neutral', hint: L(`${posts} post/reels`, `${posts} постов/reels`) },
+      ];
+      const byPlatform = new Map<string, { posts: number; followers: number }>();
+      for (const x of social) {
+        const k = String(x.platform);
+        const cur = byPlatform.get(k) || { posts: 0, followers: 0 };
+        cur.posts += (x.posts || 0) + (x.reels || 0) + (x.stories || 0);
+        cur.followers += x.newFollowers || 0;
+        byPlatform.set(k, cur);
+      }
+      base.bars = [...byPlatform.entries()].map(([name, v]) => ({
+        name: `${name} · +${v.followers}`,
+        done: v.posts,
+        total: v.posts,
+        pct: 100,
+        tone: 'neutral' as Tone,
+      }));
+    } else {
+      const nodes = await this.prisma.kpiCatalogNode.findMany({ select: { key: true, titleUz: true } });
       const titleOf = new Map(nodes.map((n) => [n.key, n.titleUz]));
-      const branchName = new Map(branchRows.map((b) => [b.id, b.name]));
+      const blockName = (root: string) =>
+        (titleOf.get(root) || root).replace(/\s*·\s*(kunlik|haftalik|oylik)$/i, '');
 
       const byBlock: Record<string, { done: number; total: number }> = {};
       const missed: Record<string, number> = {};
       for (const e of entries) {
-        const root = e.nodeKey.split('.')[0];
-        const block = titleOf.get(root) || root;
+        const block = blockName(e.nodeKey.split('.')[0]);
         if (!byBlock[block]) byBlock[block] = { done: 0, total: 0 };
         byBlock[block].total++;
         if (e.done) byBlock[block].done++;
@@ -466,58 +533,50 @@ export class KpiService {
           missed[t] = (missed[t] || 0) + 1;
         }
       }
-      const byBranch: Record<string, number[]> = {};
-      for (const sc of scores) {
-        const name = (sc.branchId && branchName.get(sc.branchId)) || 'Umumiy';
-        (byBranch[name] ||= []).push(sc.totalScore);
-      }
-      const avgOf = (xs: number[]) =>
-        Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10;
-      const topMissed = Object.entries(missed)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 8);
+      const doneCount = entries.filter((e) => e.done).length;
+      const donePct = entries.length ? Math.round((doneCount / entries.length) * 100) : 0;
+      const best = closedDays.length ? closedDays.reduce((m, d) => (d.score > m.score ? d : m)) : null;
+      const worst = closedDays.length ? closedDays.reduce((m, d) => (d.score < m.score ? d : m)) : null;
 
-      content = [
-        `${periodLabel} KPI hisobot`,
-        `Davr: ${startIso} — ${endIso}`,
-        `Oʻrtacha ball: ${avgScore}%`,
-        `Bajarilgan ishlar: ${doneCount}/${entries.length}`,
-        ``,
-        `Filiallar:`,
-        ...Object.entries(byBranch).map(([n, xs]) => `- ${n}: ${avgOf(xs)}% (${xs.length} kun)`),
-        ``,
-        `Boʻlimlar:`,
-        ...Object.entries(byBlock).map(([k, v]) => `- ${k}: ${v.done}/${v.total}`),
-        ``,
-        `Eng koʻp bajarilmagan ishlar:`,
-        ...(topMissed.length ? topMissed.map(([t, n]) => `- ${t}: ${n} marta`) : ['- yoʻq']),
-      ].join('\n');
+      base.tiles = [
+        { label: L('Bajarilgan ishlar', 'Выполнено задач'), value: `${doneCount}/${entries.length}`, tone: entries.length ? pctTone(donePct) : 'neutral', hint: L(`${donePct}%`, `${donePct}%`) },
+        { label: L('Toʻliq kunlar', 'Закрытых дней'), value: String(closedDays.length), tone: 'neutral', hint: days.some((d) => d.partial) ? L('+ bugun jarayonda', '+ сегодня в процессе') : undefined },
+        ...(best ? [{ label: L('Eng yaxshi kun', 'Лучший день'), value: `${best.score}%`, tone: best.tone, hint: L(best.date, best.date) }] : []),
+        ...(worst && worst !== best ? [{ label: L('Eng past kun', 'Худший день'), value: `${worst.score}%`, tone: worst.tone, hint: L(worst.date, worst.date) }] : []),
+      ];
+      base.bars = Object.entries(byBlock)
+        .map(([name, v]) => {
+          const pct = v.total ? Math.round((v.done / v.total) * 100) : 0;
+          return { name, done: v.done, total: v.total, pct, tone: pctTone(pct) };
+        })
+        .sort((x, y) => x.pct - y.pct);
+      base.missed = Object.entries(missed)
+        .sort((x, y) => y[1] - x[1])
+        .slice(0, 8)
+        .map(([title, count]) => ({ title, count }));
+      if (!opts?.branchId) {
+        const byBranch: Record<string, number[]> = {};
+        for (const sc of scores) {
+          if (!sc.branchId) continue;
+          const d = sc.date.toISOString().slice(0, 10);
+          if (d === today && closedDays.length) continue;
+          const name = branchName.get(sc.branchId) || sc.branchId;
+          (byBranch[name] ||= []).push(sc.totalScore);
+        }
+        base.branches = Object.entries(byBranch)
+          .map(([name, xs]) => ({ name, avg: avgOf(xs), days: xs.length, tone: scoreTone(avgOf(xs)) }))
+          .sort((x, y) => x.avg - y.avg);
+      }
     }
 
-    const reportType = type === 'KPI' ? 'SERVICES' : type;
-    const aiText = await openaiChat(
-      `Quyidagi maʼlumot asosida ${periodLabel.toLowerCase()} hisobot yozing.\n\n${content}`,
-      {
-        system: `Siz Radeski Skin Clinic rahbari uchun KPI tahlilchisiz. Oʻzbek tilida, QISQA va tushunarli yozing.
-Qatʼiy format (oddiy matn, markdown YOʻQ: ** , # , jadval ishlatmang):
+    const ai = await writeAiPart(base);
+    const full: AiReportV2 = { ...base, ai: ai || rulesAiPart(base), aiSource: ai ? 'ai' : 'rules' };
+    const content = JSON.stringify(full);
 
-Xulosa: 1–2 gap — umumiy holat yaxshimi yoki yomonmi va nega.
-Raqamlar:
-- 3–4 ta eng muhim raqam (berilgan maʼlumotdan, oʻzgartirmasdan)
-Muammolar:
-- 1–3 ta eng katta muammo (aniq ish yoki filial nomi bilan)
-Nima qilish kerak:
-- 1–3 ta aniq harakat
-
-Jami 15 qatordan oshmasin. Maʼlumotda yoʻq narsani yozmang. Maʼlumot kam boʻlsa — buni bir gapda ayting.`,
-        maxTokens: 700,
-        temperature: 0.3,
-      },
-    );
-    if (aiText) content = stripMarkdown(aiText);
-
+    const reportType = type === 'CALLS' ? 'CALLS' : 'SERVICES';
+    const scopeBranch = base.branch ? opts?.branchId || '' : '';
     const existing = await this.prisma.aiWeeklyReport.findFirst({
-      where: { weekStart: start, type: reportType as any, period },
+      where: { weekStart: start, type: reportType as any, period, kind: type, branchId: scopeBranch },
     });
     const report = existing
       ? await this.prisma.aiWeeklyReport.update({
@@ -530,15 +589,16 @@ Jami 15 qatordan oshmasin. Maʼlumotda yoʻq narsani yozmang. Maʼlumot kam boʻ
             periodEnd: end,
             period,
             type: reportType as any,
+            kind: type,
+            branchId: scopeBranch,
             content,
           },
         });
 
-    const preview = content.slice(0, 500) + (content.length > 500 ? '…' : '');
     await this.notifications.createForRoles(
       ['MANAGER', 'ADMIN', 'SUPER_ADMIN'],
       `AI: ${periodLabel} hisobot`,
-      preview,
+      reportPreview(full, periodLabel),
       'AI_REPORT',
       { emoji: '🤖' },
     );

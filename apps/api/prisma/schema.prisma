@@ -560,10 +560,14 @@ model AiWeeklyReport {
   periodEnd  DateTime?    @db.Date
   period     String       @default("WEEK")
   type       AiReportType
+  /// KPI | CALLS | SERVICES (type enumida KPI yoʻq — shu ajratadi)
+  kind       String       @default("")
+  /// Filial hisoboti — branchId; barcha filiallar — ""
+  branchId   String       @default("")
   content    String
   createdAt  DateTime     @default(now())
 
-  @@unique([weekStart, type, period])
+  @@unique([weekStart, type, period, kind, branchId])
   @@index([weekStart])
   @@index([period, weekStart])
 }
