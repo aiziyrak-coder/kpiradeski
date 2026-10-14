@@ -1,39 +1,27 @@
 """Sync, rebuild api+web, migrate, restart.
 
-SSH password: set DEPLOY_SSH_PASSWORD (recommended). Fallback only for local ops.
+Server qoʻllanmasiga mos (umumiy server — 23 loyiha):
+- ulanish SSH kalit orqali (~/.ssh dagi kalit); DEPLOY_SSH_PASSWORD — faqat zaxira
+- sudo ishlatilmaydi: admin_root docker guruhida
+- faqat api va web qayta yaratiladi (--no-deps) — baza tegilmaydi
+- boshqa loyihalar konteynerlari soni deploydan oldin/keyin solishtiriladi
+
+  DEPLOY_SSH_HOST  (default 192.168.0.101; tashqaridan: 87.192.230.208)
+  DEPLOY_SSH_PORT  (default 22)
+  DEPLOY_SSH_PASSWORD  (ixtiyoriy — kalit boʻlmasa)
 """
-import os as _os
-
-
-def _deploy_password() -> str:
-    """Deploy paroli — faqat env orqali.
-
-    Ilgari bu yerda parol ochiq yozilgan edi va repo ommaviy. Kalitni kodga
-    qaytarmang: `DEPLOY_SSH_PASSWORD` (yoki `KPI_DEPLOY_PASS`) ni oʻrnating.
-    """
-    pw = _os.environ.get("DEPLOY_SSH_PASSWORD") or _os.environ.get("KPI_DEPLOY_PASS")
-    if not pw:
-        raise SystemExit(
-            "DEPLOY_SSH_PASSWORD oʻrnatilmagan. "
-            "PowerShell: $env:DEPLOY_SSH_PASSWORD='...'  |  bash: export DEPLOY_SSH_PASSWORD='...'"
-        )
-    return pw
-
 import os
-import paramiko
 import sys
 import tarfile
 import tempfile
+import time
 from pathlib import Path
 
+import paramiko
+
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-P = os.environ.get("DEPLOY_SSH_PASSWORD") or os.environ.get("KPI_DEPLOY_PASS")
-if not P:
-    # Legacy local fallback — rotate if repo is shared
-    P = _deploy_password()
-    print("WARNING: using hardcoded SSH password; set DEPLOY_SSH_PASSWORD", file=sys.stderr)
+P = os.environ.get("DEPLOY_SSH_PASSWORD") or os.environ.get("KPI_DEPLOY_PASS") or None
 APP = "/home/admin_root/kpiradeski"
-S = f"echo '{P}' | sudo -S"
 ROOT = Path(__file__).resolve().parents[1]
 EXCLUDE = {"node_modules", ".next", "dist", ".git", "uploads", "__pycache__", "scratchpad", ".claude"}
 
@@ -44,6 +32,8 @@ c.connect(
     port=int(os.environ.get("DEPLOY_SSH_PORT", "22")),
     username="admin_root",
     password=P,
+    look_for_keys=True,
+    allow_agent=True,
     timeout=30,
 )
 sftp = c.open_sftp()
@@ -85,26 +75,27 @@ compose = (
     f"cd {APP} && docker compose -f docker-compose.yml "
     f"-f docker-compose.prod.yml -f docker-compose.server.yml"
 )
-build_code, _ = run(f"{S} bash -lc '{compose} build api web --no-cache'", t=2400)
+_, before = run("docker ps -q | wc -l")
+build_code, _ = run(f"{compose} build api web", t=2400)
 if build_code != 0:
     print("BUILD FAILED", build_code)
     sftp.close()
     c.close()
     raise SystemExit(1)
-up_code, _ = run(f"{S} bash -lc '{compose} up -d api web'", t=300)
+# --no-deps: depends_on orqali bazani qayta yaratmasin
+up_code, _ = run(f"{compose} up -d --no-deps api web", t=300)
 if up_code != 0:
     print("UP FAILED", up_code)
     sftp.close()
     c.close()
     raise SystemExit(1)
-mig_code, mig_out = run(f"{S} bash -lc '{compose} exec -T api npx prisma migrate deploy'", t=120)
+mig_code, mig_out = run(f"{compose} exec -T api npx prisma migrate deploy", t=120)
 if mig_code != 0 or "Error" in (mig_out or ""):
     print("MIGRATE FAILED", mig_code)
     sftp.close()
     c.close()
     raise SystemExit(1)
-run(f"{S} bash -lc '{compose} restart api web'", t=120)
-import time
+run(f"{compose} restart api web", t=120)
 out = "000"
 for _ in range(8):
     time.sleep(4)
@@ -120,6 +111,9 @@ if out not in ("200", "301", "302", "307", "308"):
     raise SystemExit(1)
 code2, out2 = run("curl -sf http://127.0.0.1:13000/api/kpi/ai-status")
 print("AI STATUS:", out2.strip()[:200])
+_, after = run("docker ps -q | wc -l")
+print(f"KONTEYNERLAR: oldin {before.strip()}, keyin {after.strip()}")
+run("docker ps -a --filter status=exited --format '{{.Names}}\t{{.Status}}' | head -20")
 sftp.close()
 c.close()
 print("DEPLOY DONE")

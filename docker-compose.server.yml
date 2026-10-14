@@ -5,12 +5,24 @@ services:
   db:
     container_name: klinikpi-db
     ports: !reset []
+    # umumiy serverda docker log chegarasi yoʻq — har xizmat oʻzi cheklaydi
+    logging:
+      driver: "json-file"
+      options: { max-size: "20m", max-file: "5" }
 
   api:
     container_name: klinikpi-api
     ports: !reset []
+    # umumiy serverda docker log chegarasi yoʻq — har xizmat oʻzi cheklaydi
+    logging:
+      driver: "json-file"
+      options: { max-size: "20m", max-file: "5" }
 
   web:
     container_name: klinikpi-web
     ports: !override
       - "127.0.0.1:13000:3000"
+    # umumiy serverda docker log chegarasi yoʻq — har xizmat oʻzi cheklaydi
+    logging:
+      driver: "json-file"
+      options: { max-size: "20m", max-file: "5" }
