@@ -12,6 +12,12 @@ Server qoʻllanmasiga mos (umumiy server — 23 loyiha):
 """
 import os
 import sys
+
+if os.environ.get("KPI_LEGACY_DEPLOY") != "1":
+    raise SystemExit(
+        "Bu skript eskirgan: serverdagi fayllarni tekshirmasdan ustidan yozadi. "
+        "Ishlating: deploy/push-to-server.sh (deploy/DEPLOY.md)."
+    )
 import tarfile
 import tempfile
 import time

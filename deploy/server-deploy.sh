@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+echo "Bu skript eskirgan (parity yoʻq, --no-deps yoʻq). Ishlating: deploy/push-to-server.sh — deploy/DEPLOY.md" >&2
+exit 1
+
 APP_DIR="/home/admin_root/kpiradeski"
 COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.server.yml"
 
