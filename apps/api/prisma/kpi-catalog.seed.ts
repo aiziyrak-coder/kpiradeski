@@ -576,7 +576,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     proofRequired: true,
   }),
   leaf('clinic_w.deep.equipment', 'clinic_w.deep', 'Uskunalar holati', 'Состояние оборудования', 2, { frequency: 'WEEKLY' }),
-  leaf('clinic_w.deep.repair', 'clinic_w.deep', 'Taʼmir / nosozliklar', 'Ремонт / неисправности', 3, { frequency: 'WEEKLY' }),
+  leaf('clinic_w.deep.repair', 'clinic_w.deep', 'Nosozliklarni taʼmirlash', 'Ремонт неисправностей', 3, { frequency: 'WEEKLY' }),
   leaf('clinic_w.deep.photo', 'clinic_w.deep', 'Haftalik foto-audit', 'Еженедельный фото-аудит', 4, {
     frequency: 'WEEKLY',
     proofRequired: true,
@@ -594,7 +594,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   leaf('reception_w.ops.mystery', 'reception_w.ops', 'Mystery patient / sifat nazorati', 'Mystery patient / контроль качества', 7, { frequency: 'WEEKLY' }),
   leaf('reception_w.ops.standards', 'reception_w.ops', 'Radeski standartlar audit (haftalik)', 'Аудит стандартов Radeski (неделя)', 8, { frequency: 'WEEKLY' }),
 
-  group('reviews_w.summary', 'reviews_w', 'Haftalik Google hisoboti', 'Недельный отчёт Google', 1, {
+  group('reviews_w.summary', 'reviews_w', 'Shikoyat va javoblar', 'Жалобы и ответы', 1, {
     frequency: 'WEEKLY',
   }),
   leaf(
@@ -772,7 +772,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
     frequency: 'MONTHLY',
   }),
 
-  group('clinic_m.audit', 'clinic_m', 'Oylik audit', 'Месячный аудит', 1, { frequency: 'MONTHLY' }),
+  group('clinic_m.audit', 'clinic_m', 'Taʼminot', 'Снабжение', 1, { frequency: 'MONTHLY' }),
   leaf('clinic_m.audit.full', 'clinic_m.audit', 'Toʻliq klinika auditi', 'Полный аудит клиники', 1, {
     frequency: 'MONTHLY',
     proofRequired: true,
@@ -787,7 +787,7 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   group('reception_m.hr', 'reception_m', 'Jamoa va sifat', 'Команда и качество', 1, { frequency: 'MONTHLY' }),
   leaf('reception_m.hr.kpi', 'reception_m.hr', 'Administrator KPI bahosi', 'Оценка KPI администратора', 1, { frequency: 'MONTHLY' }),
   leaf('reception_m.hr.feedback', 'reception_m.hr', 'Xodim feedback', 'Обратная связь сотрудникам', 2, { frequency: 'MONTHLY' }),
-  leaf('reception_m.hr.hire', 'reception_m.hr', 'Yangi xodim / ehtiyoj', 'Нужна ли новая ставка', 3, { frequency: 'MONTHLY' }),
+  leaf('reception_m.hr.hire', 'reception_m.hr', 'Yangi shtat kerakmi', 'Нужна ли новая ставка', 3, { frequency: 'MONTHLY' }),
   leaf('reception_m.hr.training', 'reception_m.hr', 'Oylik trening rejasi', 'План месячного тренинга', 4, { frequency: 'MONTHLY' }),
   leaf('reception_m.hr.standards', 'reception_m.hr', 'Radeski standartlar oylik audit', 'Месячный аудит стандартов Radeski', 5, { frequency: 'MONTHLY' }),
   leaf('reception_m.hr.cash_month', 'reception_m.hr', 'Oylik kassa yakuni', 'Итог кассы за месяц', 6, { frequency: 'MONTHLY' }),
@@ -828,8 +828,8 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   leaf(
     'reviews_m.reputation.nps',
     'reviews_m.reputation',
-    'Takroriy bemorlar va shikoyatlar — oylik xulosa',
-    'Повторные визиты и жалобы — итог месяца',
+    'Takroriy tashriflar va shikoyatlar',
+    'Повторные визиты и жалобы',
     3,
     {
       frequency: 'MONTHLY',
@@ -898,12 +898,74 @@ export const KPI_CATALOG_SEED: CatalogSeed[] = [
   }),
 
   group('marketing_m.big', 'marketing_m', 'Katta marketing', 'Крупный маркетинг', 1, { frequency: 'MONTHLY' }),
-  leaf('marketing_m.big.tv', 'marketing_m.big', 'TV / radio reklama', 'Реклама ТВ / радио', 1, { frequency: 'MONTHLY' }),
+  leaf('marketing_m.big.tv', 'marketing_m.big', 'TV reklama', 'Реклама ТВ', 1, { frequency: 'MONTHLY' }),
   leaf('marketing_m.big.budget', 'marketing_m.big', 'Oylik byudjet yakuni', 'Итог месячного бюджета', 2, { frequency: 'MONTHLY' }),
   leaf('marketing_m.big.campaign', 'marketing_m.big', 'Yangi kampaniya rejasi', 'План новой кампании', 3, { frequency: 'MONTHLY' }),
   leaf('marketing_m.big.doctor', 'marketing_m.big', 'Shifokorlar referral', 'Рефералы врачей', 4, { frequency: 'MONTHLY' }),
   leaf('marketing_m.big.events', 'marketing_m.big', 'Event / ochiq kun', 'Ивент / открытый день', 5, { frequency: 'MONTHLY' }),
 ];
+
+/**
+ * Rahbar tasdiqlagan haftalik / oylik KPI roʻyxati (hujjat, 2026-10).
+ * Tartib — hujjatdagidek. Roʻyxatda yoʻq haftalik/oylik ishlar oʻchiriladi.
+ * SMM / SEO hujjatda yoʻq — unga tegilmaydi.
+ */
+export const APPROVED_PERIODIC: Record<'WEEKLY' | 'MONTHLY', Record<string, string[]>> = {
+  WEEKLY: {
+    reception_w: ['reception_w.ops.complaints', 'reception_w.ops.cash'],
+    clinic_w: ['clinic_w.deep.photo', 'clinic_w.deep.inventory', 'clinic_w.deep.repair'],
+    marketing_w: ['marketing_w.growth.partners'],
+    reviews_w: ['reviews_w.summary.plan', 'reviews_w.summary.reply_all'],
+  },
+  MONTHLY: {
+    reception_m: ['reception_m.hr.standards', 'reception_m.hr.hire', 'reception_m.hr.training'],
+    clinic_m: ['clinic_m.audit.budget', 'clinic_m.audit.vendor'],
+    marketing_m: ['marketing_m.big.doctor', 'marketing_m.big.tv'],
+    reviews_m: ['reviews_m.reputation.nps'],
+    uniform_m: ['uniform_m.brand.photo', 'uniform_m.brand.refresh'],
+  },
+};
+
+export const APPROVED_PERIODIC_KEYS: Array<{ key: string; frequency: 'WEEKLY' | 'MONTHLY' }> = (
+  ['WEEKLY', 'MONTHLY'] as const
+).flatMap((frequency) =>
+  Object.values(APPROVED_PERIODIC[frequency])
+    .flat()
+    .map((key) => ({ key, frequency })),
+);
+
+{
+  const approved = new Map<string, number>();
+  const rootOrder = new Map<string, number>();
+  for (const freq of ['WEEKLY', 'MONTHLY'] as const) {
+    Object.entries(APPROVED_PERIODIC[freq]).forEach(([root, keys], ri) => {
+      rootOrder.set(root, ri + 1);
+      keys.forEach((k, i) => approved.set(k, i + 1));
+    });
+  }
+  const periodic = KPI_CATALOG_SEED.filter(
+    (n) => (n.frequency === 'WEEKLY' || n.frequency === 'MONTHLY') && !n.key.startsWith('smm_'),
+  );
+  for (const n of periodic) {
+    if (n.inputType === 'GROUP') continue;
+    n.active = approved.has(n.key);
+    if (n.active) n.sortOrder = approved.get(n.key)!;
+  }
+  // Ichida faol ish qolmagan guruh / blok ham yashirinadi
+  const hasActiveLeaf = (key: string): boolean =>
+    periodic.some(
+      (c) =>
+        c.inputType !== 'GROUP' && c.active !== false && (c.key === key || c.key.startsWith(`${key}.`)),
+    );
+  for (const n of periodic) {
+    if (n.inputType !== 'GROUP') continue;
+    n.active = hasActiveLeaf(n.key);
+    if (n.parentKey == null) n.sortOrder = rootOrder.get(n.key) ?? 9;
+  }
+  for (const n of KPI_CATALOG_SEED) {
+    if ((n.key === 'smm_w' || n.key === 'smm_m') && n.parentKey == null) n.sortOrder = 6;
+  }
+}
 
 // Foto / screenshot / dalil ishlari — dalil majburiy
 for (const n of KPI_CATALOG_SEED) {

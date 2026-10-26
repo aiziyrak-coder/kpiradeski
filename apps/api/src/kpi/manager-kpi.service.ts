@@ -25,6 +25,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { scoreIcon, tgCard, tgEscape } from '../telegram/tg-format';
 import { CalendarService } from '../common/calendar.service';
 import { seedKpiCatalog } from '../../prisma/seed-catalog';
+import { APPROVED_PERIODIC_KEYS } from '../../prisma/kpi-catalog.seed';
 import { ATTENDANCE_NODE_KEY } from '../attendance/attendance.constants';
 import { matchBranchHint } from '../attendance/employee-roster';
 import { isCompanyWideTaskKey } from '../common/company-wide-tasks';
@@ -163,6 +164,7 @@ export class ManagerKpiService implements OnModuleInit {
       await this.restoreDailySeoAssignments();
       await this.extendSeoAssignments();
       await this.ensureKokandPatientRebookAssignments();
+      await this.applyApprovedPeriodicList();
       await this.recalcOpenPeriods();
     } catch (e) {
       this.logger.warn(`Catalog seed: ${e}`);
@@ -194,6 +196,37 @@ export class ManagerKpiService implements OnModuleInit {
         });
       }
     }
+  }
+
+  /**
+   * Rahbar tasdiqlagan haftalik/oylik roʻyxat — barcha filiallarga bir marta biriktiriladi.
+   * Belgi (appSetting) qoʻyiladi: keyin admin oʻchirsa, qayta yoqilmaydi.
+   */
+  private async applyApprovedPeriodicList() {
+    const MARK = 'kpi_periodic_list_2026_10';
+    const done = await this.prisma.appSetting.findUnique({ where: { key: MARK } });
+    if (done) return;
+    const branches = await this.prisma.branch.findMany({
+      where: { active: true },
+      select: { id: true },
+    });
+    if (!branches.length) return;
+    for (const b of branches) {
+      for (const { key, frequency } of APPROVED_PERIODIC_KEYS) {
+        const freq = frequency === 'WEEKLY' ? KpiFrequency.WEEKLY : KpiFrequency.MONTHLY;
+        await this.prisma.kpiAssignmentTemplate.upsert({
+          where: { branchId_frequency_nodeKey: { branchId: b.id, frequency: freq, nodeKey: key } },
+          create: { branchId: b.id, frequency: freq, nodeKey: key, active: true },
+          update: { active: true },
+        });
+      }
+    }
+    await this.prisma.appSetting.create({
+      data: { key: MARK, value: { at: new Date().toISOString(), keys: APPROVED_PERIODIC_KEYS.length } },
+    });
+    this.logger.log(
+      `Haftalik/oylik roʻyxat: ${APPROVED_PERIODIC_KEYS.length} ish × ${branches.length} filial biriktirildi`,
+    );
   }
 
   /** Boot: barcha filiallar uchun ochiq davr ballarini yangilash */
