@@ -35,10 +35,23 @@ Server hozir qaysi commitga teng — keyingi deploy shu bazadan farqni chiqaradi
 
 | Sana | Baza commit | Izoh |
 |---|---|---|
-| — | **aniqlanmagan** | Birinchi marta: `deploy/push-to-server.sh --check <commit>` bilan toping |
+| 2026-10-26 | `5dfef36` | `--check` bilan aniqlandi: server main ga teng edi |
+| 2026-10-26 | **`e6b8bca`** | Chiqarildi (13:10, egasi ruxsati bilan ish vaqtida). Backup: `backups/push-before-20261026-131026.tgz`, `db-before-20261026-131026.sql.gz`, image `:before-20261026-131026` |
 
 Har chiqarishdan keyin yangi qator qoʻshing (skript oxirida commit chiqaradi;
 serverda `.deployed-commit` faylida ham yoziladi).
+
+## Serverning oʻzidan chiqarish (ofis tarmogʻi)
+
+Bulut sessiyasi serverga ulana olmaydi. Server ichida repo nusxasi bor:
+
+```bash
+cd ~/kpiradeski-src && git pull
+DEPLOY_LOCAL=1 deploy/push-to-server.sh <baza> --dry-run
+DEPLOY_LOCAL=1 deploy/push-to-server.sh <baza>
+```
+
+`DEPLOY_LOCAL=1` — ssh oʻrniga buyruqlar shu serverda bajariladi; qolgan himoyalar oʻzgarmaydi.
 
 ## Birinchi marta: bazani topish (faqat oʻqish)
 
