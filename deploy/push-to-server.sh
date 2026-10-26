@@ -11,6 +11,7 @@
 # Muhit (ixtiyoriy):
 #   DEPLOY_HOST=87.192.230.208  DEPLOY_PORT=2222   (ofisdan: 192.168.0.101 / 22)
 #   DEPLOY_KEY=~/.ssh/imentor_deploy
+#   DEPLOY_LOCAL=1          — skript serverning oʻzida ishlatilsa (repo nusxasi ~/kpiradeski-src da)
 #   DEPLOY_FORCE_WINDOW=1   — ruxsat etilgan vaqtdan tashqarida chiqarish (faqat egasi aytsa)
 set -euo pipefail
 
@@ -24,9 +25,14 @@ DOMAIN="kpi.devflix.uz"
 # Chiqarish mumkin boʻlgan vaqt (Toshkent): yakshanba kun boʻyi, boshqa kunlar 20:00–07:30
 WINDOW_DESC="yakshanba kun boʻyi; Du–Sha 20:00 dan 07:30 gacha (Toshkent)"
 
-SSH=(ssh -p "$PORT" -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=30)
-[ -f "$KEY" ] && SSH+=(-i "$KEY")
-SSH+=("admin_root@$HOST")
+if [ "${DEPLOY_LOCAL:-}" = 1 ]; then
+  # Serverning oʻzida ishga tushirilganda (ssh kerak emas): DEPLOY_LOCAL=1
+  SSH=(bash -c)
+else
+  SSH=(ssh -p "$PORT" -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=30)
+  [ -f "$KEY" ] && SSH+=(-i "$KEY")
+  SSH+=("admin_root@$HOST")
+fi
 
 die() { echo "XATO: $*" >&2; exit 1; }
 say() { echo; echo "== $*"; }
